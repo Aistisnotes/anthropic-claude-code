@@ -198,9 +198,14 @@ class MetaAdsScraper:
         selector = await page.evaluate(
             r"""
             () => {
-                // Strategy 1: look for divs containing ad library links
-                // Each ad card has a link like /ads/library/?id=XXXX
-                const adLinks = document.querySelectorAll('a[href*="/ads/library/?id="]');
+                // Strategy 1: look for divs containing ad library links with numeric IDs
+                // Each ad card may have a link like /ads/library/?id=XXXX or /ads/library/XXXX
+                // Filter out navigation links (logo, report, API) that also match /ads/library/
+                const adLinks = [...document.querySelectorAll('a[href*="/ads/library/"]')].filter(a => {
+                    const href = a.href || a.getAttribute('href') || '';
+                    return /(?:id=|library\/)\d{10,}/.test(href);
+                });
+                console.log('[meta_ads] Strategy 1: ' + adLinks.length + ' ad links with numeric IDs');
                 if (adLinks.length > 0) {
                     // Walk up from the link to find the common card container.
                     // The card container is typically 2-4 levels up from the link.
@@ -217,8 +222,12 @@ class MetaAdsScraper:
                         const siblings = parent.children;
                         let siblingsWithAds = 0;
                         for (const sib of siblings) {
-                            if (sib.querySelector('a[href*="/ads/library/?id="]')) {
-                                siblingsWithAds++;
+                            const sibLink = sib.querySelector('a[href*="/ads/library/"]');
+                            if (sibLink) {
+                                const href = sibLink.href || sibLink.getAttribute('href') || '';
+                                if (/(?:id=|library\/)\d{10,}/.test(href)) {
+                                    siblingsWithAds++;
+                                }
                             }
                         }
 
@@ -246,8 +255,9 @@ class MetaAdsScraper:
                                     }
                                 }
                             }
-                            // Last resort: use nth-child pattern
-                            return `CARD_PARENT_INDEX:${depth}`;
+                            // Could not build CSS selector — fall through to Strategy 2/3
+                            // instead of returning a fragile walk-up marker
+                            console.log('[meta_ads] Strategy 1: found card level at depth ' + depth + ' but no usable CSS selector, falling through');
                         }
                     }
                 }
@@ -291,7 +301,19 @@ class MetaAdsScraper:
                     }
                 }
 
-                return bestCandidate;
+                if (bestCandidate) {
+                    console.log('[meta_ads] Strategy 3: found ' + bestCount + ' card-like children');
+                    return bestCandidate;
+                }
+
+                // Strategy 4 (last resort): if we found any ad-like links earlier,
+                // use walk-up extraction as the final fallback
+                if (adLinks.length > 0) {
+                    console.log('[meta_ads] Strategy 4: falling back to AD_LINK_WALK with ' + adLinks.length + ' links');
+                    return 'AD_LINK_WALK';
+                }
+
+                return null;
             }
             """
         )
@@ -299,12 +321,15 @@ class MetaAdsScraper:
         if not selector:
             return None
 
-        if selector.startswith("CARD_PARENT_INDEX:"):
-            # Fallback: use the ad link as anchor and extract from page.evaluate
+        if selector == "AD_LINK_WALK":
+            logger.debug("Selector discovery returning __AD_LINK_WALK__ (last-resort fallback)")
             return "__AD_LINK_WALK__"
 
         if selector.startswith("STRUCTURAL:"):
             # Found cards structurally but can't make a CSS selector - use JS extraction
+            logger.debug(
+                f"Selector discovery returning __STRUCTURAL__ (found {selector.split(':')[1]} card-like children)"
+            )
             return "__STRUCTURAL__"
 
         return selector
@@ -320,10 +345,46 @@ class MetaAdsScraper:
 
                 // Helper: find ad containers based on selector type
                 let containers;
-                if (selector === '__AD_LINK_WALK__' || selector === '__STRUCTURAL__') {
+                if (selector === '__STRUCTURAL__') {
+                    // Re-run Strategy 3 heuristic: find parent div with most
+                    // card-like children (text>50 + media/link). No dependency
+                    // on ad library links.
+                    const resultsDivs = document.querySelectorAll('div[class]');
+                    let bestParent = null;
+                    let bestCount = 0;
+                    for (const div of resultsDivs) {
+                        const children = div.children;
+                        if (children.length < 2) continue;
+                        let cardLike = 0;
+                        for (const child of children) {
+                            const hasText = child.textContent.length > 50;
+                            const hasMedia = child.querySelector('video, img');
+                            const hasLink = child.querySelector('a[href]');
+                            if (hasText && (hasMedia || hasLink)) {
+                                cardLike++;
+                            }
+                        }
+                        if (cardLike > bestCount && cardLike >= 2) {
+                            bestCount = cardLike;
+                            bestParent = div;
+                        }
+                    }
+                    containers = [];
+                    if (bestParent) {
+                        for (const child of bestParent.children) {
+                            const hasText = child.textContent.length > 50;
+                            const hasMedia = child.querySelector('video, img');
+                            const hasLink = child.querySelector('a[href]');
+                            if (hasText && (hasMedia || hasLink)) {
+                                containers.push(child);
+                            }
+                        }
+                    }
+                    console.log('[meta_ads] __STRUCTURAL__ extraction: bestCount=' + bestCount + ', containers=' + containers.length);
+                } else if (selector === '__AD_LINK_WALK__') {
                     // Fallback: find all ad links and walk up to card boundary
                     const adLinks = document.querySelectorAll(
-                        'a[href*="/ads/library/?id="]'
+                        'a[href*="/ads/library/"]'
                     );
                     const seen = new Set();
                     containers = [];
@@ -349,6 +410,7 @@ class MetaAdsScraper:
                             }
                         }
                     }
+                    console.log('[meta_ads] __AD_LINK_WALK__ extraction: adLinks=' + adLinks.length + ', containers=' + containers.length);
                 } else {
                     containers = document.querySelectorAll(selector);
                 }
@@ -507,6 +569,13 @@ class MetaAdsScraper:
             """,
             container_selector,
         )
+
+        logger.debug(f"_extract_ad_cards: selector={container_selector}, raw_ads={len(raw_ads)}")
+        if len(raw_ads) == 0:
+            logger.warning(
+                f"0 raw ads extracted with selector '{container_selector}'. "
+                "Page may have changed layout or content may not have loaded."
+            )
 
         ads = []
         for raw in raw_ads:
