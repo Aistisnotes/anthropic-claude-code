@@ -1,30 +1,91 @@
-import axios from 'axios';
+import { chromium } from 'playwright';
 import { config } from '../utils/config.js';
 import { log } from '../utils/logger.js';
 
 /**
- * Meta Ad Library web scraper — direct page scraping, no API token required.
+ * Meta Ad Library scraper — Playwright headless Chromium.
  *
- * Fetches ad data by scraping the public Meta Ad Library search page.
- * Extracts ad metadata from embedded JSON data in the page's HTML.
+ * Uses a real browser to bypass Meta's anti-bot protections that block
+ * raw HTTP requests. Extracts ad data via two strategies:
+ *   1. Network interception of GraphQL API responses (structured JSON)
+ *   2. DOM extraction from rendered ad cards (fallback)
  *
  * Public URL: https://www.facebook.com/ads/library/
  */
 
 const AD_LIBRARY_BASE = 'https://www.facebook.com/ads/library/';
-const GRAPHQL_ENDPOINT = 'https://www.facebook.com/api/graphql/';
 
-const BROWSER_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Cache-Control': 'no-cache',
-  'Sec-Fetch-Dest': 'document',
-  'Sec-Fetch-Mode': 'navigate',
-  'Sec-Fetch-Site': 'none',
-  'Sec-Fetch-User': '?1',
-  'Upgrade-Insecure-Requests': '1',
-};
+// Stealth browser args to reduce automation detection
+const BROWSER_ARGS = [
+  '--disable-blink-features=AutomationControlled',
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-accelerated-2d-canvas',
+  '--no-first-run',
+  '--no-zygote',
+  '--disable-gpu',
+];
+
+const VIEWPORT = { width: 1440, height: 900 };
+
+const USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+/**
+ * Sleep helper for rate limiting.
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ─── Browser Management ─────────────────────────────────────
+
+/**
+ * Launch headless Chromium with stealth settings.
+ */
+async function launchBrowser() {
+  const browser = await chromium.launch({
+    headless: true,
+    args: BROWSER_ARGS,
+  });
+
+  const context = await browser.newContext({
+    viewport: VIEWPORT,
+    userAgent: USER_AGENT,
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    // Bypass CSP to allow our scripts
+    bypassCSP: true,
+  });
+
+  // Mask automation indicators
+  await context.addInitScript(() => {
+    // Hide webdriver flag
+    Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    // Mock chrome runtime
+    window.chrome = { runtime: {} };
+    // Mock permissions
+    const originalQuery = window.navigator.permissions?.query;
+    if (originalQuery) {
+      window.navigator.permissions.query = (params) =>
+        params.name === 'notifications'
+          ? Promise.resolve({ state: Notification.permission })
+          : originalQuery(params);
+    }
+    // Mock plugins
+    Object.defineProperty(navigator, 'plugins', {
+      get: () => [1, 2, 3, 4, 5],
+    });
+    // Mock languages
+    Object.defineProperty(navigator, 'languages', {
+      get: () => ['en-US', 'en'],
+    });
+  });
+
+  return { browser, context };
+}
 
 /**
  * Build the Ad Library search URL.
@@ -41,105 +102,301 @@ function buildSearchUrl(keyword, opts = {}) {
   return `${AD_LIBRARY_BASE}?${params}`;
 }
 
-/**
- * Sleep helper for rate limiting.
- */
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// ─── Session Management ──────────────────────────────────────
+// ─── Network Interception ───────────────────────────────────
 
 /**
- * Establish a session with the Ad Library page.
- * Fetches the main page to get cookies and CSRF tokens.
+ * Set up response interception to capture GraphQL ad data.
+ * Returns a reference to the captured ads array.
  */
-async function createSession() {
-  const response = await axios.get(AD_LIBRARY_BASE, {
-    headers: BROWSER_HEADERS,
-    maxRedirects: 5,
-    timeout: 20000,
-    // Capture cookies from response
-    transformResponse: [(data) => data],
+function setupNetworkCapture(page) {
+  const captured = [];
+
+  page.on('response', async (response) => {
+    const url = response.url();
+
+    // Capture GraphQL responses that contain ad data
+    const isGraphQL = url.includes('/api/graphql/');
+    const isAsyncSearch = url.includes('ads/library/async');
+    const isAdSearch = url.includes('ad_library');
+
+    if (!isGraphQL && !isAsyncSearch && !isAdSearch) return;
+
+    try {
+      const text = await response.text();
+      // Meta prefixes GraphQL responses with "for (;;);" as XSS protection
+      const cleaned = text.replace(/^for\s*\(;;\)\s*;\s*/, '');
+
+      // Handle multi-line JSON responses (each line is a separate JSON object)
+      const lines = cleaned.split('\n').filter((l) => l.trim());
+      for (const line of lines) {
+        try {
+          const json = JSON.parse(line);
+          findAdNodes(json, captured);
+        } catch {
+          // Not valid JSON line, skip
+        }
+      }
+    } catch {
+      // Response may not be text (images, etc.)
+    }
   });
 
-  const html = response.data;
-  const setCookies = response.headers['set-cookie'] || [];
-  const cookieStr = setCookies.map((c) => c.split(';')[0]).join('; ');
-
-  // Extract CSRF token (fb_dtsg)
-  const dtsgMatch = html.match(/"DTSGInitialData"[^}]*"token":"([^"]+)"/)
-    || html.match(/name="fb_dtsg" value="([^"]+)"/)
-    || html.match(/"dtsg":\{"token":"([^"]+)"/);
-  const fbDtsg = dtsgMatch ? dtsgMatch[1] : null;
-
-  // Extract LSD token
-  const lsdMatch = html.match(/name="lsd" value="([^"]+)"/)
-    || html.match(/"LSD"[^}]*\[.*?"([^"]+)"\]/);
-  const lsd = lsdMatch ? lsdMatch[1] : null;
-
-  // Extract jazoest
-  const jazoestMatch = html.match(/name="jazoest" value="([^"]+)"/);
-  const jazoest = jazoestMatch ? jazoestMatch[1] : null;
-
-  return { cookies: cookieStr, fbDtsg, lsd, jazoest, html };
+  return captured;
 }
 
-// ─── Data Extraction ─────────────────────────────────────────
+// ─── DOM Extraction ─────────────────────────────────────────
 
 /**
- * Extract ad data from an Ad Library search page HTML response.
- * Tries multiple parsing strategies for resilience.
+ * Extract ad data directly from the rendered DOM.
+ * Fallback when network interception doesn't capture enough data.
  */
-function extractAdsFromHtml(html) {
-  const ads = [];
+async function extractAdsFromDOM(page) {
+  return page.evaluate(() => {
+    const ads = [];
 
-  // Strategy 1: Extract from <script data-sjs> JSON blocks
-  const sjsMatches = html.matchAll(/<script[^>]*data-sjs[^>]*>([\s\S]*?)<\/script>/gi);
-  for (const match of sjsMatches) {
-    try {
-      const data = JSON.parse(match[1]);
-      findAdNodes(data, ads);
-    } catch {
-      // Not valid JSON, skip
+    // Meta Ad Library renders ad cards in a scrollable container.
+    // Each card has a consistent structure with:
+    //   - Page name link
+    //   - "Started running on" date
+    //   - Body text
+    //   - Platform icons
+    //   - "See ad details" link
+
+    // Strategy 1: Find ad containers by their structural pattern
+    // Meta uses data attributes and aria labels on ad cards
+    const adContainers = document.querySelectorAll(
+      // Multiple selector strategies for resilience
+      [
+        '[class*="AdLibrarySearchResult"]',
+        '[class*="adLibrarySearchResult"]',
+        '[data-testid*="ad_library"]',
+        '[role="article"]',
+        // Generic: divs that contain "Started running on" text
+      ].join(', ')
+    );
+
+    for (const container of adContainers) {
+      const ad = extractAdFromContainer(container);
+      if (ad && (ad.pageName || ad.bodyText)) {
+        ads.push(ad);
+      }
     }
-  }
 
-  // Strategy 2: Extract from generic <script type="application/json"> blocks
-  const jsonScripts = html.matchAll(/<script type="application\/json"[^>]*>([\s\S]*?)<\/script>/gi);
-  for (const match of jsonScripts) {
-    try {
-      const data = JSON.parse(match[1]);
-      findAdNodes(data, ads);
-    } catch {
-      // Skip invalid
+    // Strategy 2: If no containers found via selectors, search by text patterns
+    if (ads.length === 0) {
+      // Find all elements containing "Started running on"
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) =>
+            node.textContent.includes('Started running on')
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT,
+        }
+      );
+
+      const dateNodes = [];
+      while (walker.nextNode()) {
+        dateNodes.push(walker.currentNode);
+      }
+
+      for (const dateNode of dateNodes) {
+        // Walk up to find the ad card container
+        let cardEl = dateNode.parentElement;
+        for (let i = 0; i < 10 && cardEl; i++) {
+          // Ad cards are typically larger containers
+          if (cardEl.offsetHeight > 200 || cardEl.querySelector('a[href*="ads/library"]')) {
+            break;
+          }
+          cardEl = cardEl.parentElement;
+        }
+        if (cardEl) {
+          const ad = extractAdFromContainer(cardEl);
+          if (ad && (ad.pageName || ad.bodyText)) {
+            ads.push(ad);
+          }
+        }
+      }
     }
-  }
 
-  // Strategy 3: Extract from require("ServerJS") handler blocks
-  const serverJsMatches = html.matchAll(/\{(?:"require"|require)\s*:\s*(\[[\s\S]*?\])\s*\}/g);
-  for (const match of serverJsMatches) {
-    try {
-      const data = JSON.parse(`{"require":${match[1]}}`);
-      findAdNodes(data, ads);
-    } catch {
-      // Skip
+    // Strategy 3: Extract from embedded JSON in script tags
+    const scripts = document.querySelectorAll('script[type="application/json"], script[data-sjs]');
+    for (const script of scripts) {
+      try {
+        const data = JSON.parse(script.textContent);
+        // Look for ad-like structures in the JSON
+        findAdsInJson(data, ads, 0);
+      } catch {
+        // Not valid JSON
+      }
     }
-  }
 
-  // Strategy 4: Direct regex extraction as fallback
-  if (ads.length === 0) {
-    extractAdsViaRegex(html, ads);
-  }
+    return ads;
 
-  // Deduplicate by ID
-  const seen = new Set();
-  return ads.filter((ad) => {
-    if (seen.has(ad.id)) return false;
-    seen.add(ad.id);
+    // ── Helper functions (run in browser context) ──
+
+    function extractAdFromContainer(el) {
+      const ad = {};
+
+      // Page name: usually the first prominent link
+      const pageLink = el.querySelector('a[href*="/ads/library/"]') ||
+        el.querySelector('a[href*="facebook.com/"]') ||
+        el.querySelector('h4, h3, [class*="name"], [class*="Name"]');
+      if (pageLink) {
+        ad.pageName = pageLink.textContent?.trim();
+      }
+
+      // Date: "Started running on Mon DD, YYYY" or similar
+      const textContent = el.textContent || '';
+      const dateMatch = textContent.match(
+        /Started running on\s+(\w+\s+\d{1,2},?\s+\d{4})/
+      );
+      if (dateMatch) {
+        try {
+          ad.startDate = new Date(dateMatch[1]).toISOString();
+        } catch { /* ignore */ }
+      }
+
+      // Body text: longest text block in the container
+      const textBlocks = [];
+      el.querySelectorAll('div, span, p').forEach((node) => {
+        const text = node.textContent?.trim();
+        if (text && text.length > 30 && !text.includes('Started running on')) {
+          textBlocks.push(text);
+        }
+      });
+      // Pick the longest as the body text
+      if (textBlocks.length > 0) {
+        textBlocks.sort((a, b) => b.length - a.length);
+        ad.bodyText = textBlocks[0];
+      }
+
+      // Snapshot URL: "See ad details" link
+      const detailLink = el.querySelector('a[href*="ads/library/?id="]');
+      if (detailLink) {
+        ad.snapshot_url = detailLink.href;
+        // Extract ad ID from URL
+        const idMatch = detailLink.href.match(/[?&]id=(\d+)/);
+        if (idMatch) ad.id = idMatch[1];
+      }
+
+      // Impressions text: look for impression range patterns
+      const impMatch = textContent.match(
+        /(\d[\d,]*[KkMm]?)\s*[-–]\s*(\d[\d,]*[KkMm]?)\s*impression/i
+      );
+      if (impMatch) {
+        ad.impressions_lower_bound = parseImpNumber(impMatch[1]);
+        ad.impressions_upper_bound = parseImpNumber(impMatch[2]);
+      }
+
+      // Platforms
+      const platforms = [];
+      if (textContent.includes('Facebook')) platforms.push('facebook');
+      if (textContent.includes('Instagram')) platforms.push('instagram');
+      if (textContent.includes('Messenger')) platforms.push('messenger');
+      if (textContent.includes('Audience Network')) platforms.push('audience_network');
+      if (platforms.length > 0) ad.publisher_platforms = platforms;
+
+      return Object.keys(ad).length > 0 ? ad : null;
+    }
+
+    function parseImpNumber(str) {
+      const cleaned = str.replace(/,/g, '');
+      const num = parseFloat(cleaned);
+      if (/[Kk]/.test(str)) return num * 1000;
+      if (/[Mm]/.test(str)) return num * 1000000;
+      return num;
+    }
+
+    function findAdsInJson(data, results, depth) {
+      if (!data || typeof data !== 'object' || depth > 12) return;
+      if (
+        (data.adArchiveID || data.ad_archive_id) &&
+        (data.pageName || data.page_name || data.snapshot?.page_name)
+      ) {
+        results.push(data);
+        return;
+      }
+      const arr = Array.isArray(data) ? data : Object.values(data);
+      for (const val of arr) {
+        if (typeof val === 'object' && val !== null) {
+          findAdsInJson(val, results, depth + 1);
+        }
+      }
+    }
+  });
+}
+
+// ─── Pagination via Scrolling ───────────────────────────────
+
+/**
+ * Scroll the page to trigger infinite scroll loading.
+ * Returns true if new content appeared, false if we've reached the end.
+ */
+async function scrollForMore(page) {
+  const previousHeight = await page.evaluate(() => document.body.scrollHeight);
+
+  await page.evaluate(() => {
+    window.scrollTo(0, document.body.scrollHeight);
+  });
+
+  // Wait for new content to load
+  try {
+    await page.waitForFunction(
+      (prevHeight) => document.body.scrollHeight > prevHeight,
+      previousHeight,
+      { timeout: 5000 }
+    );
+    // Small extra wait for rendering
+    await sleep(500);
     return true;
-  });
+  } catch {
+    return false;
+  }
 }
+
+/**
+ * Dismiss cookie consent banner or login wall if present.
+ */
+async function dismissOverlays(page) {
+  // Cookie consent buttons
+  const consentSelectors = [
+    'button[data-cookiebanner="accept_button"]',
+    'button[title="Allow all cookies"]',
+    'button[title="Accept All"]',
+    '[data-testid="cookie-policy-manage-dialog-accept-button"]',
+    'button:has-text("Allow essential and optional cookies")',
+    'button:has-text("Accept All")',
+    'button:has-text("Allow all")',
+  ];
+
+  for (const selector of consentSelectors) {
+    try {
+      const btn = page.locator(selector).first();
+      if (await btn.isVisible({ timeout: 1000 })) {
+        await btn.click();
+        await sleep(500);
+        return;
+      }
+    } catch {
+      // Selector not found, try next
+    }
+  }
+
+  // Close any modal dialogs
+  try {
+    const closeBtn = page.locator('[aria-label="Close"], [role="dialog"] button').first();
+    if (await closeBtn.isVisible({ timeout: 500 })) {
+      await closeBtn.click();
+      await sleep(300);
+    }
+  } catch {
+    // No modal
+  }
+}
+
+// ─── Data Extraction from Network Responses ─────────────────
 
 /**
  * Recursively search a data tree for ad-like objects.
@@ -147,7 +404,6 @@ function extractAdsFromHtml(html) {
 function findAdNodes(data, results, depth = 0) {
   if (!data || typeof data !== 'object' || depth > 15) return;
 
-  // Check if this looks like an ad record
   if (isAdNode(data)) {
     const normalized = normalizeScrapedAd(data);
     if (normalized) results.push(normalized);
@@ -170,7 +426,6 @@ function findAdNodes(data, results, depth = 0) {
     return;
   }
 
-  // Recurse
   if (Array.isArray(data)) {
     for (const item of data) {
       findAdNodes(item, results, depth + 1);
@@ -189,7 +444,6 @@ function findAdNodes(data, results, depth = 0) {
  */
 function isAdNode(data) {
   if (!data || typeof data !== 'object') return false;
-  // Must have some combination of ad-identifying fields
   return (
     (data.adArchiveID || data.ad_archive_id || data.adid) &&
     (data.pageName || data.page_name || data.snapshot?.page_name || data.collation_id)
@@ -198,45 +452,6 @@ function isAdNode(data) {
   ) || (
     data.snapshot && (data.snapshot.page_name || data.snapshot.body)
   );
-}
-
-/**
- * Regex-based ad extraction as fallback when JSON parsing fails.
- */
-function extractAdsViaRegex(html, results) {
-  // Pattern: Match ad-like JSON objects embedded in the HTML
-  const adIdPattern = /"(?:adArchiveID|ad_archive_id|adid)"\s*:\s*"(\d+)"/g;
-  const adIds = new Set();
-
-  for (const match of html.matchAll(adIdPattern)) {
-    adIds.add(match[1]);
-  }
-
-  for (const adId of adIds) {
-    // Try to extract surrounding context for each ad ID
-    const ad = { id: adId };
-
-    // Page name
-    const pageNameRe = new RegExp(`"${adId}"[\\s\\S]{0,500}"page_?[Nn]ame"\\s*:\\s*"([^"]+)"`, 's');
-    const pageNameAlt = new RegExp(`"page_?[Nn]ame"\\s*:\\s*"([^"]+)"[\\s\\S]{0,500}"${adId}"`, 's');
-    const pm = html.match(pageNameRe) || html.match(pageNameAlt);
-    if (pm) ad.pageName = pm[1];
-
-    // Start date
-    const startRe = new RegExp(`"${adId}"[\\s\\S]{0,800}"(?:startDate|ad_delivery_start_time)"\\s*:\\s*"?([\\d]+)"?`, 's');
-    const sm = html.match(startRe);
-    if (sm) ad.startDate = parseInt(sm[1]);
-
-    // Body text
-    const bodyRe = new RegExp(`"${adId}"[\\s\\S]{0,1000}"body"\\s*:\\s*\\{[^}]*"text"\\s*:\\s*"([^"]{10,})"`, 's');
-    const bm = html.match(bodyRe);
-    if (bm) ad.bodyText = unescapeJson(bm[1]);
-
-    if (ad.pageName || ad.bodyText) {
-      const normalized = normalizeScrapedAd(ad);
-      if (normalized) results.push(normalized);
-    }
-  }
 }
 
 // ─── Normalization ───────────────────────────────────────────
@@ -340,11 +555,9 @@ function normalizeScrapedAd(raw) {
 function parseDate(raw) {
   if (!raw) return null;
   if (typeof raw === 'string') {
-    // ISO string or date string
     return raw.includes('T') ? raw : new Date(raw).toISOString();
   }
   if (typeof raw === 'number') {
-    // Epoch — seconds if < 1e12, milliseconds otherwise
     const ms = raw > 1e12 ? raw : raw * 1000;
     return new Date(ms).toISOString();
   }
@@ -368,14 +581,6 @@ function cleanHtml(str) {
     .trim();
 }
 
-function unescapeJson(str) {
-  try {
-    return JSON.parse(`"${str}"`);
-  } catch {
-    return str.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-  }
-}
-
 /**
  * Format an impression range into a human-readable label.
  */
@@ -392,12 +597,15 @@ function formatImpressionRange(lower, upper) {
 // ─── Main Scan Function ──────────────────────────────────────
 
 /**
- * Scan Meta Ad Library for a keyword by scraping the public page.
+ * Scan Meta Ad Library for a keyword using Playwright headless Chromium.
+ *
+ * Launches a real browser to bypass Meta's anti-bot protections.
+ * Extracts ads via network interception (GraphQL responses) and DOM scraping.
  *
  * @param {string} keyword - Search term
  * @param {object} opts
  * @param {string} opts.country - ISO country code (default: US)
- * @param {number} opts.maxPages - Max pages to scrape
+ * @param {number} opts.maxPages - Max scroll iterations for pagination
  * @param {string} opts.activeStatus - ACTIVE, INACTIVE, ALL
  * @returns {{ ads: Array, advertisers: Map, totalFetched: number, pagesScanned: number }}
  */
@@ -408,93 +616,111 @@ export async function scanAdLibrary(keyword, opts = {}) {
 
   log.step(`Scraping Meta Ad Library for "${keyword}" (${country}, ${activeStatus})`);
 
-  // Step 1: Establish session
-  let session;
+  // Step 1: Launch browser
+  let browser, context;
   try {
-    session = await createSession();
-    log.dim('Session established');
+    ({ browser, context } = await launchBrowser());
+    log.dim('Browser launched');
   } catch (err) {
     throw new Error(
-      `Failed to connect to Meta Ad Library: ${err.message}\n` +
-      'Check your internet connection and try again.'
+      `Failed to launch browser: ${err.message}\n` +
+      'Ensure Playwright browsers are installed: npx playwright install chromium'
     );
   }
 
   const allAds = [];
-  let pageNum = 0;
-  let forwardCursor = null;
+  let pagesScrolled = 0;
 
-  // Step 2: Fetch initial search results page
-  pageNum++;
   try {
+    const page = await context.newPage();
+
+    // Set up network interception to capture GraphQL ad data
+    const networkAds = setupNetworkCapture(page);
+
+    // Step 2: Navigate to search page
     const searchUrl = buildSearchUrl(keyword, { country, activeStatus });
-    const response = await axios.get(searchUrl, {
-      headers: {
-        ...BROWSER_HEADERS,
-        'Cookie': session.cookies,
-        'Referer': AD_LIBRARY_BASE,
-      },
-      maxRedirects: 5,
-      timeout: 30000,
-      transformResponse: [(data) => data],
+    log.dim(`Navigating to: ${searchUrl}`);
+
+    await page.goto(searchUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: config.meta.pageTimeoutMs,
     });
 
-    const html = response.data;
+    // Dismiss cookie consent / login overlays
+    await dismissOverlays(page);
 
-    // Update cookies from response
-    const newCookies = response.headers['set-cookie'] || [];
-    if (newCookies.length > 0) {
-      const extraCookies = newCookies.map((c) => c.split(';')[0]).join('; ');
-      session.cookies = session.cookies
-        ? `${session.cookies}; ${extraCookies}`
-        : extraCookies;
-    }
-
-    // Extract ads from page HTML
-    const pageAds = extractAdsFromHtml(html);
-    allAds.push(...pageAds);
-
-    // Try to extract pagination cursor
-    forwardCursor = extractForwardCursor(html);
-
-    log.dim(`Page ${pageNum}: ${pageAds.length} ads (${allAds.length} total)`);
-  } catch (err) {
-    throw new Error(
-      `Failed to scrape search results: ${err.message}\n` +
-      'Meta may be blocking automated requests. Try again later.'
-    );
-  }
-
-  // Step 3: Fetch additional pages via GraphQL endpoint
-  while (forwardCursor && pageNum < maxPages && allAds.length < 500) {
-    pageNum++;
-    await sleep(config.meta.requestDelayMs);
-
+    // Wait for results to render (the page dynamically loads ad cards)
     try {
-      const pageAds = await fetchNextPage(
-        keyword, country, activeStatus, forwardCursor, session
+      await page.waitForSelector(
+        '[role="article"], [class*="result"], [class*="AdCard"], [class*="adCard"]',
+        { timeout: 15000 }
       );
-
-      if (pageAds.ads.length === 0) {
-        log.dim(`Page ${pageNum}: no more results`);
-        break;
-      }
-
-      allAds.push(...pageAds.ads);
-      forwardCursor = pageAds.cursor;
-
-      log.dim(`Page ${pageNum}: ${pageAds.ads.length} ads (${allAds.length} total)`);
-    } catch (err) {
-      log.warn(`Page ${pageNum} failed: ${err.message}. Continuing with results so far.`);
-      break;
+    } catch {
+      // Results may load with different selectors — wait for network idle instead
+      await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     }
+
+    // Give initial batch time to fully render + fire API calls
+    await sleep(2000);
+
+    log.dim(`Page 1: ${networkAds.length} ads captured from network`);
+    pagesScrolled = 1;
+
+    // Step 3: Scroll for more pages
+    let consecutiveEmptyScrolls = 0;
+    const maxEmptyScrolls = 3;
+
+    while (pagesScrolled < maxPages && consecutiveEmptyScrolls < maxEmptyScrolls) {
+      const adsBefore = networkAds.length;
+
+      const hasMore = await scrollForMore(page);
+      pagesScrolled++;
+
+      await sleep(config.meta.requestDelayMs);
+
+      const newAds = networkAds.length - adsBefore;
+      log.dim(`Scroll ${pagesScrolled}: +${newAds} ads (${networkAds.length} total from network)`);
+
+      if (newAds === 0 && !hasMore) {
+        consecutiveEmptyScrolls++;
+      } else {
+        consecutiveEmptyScrolls = 0;
+      }
+    }
+
+    // Step 4: Merge network-captured ads
+    const seenIds = new Set();
+    for (const ad of networkAds) {
+      if (!seenIds.has(ad.id)) {
+        seenIds.add(ad.id);
+        allAds.push(ad);
+      }
+    }
+
+    // Step 5: DOM fallback — extract any ads the network interception missed
+    log.dim('Extracting additional ads from DOM...');
+    const domRawAds = await extractAdsFromDOM(page);
+
+    for (const rawAd of domRawAds) {
+      const normalized = normalizeScrapedAd(rawAd);
+      if (normalized && !seenIds.has(normalized.id)) {
+        seenIds.add(normalized.id);
+        allAds.push(normalized);
+      }
+    }
+
+    log.dim(`Total: ${allAds.length} ads (${networkAds.length} network + ${domRawAds.length} DOM)`);
+
+  } finally {
+    // Always close the browser
+    await browser.close().catch(() => {});
   }
 
   if (allAds.length === 0) {
     log.warn('No ads found. This could mean:');
     log.warn('  1. No ads match this keyword');
-    log.warn('  2. Meta is blocking the request (try again later)');
-    log.warn('  3. The page format has changed (check for updates)');
+    log.warn('  2. Meta is blocking automated browsers (try later)');
+    log.warn('  3. The page structure has changed');
   }
 
   // Aggregate by advertiser
@@ -507,120 +733,8 @@ export async function scanAdLibrary(keyword, opts = {}) {
     ads: allAds,
     advertisers,
     totalFetched: allAds.length,
-    pagesScanned: pageNum,
+    pagesScanned: pagesScrolled,
   };
-}
-
-/**
- * Fetch the next page of results via GraphQL.
- */
-async function fetchNextPage(keyword, country, activeStatus, cursor, session) {
-  const variables = JSON.stringify({
-    activeStatus: activeStatus.toUpperCase(),
-    adType: 'ALL',
-    bylines: [],
-    collationToken: null,
-    contentLanguages: [],
-    countries: [country],
-    excludedIDs: [],
-    first: 30,
-    location: null,
-    mediaType: 'ALL',
-    potentialReachInput: [],
-    publisherPlatforms: [],
-    queryString: keyword,
-    regions: [],
-    searchType: 'KEYWORD_UNORDERED',
-    source: null,
-    startDate: null,
-    endDate: null,
-    v: 'default',
-    after: cursor,
-  });
-
-  const params = new URLSearchParams();
-  params.append('variables', variables);
-  if (session.fbDtsg) params.append('fb_dtsg', session.fbDtsg);
-  if (session.lsd) params.append('lsd', session.lsd);
-  // The doc_id for Ad Library search — this may need updating over time
-  params.append('doc_id', '7826966037373498');
-
-  const response = await axios.post(GRAPHQL_ENDPOINT, params.toString(), {
-    headers: {
-      ...BROWSER_HEADERS,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': session.cookies,
-      'Referer': buildSearchUrl(keyword, { country }),
-      'X-FB-Friendly-Name': 'AdLibrarySearchPaginationQuery',
-    },
-    timeout: 20000,
-    transformResponse: [(data) => data],
-  });
-
-  let json;
-  try {
-    // Response may be prefixed with "for (;;);" anti-hijack
-    const text = response.data.replace(/^for\s*\(;;\)\s*;\s*/, '');
-    json = JSON.parse(text);
-  } catch {
-    return { ads: [], cursor: null };
-  }
-
-  const ads = [];
-  findAdNodes(json, ads);
-
-  // Extract next cursor
-  const pageInfo = findPageInfo(json);
-  const nextCursor = pageInfo?.has_next_page ? pageInfo.end_cursor : null;
-
-  return { ads, cursor: nextCursor };
-}
-
-/**
- * Extract forward pagination cursor from HTML.
- */
-function extractForwardCursor(html) {
-  // Look for cursor/after values in the embedded data
-  const cursorPatterns = [
-    /"forward_cursor"\s*:\s*"([^"]+)"/,
-    /"end_cursor"\s*:\s*"([^"]+)"/,
-    /"after"\s*:\s*"([^"]+)"/,
-    /"cursor"\s*:\s*"([^"]+)"/,
-  ];
-  for (const pattern of cursorPatterns) {
-    const match = html.match(pattern);
-    if (match) return match[1];
-  }
-  return null;
-}
-
-/**
- * Find page info in a response data tree.
- */
-function findPageInfo(data, depth = 0) {
-  if (!data || typeof data !== 'object' || depth > 10) return null;
-  if (data.page_info?.has_next_page !== undefined) return data.page_info;
-  if (data.pageInfo?.hasNextPage !== undefined) {
-    return {
-      has_next_page: data.pageInfo.hasNextPage,
-      end_cursor: data.pageInfo.endCursor,
-    };
-  }
-
-  if (Array.isArray(data)) {
-    for (const item of data) {
-      const found = findPageInfo(item, depth + 1);
-      if (found) return found;
-    }
-  } else {
-    for (const value of Object.values(data)) {
-      if (typeof value === 'object' && value !== null) {
-        const found = findPageInfo(value, depth + 1);
-        if (found) return found;
-      }
-    }
-  }
-  return null;
 }
 
 // ─── Aggregation ─────────────────────────────────────────────

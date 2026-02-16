@@ -9,7 +9,7 @@ bin/meta-ads.js                → CLI entry point (Commander.js)
 src/commands/scan.js           → `meta-ads scan` command
 src/commands/market.js         → `meta-ads market` command (full pipeline)
 src/commands/compare.js        → `meta-ads compare` command (cross-brand)
-src/scraper/meta-ad-library.js → Meta Ad Library web scraper (no API token)
+src/scraper/meta-ad-library.js → Meta Ad Library Playwright scraper (headless Chromium)
 src/scraper/ad-downloader.js   → Selective ad creative downloader
 src/selection/ad-selector.js   → Priority-based ad selection engine (P1-P4)
 src/analysis/claude-client.js  → Anthropic Claude API client (deep analysis)
@@ -78,12 +78,13 @@ Cross-brand analysis outputs:
 ## Setup
 ```bash
 npm install
+npx playwright install chromium                # Required: installs headless Chromium
 export ANTHROPIC_API_KEY=your_anthropic_key   # Optional: enables deep Claude analysis
 node bin/meta-ads.js scan "keyword"
 node bin/meta-ads.js market "keyword" --top-brands 5 --ads-per-brand 15
 node bin/meta-ads.js compare "keyword" --brand "BrandName"
 ```
-No Meta API token required — the scraper fetches data directly from the public Ad Library page.
+Requires Playwright Chromium (`npx playwright install chromium`). No Meta API token needed.
 
 ## Testing
 ```bash
@@ -146,6 +147,16 @@ node --test src/reports/compare.test.js         # Market Map + Loophole Doc (21 
 - [x] Ad downloader updated to use browser-style headers (no token)
 - [x] Config updated: removed API token, added scraper settings (timeouts, delays)
 - [x] Same public interface preserved: scanAdLibrary, rankAdvertisers exports
+
+### Playwright Scraper Rewrite (COMPLETED)
+- [x] Replaced raw HTTP/axios scraper with Playwright headless Chromium — bypasses Meta anti-bot
+- [x] Network interception captures structured GraphQL API responses (primary extraction)
+- [x] DOM extraction fallback scrapes rendered ad cards when network capture misses data
+- [x] Scroll-based pagination (infinite scroll) replaces cursor-based GraphQL pagination
+- [x] Stealth browser config: automation detection masking, realistic viewport/UA/locale
+- [x] Cookie consent + login wall dismissal
+- [x] Same public interface preserved: scanAdLibrary, rankAdvertisers, normalizeAdRecord exports
+- [x] All 77 tests passing (tests don't hit network, test selector/pipeline/reports)
 
 ## Configuration
 All thresholds are in `src/utils/config.js`:
