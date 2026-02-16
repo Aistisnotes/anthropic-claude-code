@@ -1,81 +1,65 @@
 'use strict';
 
-const { AdType, resolveAdCopy, filterAds, countWords, MIN_TRANSCRIPT_WORDS_STATIC } = require('./src/adFilter');
+const fs = require('fs');
+const path = require('path');
+const { AdType, filterAds, resolveAdCopy, countWords, MIN_TRANSCRIPT_WORDS_STATIC } = require('./src/adFilter');
+const { extractComponents } = require('./src/adExtractor');
+const { analyzePatterns } = require('./src/patternAnalyzer');
+const { generateReport } = require('./src/reportGenerator');
 
-const verbose = process.argv.includes('--verbose') || process.argv.includes('-v');
-
-// Helper: generate filler transcript of N words
-function makeTranscript(n) {
-  const words = [];
-  const pool = ['the', 'quick', 'brown', 'fox', 'jumps', 'over', 'a', 'lazy', 'dog', 'and', 'runs', 'through', 'fields', 'of', 'green', 'grass', 'under', 'blue', 'sky', 'with', 'bright', 'sun'];
-  for (let i = 0; i < n; i++) words.push(pool[i % pool.length]);
-  return words.join(' ');
+// --- Load brand data ---
+const dataFile = process.argv[2] || path.join(__dirname, 'data', 'brand-glow-vitamins.json');
+if (!fs.existsSync(dataFile)) {
+  console.error(`File not found: ${dataFile}`);
+  console.error('Usage: node demo.js [path/to/brand-data.json]');
+  process.exit(1);
 }
 
-const sampleAds = [
-  // --- Static ads ---
-  { id: 'static-1', type: AdType.STATIC, name: 'Long article ad',       transcript: makeTranscript(620) },
-  { id: 'static-2', type: AdType.STATIC, name: 'Short blurb ad',        transcript: makeTranscript(80) },
-  { id: 'static-3', type: AdType.STATIC, name: 'Borderline ad',         transcript: makeTranscript(500) },
-  { id: 'static-4', type: AdType.STATIC, name: 'Empty static ad',       transcript: '' },
+const brandData = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+const { brand, ads } = brandData;
 
-  // --- Video ads ---
-  { id: 'video-1',  type: AdType.VIDEO,  name: 'Narrated video',        transcript: 'Buy our product now, limited time offer for all customers' },
-  { id: 'video-2',  type: AdType.VIDEO,  name: 'Silent promo video',    transcript: '' },
-  { id: 'video-3',  type: AdType.VIDEO,  name: 'Music-only video',      transcript: null },
-  { id: 'video-4',  type: AdType.VIDEO,  name: 'Whitespace transcript', transcript: '   \t\n  ' },
-];
+console.log(`Loading ${ads.length} ads for "${brand}"...\n`);
 
-console.log('=== Ad Filter Demo ===');
-console.log(`Tip: run with --verbose or -v to see full transcripts\n`);
-console.log(`Input: ${sampleAds.length} ads\n`);
-
-const kept = filterAds(sampleAds);
+// --- Step 1: Filter ---
+const kept = filterAds(ads);
 const keptIds = new Set(kept.map(a => a.id));
 
-for (const ad of sampleAds) {
-  const wc = countWords(ad.transcript);
-  const resolved = resolveAdCopy(ad);
-  const status = resolved ? '+' : 'x';
-  let reason;
-
-  if (resolved) {
-    reason = `KEPT (source: ${resolved.source})`;
-  } else if (ad.type === AdType.STATIC) {
-    reason = `SKIPPED — transcript ${wc} words (need ${MIN_TRANSCRIPT_WORDS_STATIC})`;
-  } else if (ad.type === AdType.VIDEO && wc === 0) {
-    reason = `SKIPPED — empty transcript, no fallback`;
-  } else {
-    reason = `SKIPPED`;
-  }
-
-  console.log(`  ${status} [${ad.type.padEnd(6)}] ${ad.id.padEnd(12)} "${ad.name}"`);
-  console.log(`    words: ${wc} | ${reason}`);
-
-  if (verbose) {
-    const raw = ad.transcript;
-    if (raw === null || raw === undefined) {
-      console.log(`    transcript: (null)`);
-    } else if (raw.trim().length === 0) {
-      console.log(`    transcript: (empty)`);
+const skippedReasons = ads
+  .filter(a => !keptIds.has(a.id))
+  .map(a => {
+    const wc = countWords(a.transcript);
+    let reason;
+    if (a.type === AdType.STATIC) {
+      reason = `transcript ${wc} words (need ${MIN_TRANSCRIPT_WORDS_STATIC})`;
+    } else if (a.type === AdType.VIDEO && wc === 0) {
+      reason = 'empty transcript';
     } else {
-      console.log(`    transcript:`);
-      // Wrap long transcripts at ~80 chars per line, indented
-      const lines = raw.trim().match(/.{1,76}/g) || [];
-      for (const line of lines) {
-        console.log(`      ${line}`);
-      }
+      reason = 'did not pass filter';
     }
-    if (resolved) {
-      console.log(`    resolved copy:`);
-      const copyLines = resolved.text.match(/.{1,76}/g) || [];
-      for (const line of copyLines) {
-        console.log(`      ${line}`);
-      }
-    }
-    console.log('');
-  }
-}
+    return { id: a.id, type: a.type, name: a.name, reason };
+  });
 
-console.log(`\nResult: kept ${kept.length} of ${sampleAds.length} ads`);
-console.log('\n=== Done ===');
+const filterSummary = {
+  total: ads.length,
+  kept: kept.length,
+  skipped: ads.length - kept.length,
+  skippedReasons,
+};
+
+console.log(`Filter: kept ${kept.length}/${ads.length} ads\n`);
+
+// --- Step 2: Extract components ---
+const extractions = kept.map(ad => extractComponents(ad));
+
+// --- Step 3: Analyze patterns ---
+const patterns = analyzePatterns(extractions);
+
+// --- Step 4: Generate report ---
+const report = generateReport(brand, filterSummary, patterns, extractions);
+
+console.log(report);
+
+// --- Save report to file ---
+const reportPath = path.join(__dirname, 'data', `report-${brand.toLowerCase().replace(/\s+/g, '-')}.txt`);
+fs.writeFileSync(reportPath, report, 'utf8');
+console.log(`\nReport saved to: ${reportPath}`);

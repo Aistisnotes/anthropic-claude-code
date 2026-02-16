@@ -1,0 +1,141 @@
+======================================================================
+  AD ANALYSIS REPORT: GLOW VITAMINS
+======================================================================
+
+1. FILTER RESULTS
+----------------------------------------------------------------------
+  Total ads ingested:   13
+  Ads kept:             7 (54%)
+  Ads skipped:          6
+  Skip reasons:
+    - gv-s03 (static): transcript 16 words (need 500)
+    - gv-v03 (video): empty transcript
+    - gv-v04 (video): empty transcript
+    - gv-v05 (video): empty transcript
+    - gv-s05 (static): transcript 433 words (need 500)
+    - gv-s06 (static): transcript 10 words (need 500)
+
+2. AD TYPE BREAKDOWN
+----------------------------------------------------------------------
+  static   3 ads (43%)
+  video    4 ads (57%)
+
+3. COPY LENGTH
+----------------------------------------------------------------------
+  Average:  295 words
+  Range:    82 – 548 words
+
+  Per ad:
+    gv-s01         548 words  "Longevity blog post"
+    gv-s02         528 words  "Ingredient deep-dive"
+    gv-s04         539 words  "Customer story feature"
+    gv-v01          82 words  "Founder story 60s"
+    gv-v02         125 words  "UGC testimonial - busy mom"
+    gv-v06         137 words  "Doctor Q&A - supplements 101"
+    gv-v07         104 words  "Gym performance spot"
+
+4. OPENING HOOKS
+----------------------------------------------------------------------
+  gv-s01       "The science of longevity has evolved dramatically over the past decade."
+  gv-s02       "Magnesium is one of the most critical minerals in the human body, yet studies..."
+  gv-s04       "When Marcus first heard about Glow Vitamins from a coworker, he was skeptical."
+  gv-v01       "Hi, I'm Dr."
+  gv-v02       "Okay so I have to tell you about these vitamins because they literally change..."
+  gv-v06       "A lot of people ask me, do I really need to take supplements?"
+  gv-v07       "I've been lifting for twelve years and I thought I had my supplement stack di..."
+
+5. TONE & STYLE
+----------------------------------------------------------------------
+  social_proof      4/7 ads ( 57%)  ###########
+  personal          4/7 ads ( 57%)  ###########
+  clinical          3/7 ads ( 43%)  #########
+  authoritative     3/7 ads ( 43%)  #########
+  urgency           3/7 ads ( 43%)  #########
+  comparative       1/7 ads ( 14%)  ###
+
+6. CALLS TO ACTION
+----------------------------------------------------------------------
+  [4x] "use code shine25"
+  [4x] "25% off"
+  [3x] "free shipping"
+  [3x] "money-back guarantee"
+  [2x] "visit glowvitamins.com"
+  [1x] "try glow daily today"
+  [1x] "join over 200,000 customers who have made it part of their morning routine. use code shine25 at checkout for 25% off your first order. free shipping on all orders over $50. subscribe and save an additional 15%. your body deserves better than generic multivitamins. it deserves glow. visit glowvitamins.com to learn more about our ingredients, read customer reviews, and explore our full product line including glow sleep, glow focus, and glow immunity. each product is designed to work independently or as part of our complete wellness system. start your journey to better health today"
+
+7. OFFERS & PROMOTIONS
+----------------------------------------------------------------------
+  [4x] 25% off
+  [4x] code shine25
+  [3x] free shipping
+  [3x] money-back guarantee
+  [2x] 90-day money-back guarantee
+  [1x] subscribe and save
+
+8. TOP KEYWORDS
+----------------------------------------------------------------------
+  glow (29)                      daily (13)
+  supplement (11)                first (11)
+  magnesium (11)                 vitamins (7)
+  results (7)                    marcus (6)
+  customer (5)                   like (5)
+  report (5)                     people (5)
+  supplements (5)                years (5)
+  product (4)                    full (4)
+  glycinate (4)                  properly (4)
+  something (4)                  science (3)
+
+9. PER-AD DETAIL
+----------------------------------------------------------------------
+  gv-s01 — "Longevity blog post" (static, 548 words)
+    Tone:    clinical, social_proof, authoritative, urgency
+    CTAs:    Try Glow Daily today | join over 200,000 customers who have made it part of their morning routine. Use code SHINE25 at checkout for 25% off your first order. Free shipping on all orders over $50. Subscribe and save an additional 15%. Your body deserves better than generic multivitamins. It deserves Glow. Visit glowvitamins.com to learn more about our ingredients, read customer reviews, and explore our full product line including Glow Sleep, Glow Focus, and Glow Immunity. Each product is designed to work independently or as part of our complete wellness system. Start your journey to better health today | Use code SHINE25 | Visit glowvitamins.com | Free shipping | money-back guarantee | 25% off
+    Offers:  25% off | code SHINE25 | Free shipping | Subscribe and save | money-back guarantee | 90-day money-back guarantee
+    Stats:   1,200 participants | 34% improvement | 200,000 customers
+    Keywords: glow, supplement, first, customer, product, science, health, daily
+
+  gv-s02 — "Ingredient deep-dive" (static, 528 words)
+    Tone:    clinical, authoritative, social_proof, comparative
+    CTAs:    Use code SHINE25 | free shipping | 25% off
+    Offers:  25% off | code SHINE25 | free shipping
+    Stats:   400mg | 5000 IU | 5,000 customer
+    Keywords: magnesium, report, glow, glycinate, daily, properly, supplement, results
+
+  gv-s04 — "Customer story feature" (static, 539 words)
+    Tone:    clinical, social_proof, urgency
+    CTAs:    Use code SHINE25 | Visit glowvitamins.com | Free shipping | money-back guarantee | 25% off
+    Offers:  25% off | code SHINE25 | Free shipping | money-back guarantee | 90-day money-back guarantee
+    Stats:   28% improvement | 200,000 customers
+    Keywords: glow, marcus, something, daily, first, supplements, results, maybe
+
+  gv-v01 — "Founder story 60s" (video, 82 words)
+    Tone:    personal, authoritative, social_proof
+    CTAs:    Use code SHINE25 | 25% off
+    Offers:  25% off | code SHINE25
+    Stats:   200,000 people
+    Keywords: glow, daily, 200000, i'm, lisa, park, founder, vitamins
+
+  gv-v02 — "UGC testimonial - busy mom" (video, 125 words)
+    Tone:    personal, urgency
+    CTAs:    money-back guarantee
+    Offers:  money-back guarantee
+    Stats:   none
+    Keywords: literally, i'm, work, like, actually, now, okay, tell
+
+  gv-v06 — "Doctor Q&A - supplements 101" (video, 137 words)
+    Tone:    personal
+    CTAs:    none
+    Offers:  none
+    Stats:   none
+    Keywords: people, supplements, stress, well-designed, lot, ask, really, need
+
+  gv-v07 — "Gym performance spot" (video, 104 words)
+    Tone:    personal
+    CTAs:    none
+    Offers:  none
+    Stats:   none
+    Keywords: lifting, years, heavy, it's, i've, twelve, thought, supplement
+
+======================================================================
+  END OF REPORT
+======================================================================
