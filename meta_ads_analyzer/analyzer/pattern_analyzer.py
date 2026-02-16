@@ -71,15 +71,30 @@ class PatternAnalyzer:
                 "pain_points": a.pain_points,
                 "pain_point_symptoms": a.pain_point_symptoms,
                 "root_cause": a.root_cause,
+                "root_cause_chain": a.root_cause_chain,
+                "root_cause_depth": a.root_cause_depth,
                 "mechanism": a.mechanism,
+                "mechanism_depth": a.mechanism_depth,
                 "product_delivery_mechanism": a.product_delivery_mechanism,
+                "proof_elements": a.proof_elements,
+                "proof_gaps": a.proof_gaps,
+                "beliefs_installed": a.beliefs_installed,
+                "beliefs_missing": a.beliefs_missing,
+                "objections_handled": a.objections_handled,
+                "objections_open": a.objections_open,
+                "ingredient_transparency": a.ingredient_transparency,
+                "ingredient_transparency_score": a.ingredient_transparency_score,
+                "unfalsifiability_techniques": a.unfalsifiability_techniques,
+                "unfalsifiability_cracks": a.unfalsifiability_cracks,
                 "mass_desire": a.mass_desire,
                 "big_idea": a.big_idea,
                 "ad_angle": a.ad_angle,
                 "emotional_triggers": a.emotional_triggers,
+                "emotional_sequence": a.emotional_sequence,
                 "awareness_level": a.awareness_level,
                 "sophistication_level": a.sophistication_level,
                 "hook_type": a.hook_type,
+                "hook_psychology": a.hook_psychology,
                 "cta_strategy": a.cta_strategy,
                 "analysis_confidence": a.analysis_confidence,
                 "copy_quality_score": a.copy_quality_score,
@@ -97,7 +112,7 @@ class PatternAnalyzer:
             try:
                 response = await self._client.messages.create(
                     model=self.model,
-                    max_tokens=8192,
+                    max_tokens=16384,
                     temperature=self.temperature,
                     messages=[{"role": "user", "content": prompt}],
                 )
@@ -181,6 +196,20 @@ class PatternAnalyzer:
                 emotional_trigger_patterns=data.get("emotional_trigger_patterns", []),
                 hook_patterns=data.get("hook_patterns", []),
                 awareness_level_distribution=data.get("awareness_level_distribution", {}),
+                # Deep analysis fields
+                competitive_verdict=data.get("competitive_verdict", ""),
+                root_cause_gaps=data.get("root_cause_gaps", []),
+                mechanism_gaps=data.get("mechanism_gaps", []),
+                proof_gaps=data.get("proof_gaps", []),
+                belief_gaps=data.get("belief_gaps", []),
+                objection_gaps=data.get("objection_gaps", []),
+                ingredient_transparency_analysis=data.get(
+                    "ingredient_transparency_analysis", {}
+                ),
+                unfalsifiability_analysis=data.get("unfalsifiability_analysis", {}),
+                loopholes=data.get("loopholes", []),
+                priority_matrix=data.get("priority_matrix", []),
+                what_not_to_do=data.get("what_not_to_do", []),
                 executive_summary=data.get("executive_summary", ""),
                 key_insights=data.get("key_insights", []),
                 recommendations=data.get("recommendations", []),
@@ -196,35 +225,45 @@ class PatternAnalyzer:
             return None
 
     def _generate_markdown(self, report: PatternReport) -> str:
-        """Generate full markdown report from PatternReport."""
+        """Generate deep strategic intelligence report from PatternReport."""
         lines = []
-        lines.append(f"# Ad Pattern Analysis Report")
-        lines.append(f"")
+        lines.append("# Competitive Intelligence Report")
+        lines.append("")
         lines.append(f"**Search Query**: {report.search_query}")
         if report.brand:
             lines.append(f"**Brand**: {report.brand}")
         lines.append(f"**Ads Analyzed**: {report.total_ads_analyzed}")
-        lines.append(f"**Generated**: {report.generated_at.strftime('%Y-%m-%d %H:%M UTC')}")
+        lines.append(
+            f"**Generated**: {report.generated_at.strftime('%Y-%m-%d %H:%M UTC')}"
+        )
         lines.append("")
 
         # Quality report
         if report.quality_report:
             qr = report.quality_report
             lines.append("---")
-            lines.append("## Quality Gate Results")
+            lines.append("## Data Quality")
             lines.append(f"- **Status**: {'PASSED' if qr.passed else 'WARNING'}")
-            lines.append(f"- Ads scraped: {qr.total_ads_scraped}")
-            lines.append(f"- Ads downloaded: {qr.total_ads_downloaded}")
-            lines.append(f"- Ads transcribed: {qr.total_ads_transcribed}")
-            lines.append(f"- Ads filtered out: {qr.total_ads_filtered_out}")
-            lines.append(f"- Ads analyzed: {qr.total_ads_analyzed}")
-            lines.append(f"- Avg transcript confidence: {qr.avg_transcript_confidence:.2f}")
-            lines.append(f"- Avg analysis confidence: {qr.avg_analysis_confidence:.2f}")
-            lines.append(f"- Avg copy quality: {qr.avg_copy_quality_score:.2f}")
-            if qr.issues:
-                lines.append("- **Issues**:")
-                for issue in qr.issues:
-                    lines.append(f"  - {issue}")
+            lines.append(
+                f"- Scraped: {qr.total_ads_scraped} | Downloaded: "
+                f"{qr.total_ads_downloaded} | Transcribed: "
+                f"{qr.total_ads_transcribed} | Filtered: "
+                f"{qr.total_ads_filtered_out} | Analyzed: "
+                f"{qr.total_ads_analyzed}"
+            )
+            lines.append(
+                f"- Avg confidence: transcript={qr.avg_transcript_confidence:.2f}, "
+                f"analysis={qr.avg_analysis_confidence:.2f}, "
+                f"copy quality={qr.avg_copy_quality_score:.2f}"
+            )
+            lines.append("")
+
+        # Competitive Verdict
+        if report.competitive_verdict:
+            lines.append("---")
+            lines.append("## COMPETITIVE VERDICT")
+            lines.append("")
+            lines.append(f"> {report.competitive_verdict}")
             lines.append("")
 
         # Executive Summary
@@ -240,114 +279,277 @@ class PatternAnalyzer:
                 lines.append(f"{i}. {insight}")
             lines.append("")
 
+        # === LOOPHOLES (the money section) ===
+        if report.loopholes:
+            lines.append("---")
+            lines.append("## VALIDATED LOOPHOLES")
+            lines.append("")
+            for lh in report.loopholes:
+                rank = lh.get("rank", "?")
+                title = lh.get("title", "Untitled")
+                score = lh.get("score", 0)
+                effort = lh.get("effort", "?")
+                timeline = lh.get("timeline", "?")
+
+                lines.append(f"### LOOPHOLE #{rank}: {title} — Score: {score}/50")
+                lines.append("")
+                lines.append(f"**THE GAP**: {lh.get('gap', '')}")
+                lines.append("")
+                lines.append(f"**WHY IT'S MASSIVE**: {lh.get('why_massive', '')}")
+                lines.append("")
+
+                hooks = lh.get("execution_hooks", [])
+                if hooks:
+                    lines.append("**EXECUTION HOOKS**:")
+                    for hook in hooks:
+                        lines.append(f"- {hook}")
+                    lines.append("")
+
+                lines.append(f"**Effort**: {effort} | **Timeline**: {timeline}")
+                lines.append("")
+
+        # Priority Matrix
+        if report.priority_matrix:
+            lines.append("---")
+            lines.append("## Priority Matrix")
+            lines.append("")
+            lines.append("| Rank | Loophole | Score | Effort | Timeline | Why First |")
+            lines.append("|---|---|---|---|---|---|")
+            for pm in report.priority_matrix:
+                lines.append(
+                    f"| {pm.get('rank', '')} | "
+                    f"**{pm.get('loophole', '')}** | "
+                    f"{pm.get('score', '')}/50 | "
+                    f"{pm.get('effort', '')} | "
+                    f"{pm.get('timeline', '')} | "
+                    f"{pm.get('why_first', '')} |"
+                )
+            lines.append("")
+
+        # What NOT to do
+        if report.what_not_to_do:
+            lines.append("## What NOT To Do")
+            for item in report.what_not_to_do:
+                lines.append(f"- {item}")
+            lines.append("")
+
+        # === GAP ANALYSIS SECTIONS ===
+        lines.append("---")
+        lines.append("## GAP ANALYSIS")
+        lines.append("")
+
+        # Root Cause Gaps
+        if report.root_cause_gaps:
+            lines.append("### Root Cause Gaps")
+            for gap in report.root_cause_gaps:
+                lines.append(
+                    f"- **{gap.get('gap', '')}** "
+                    f"[{gap.get('exploitability', '?')} exploitability]"
+                )
+                lines.append(f"  - Why it matters: {gap.get('why_it_matters', '')}")
+                lines.append(f"  - Execution: {gap.get('execution_angle', '')}")
+            lines.append("")
+
+        # Mechanism Gaps
+        if report.mechanism_gaps:
+            lines.append("### Mechanism Gaps")
+            for gap in report.mechanism_gaps:
+                lines.append(
+                    f"- **{gap.get('gap', '')}** "
+                    f"[{gap.get('exploitability', '?')} exploitability]"
+                )
+                lines.append(f"  - Missing: {gap.get('missing_explanation', '')}")
+                lines.append(f"  - Execution: {gap.get('execution_angle', '')}")
+            lines.append("")
+
+        # Proof Gaps
+        if report.proof_gaps:
+            lines.append("### Proof Architecture Gaps")
+            lines.append(
+                "| Unproven Claim | Frequency | Vulnerability | Counter-Proof |"
+            )
+            lines.append("|---|---|---|---|")
+            for gap in report.proof_gaps:
+                lines.append(
+                    f"| {gap.get('gap', '')} | "
+                    f"{gap.get('frequency', '')} | "
+                    f"{gap.get('vulnerability', '')} | "
+                    f"{gap.get('exploit_with', '')} |"
+                )
+            lines.append("")
+
+        # Belief Gaps
+        if report.belief_gaps:
+            lines.append("### Belief Installation Gaps")
+            for gap in report.belief_gaps:
+                lines.append(f"- **Missing belief**: {gap.get('missing_belief', '')}")
+                lines.append(f"  - Why critical: {gap.get('why_critical', '')}")
+                lines.append(
+                    f"  - Competitor advantage: "
+                    f"{gap.get('competitor_advantage', '')}"
+                )
+            lines.append("")
+
+        # Objection Gaps
+        if report.objection_gaps:
+            lines.append("### Unhandled Objections")
+            lines.append(
+                "| Objection | Risk Level | Exploit Angle |"
+            )
+            lines.append("|---|---|---|")
+            for gap in report.objection_gaps:
+                lines.append(
+                    f"| {gap.get('unhandled_objection', '')} | "
+                    f"{gap.get('risk_level', '')} | "
+                    f"{gap.get('exploit_angle', '')} |"
+                )
+            lines.append("")
+
+        # Ingredient Transparency
+        ita = report.ingredient_transparency_analysis
+        if ita:
+            lines.append("### Ingredient Transparency")
+            lines.append(f"- **Overall Score**: {ita.get('overall_score', '?')}/10")
+            lines.append(f"- **What they reveal**: {ita.get('what_they_reveal', '')}")
+            lines.append(f"- **What they hide**: {ita.get('what_they_hide', '')}")
+            lines.append(f"- **Attack vector**: {ita.get('attack_vector', '')}")
+            lines.append("")
+
+        # Unfalsifiability
+        ufa = report.unfalsifiability_analysis
+        if ufa:
+            lines.append("### Unfalsifiability Analysis")
+            techs = ufa.get("techniques_used", [])
+            if techs:
+                lines.append("**Techniques used**:")
+                for t in techs:
+                    lines.append(f"- {t}")
+            cracks = ufa.get("cracks_found", [])
+            if cracks:
+                lines.append("")
+                lines.append("**Cracks found**:")
+                for c in cracks:
+                    lines.append(f"- {c}")
+            strat = ufa.get("attack_strategy", "")
+            if strat:
+                lines.append("")
+                lines.append(f"**Attack strategy**: {strat}")
+            lines.append("")
+
+        # === PATTERN DATA (supporting detail) ===
+        lines.append("---")
+        lines.append("## PATTERN DATA")
+        lines.append("")
+
+        # Root Cause Patterns
+        if report.root_cause_patterns:
+            lines.append("### Root Cause Patterns")
+            lines.append(
+                "| Root Cause | Frequency | Depth | Upstream Gap |"
+            )
+            lines.append("|---|---|---|---|")
+            for rc in report.root_cause_patterns:
+                lines.append(
+                    f"| {rc.get('root_cause', '')} | "
+                    f"{rc.get('frequency', 0)} | "
+                    f"{rc.get('depth', '?')} | "
+                    f"{rc.get('upstream_gap', 'None identified')} |"
+                )
+            lines.append("")
+
+        # Mechanism Patterns
+        if report.mechanism_patterns:
+            lines.append("### Mechanism Patterns")
+            lines.append(
+                "| Mechanism | Frequency | Depth | Stops Short At |"
+            )
+            lines.append("|---|---|---|---|")
+            for m in report.mechanism_patterns:
+                lines.append(
+                    f"| {m.get('mechanism', '')} | "
+                    f"{m.get('frequency', 0)} | "
+                    f"{m.get('depth', '?')} | "
+                    f"{m.get('stops_short_at', '')} |"
+                )
+            lines.append("")
+
         # Pain Points
         if report.common_pain_points:
-            lines.append("## Common Pain Points")
+            lines.append("### Pain Points")
             lines.append("| Pain Point | Frequency | % |")
             lines.append("|---|---|---|")
             for pp in report.common_pain_points:
                 pct = pp.get("percentage", 0)
-                # Normalize: if > 1, it's already a whole-number percentage
                 pct_display = pct if pct > 1 else pct * 100
                 lines.append(
-                    f"| {pp.get('pain_point', 'N/A')} | "
+                    f"| {pp.get('pain_point', '')} | "
                     f"{pp.get('frequency', 0)} | "
                     f"{pct_display:.0f}% |"
                 )
             lines.append("")
 
-        # Symptoms
-        if report.common_symptoms:
-            lines.append("## Common Symptoms")
-            for s in report.common_symptoms:
-                lines.append(f"- **{s.get('symptom', 'N/A')}** ({s.get('frequency', 0)} ads)")
-            lines.append("")
-
-        # Root Causes
-        if report.root_cause_patterns:
-            lines.append("## Root Cause Patterns")
-            for rc in report.root_cause_patterns:
-                lines.append(f"### {rc.get('root_cause', 'N/A')} ({rc.get('frequency', 0)} ads)")
-                lines.append(rc.get("description", ""))
-                lines.append("")
-
-        # Mechanisms
-        if report.mechanism_patterns:
-            lines.append("## Mechanism Patterns")
-            for m in report.mechanism_patterns:
-                lines.append(f"### {m.get('mechanism', 'N/A')} ({m.get('frequency', 0)} ads)")
-                lines.append(m.get("description", ""))
-                lines.append("")
-
-        # Delivery Mechanisms
-        if report.delivery_mechanism_patterns:
-            lines.append("## Delivery Mechanism Patterns")
-            for dm in report.delivery_mechanism_patterns:
+        # Hook Patterns
+        if report.hook_patterns:
+            lines.append("### Hook Patterns")
+            for hp in report.hook_patterns:
                 lines.append(
-                    f"- **{dm.get('delivery_type', 'N/A')}** "
-                    f"({dm.get('frequency', 0)} ads): {dm.get('notes', '')}"
+                    f"- **{hp.get('hook_type', '')}** "
+                    f"({hp.get('frequency', 0)} ads)"
                 )
+                lines.append(
+                    f"  - Psychology: {hp.get('effectiveness_notes', '')}"
+                )
+                counter = hp.get("counter_hook", "")
+                if counter:
+                    lines.append(f"  - Counter: {counter}")
             lines.append("")
-
-        # Mass Desires
-        if report.mass_desire_patterns:
-            lines.append("## Mass Desire Patterns")
-            for md in report.mass_desire_patterns:
-                lines.append(f"### {md.get('desire', 'N/A')} ({md.get('frequency', 0)} ads)")
-                lines.append(md.get("description", ""))
-                lines.append("")
-
-        # Big Ideas
-        if report.big_idea_patterns:
-            lines.append("## Big Idea Patterns")
-            for bi in report.big_idea_patterns:
-                lines.append(f"### {bi.get('idea_theme', 'N/A')} ({bi.get('frequency', 0)} ads)")
-                lines.append(bi.get("description", ""))
-                lines.append("")
 
         # Target Customer
         if report.target_customer_patterns:
-            lines.append("## Target Customer Segments")
+            lines.append("### Target Customer Segments")
             for tc in report.target_customer_patterns:
-                lines.append(f"### {tc.get('segment', 'N/A')} ({tc.get('frequency', 0)} ads)")
-                lines.append(tc.get("profile", ""))
-                lines.append("")
+                lines.append(
+                    f"- **{tc.get('segment', '')}** "
+                    f"({tc.get('frequency', 0)} ads): {tc.get('profile', '')}"
+                )
+            lines.append("")
 
         # Emotional Triggers
         if report.emotional_trigger_patterns:
-            lines.append("## Emotional Triggers")
-            lines.append("| Emotion | Frequency | Context |")
+            lines.append("### Emotional Architecture")
+            lines.append("| Emotion | Frequency | Psychological Function |")
             lines.append("|---|---|---|")
             for et in report.emotional_trigger_patterns:
                 lines.append(
-                    f"| {et.get('emotion', 'N/A')} | "
+                    f"| {et.get('emotion', '')} | "
                     f"{et.get('frequency', 0)} | "
                     f"{et.get('context', '')} |"
                 )
             lines.append("")
 
-        # Hook Patterns
-        if report.hook_patterns:
-            lines.append("## Hook Patterns")
-            for hp in report.hook_patterns:
-                lines.append(
-                    f"- **{hp.get('hook_type', 'N/A')}** ({hp.get('frequency', 0)} ads): "
-                    f"{hp.get('effectiveness_notes', '')}"
-                )
-            lines.append("")
-
         # Awareness Levels
         if report.awareness_level_distribution:
-            lines.append("## Awareness Level Distribution")
+            lines.append("### Awareness Level Distribution")
             for level, count in report.awareness_level_distribution.items():
-                bar = "█" * count
+                bar = ">" * min(count, 50)
                 lines.append(f"- {level}: {count} {bar}")
             lines.append("")
 
-        # Recommendations
+        # Delivery
+        if report.delivery_mechanism_patterns:
+            lines.append("### Delivery Mechanism")
+            for dm in report.delivery_mechanism_patterns:
+                lines.append(
+                    f"- **{dm.get('delivery_type', '')}** "
+                    f"({dm.get('frequency', 0)} ads): {dm.get('notes', '')}"
+                )
+            lines.append("")
+
+        # === STRATEGIC RECOMMENDATIONS ===
         if report.recommendations:
             lines.append("---")
-            lines.append("## Strategic Recommendations")
+            lines.append("## STRATEGIC RECOMMENDATIONS")
+            lines.append("")
             for i, rec in enumerate(report.recommendations, 1):
                 lines.append(f"{i}. {rec}")
             lines.append("")

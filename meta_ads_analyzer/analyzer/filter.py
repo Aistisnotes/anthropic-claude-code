@@ -94,6 +94,7 @@ class AdFilter:
             primary_text=ad.primary_text,
             headline=ad.headline,
             media_path=download.file_path if download else None,
+            scrape_position=ad.scrape_position,
         )
 
         # --- VIDEO ADS ---

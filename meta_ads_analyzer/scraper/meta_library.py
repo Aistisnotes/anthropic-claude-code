@@ -101,6 +101,7 @@ class MetaAdsScraper:
             for ad in new_ads:
                 if ad.ad_id not in seen_ids:
                     seen_ids.add(ad.ad_id)
+                    ad.scrape_position = len(ads)
                     ads.append(ad)
                     added_this_round += 1
                     if len(ads) >= self.max_ads:

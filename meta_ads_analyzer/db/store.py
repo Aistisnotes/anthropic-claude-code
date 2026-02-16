@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS scraped_ads (
     thumbnail_url TEXT,
     started_running TEXT,
     platforms_json TEXT,
+    scrape_position INTEGER DEFAULT 0,
     scraped_at TEXT,
     FOREIGN KEY (run_id) REFERENCES runs(run_id)
 );
@@ -61,6 +62,7 @@ CREATE TABLE IF NOT EXISTS ad_content (
     transcript_confidence REAL DEFAULT 0.0,
     media_path TEXT,
     word_count INTEGER DEFAULT 0,
+    scrape_position INTEGER DEFAULT 0,
     status TEXT DEFAULT 'scraped',
     filter_reason TEXT,
     FOREIGN KEY (run_id) REFERENCES runs(run_id)
@@ -135,8 +137,8 @@ class AdStore:
             "INSERT OR REPLACE INTO scraped_ads "
             "(ad_id, run_id, page_name, page_id, ad_type, primary_text, headline, "
             "description, cta_text, link_url, media_url, thumbnail_url, "
-            "started_running, platforms_json, scraped_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "started_running, platforms_json, scrape_position, scraped_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 ad.ad_id,
                 run_id,
@@ -152,6 +154,7 @@ class AdStore:
                 ad.thumbnail_url,
                 ad.started_running,
                 json.dumps(ad.platforms),
+                ad.scrape_position,
                 ad.scraped_at.isoformat(),
             ),
         )
@@ -159,7 +162,8 @@ class AdStore:
 
     async def get_scraped_ads(self, run_id: str) -> list[ScrapedAd]:
         cursor = await self._db.execute(
-            "SELECT * FROM scraped_ads WHERE run_id = ?", (run_id,)
+            "SELECT * FROM scraped_ads WHERE run_id = ? ORDER BY scrape_position ASC",
+            (run_id,),
         )
         rows = await cursor.fetchall()
         results = []
@@ -179,6 +183,7 @@ class AdStore:
                     thumbnail_url=row["thumbnail_url"],
                     started_running=row["started_running"],
                     platforms=json.loads(row["platforms_json"]) if row["platforms_json"] else [],
+                    scrape_position=row["scrape_position"] if "scrape_position" in row.keys() else 0,
                 )
             )
         return results
@@ -189,8 +194,9 @@ class AdStore:
         await self._db.execute(
             "INSERT OR REPLACE INTO ad_content "
             "(ad_id, run_id, brand, ad_type, primary_text, headline, transcript, "
-            "transcript_confidence, media_path, word_count, status, filter_reason) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "transcript_confidence, media_path, word_count, scrape_position, "
+            "status, filter_reason) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 content.ad_id,
                 run_id,
@@ -202,6 +208,7 @@ class AdStore:
                 content.transcript_confidence,
                 str(content.media_path) if content.media_path else None,
                 content.word_count,
+                content.scrape_position,
                 content.status.value,
                 content.filter_reason.value if content.filter_reason else None,
             ),
@@ -213,12 +220,14 @@ class AdStore:
     ) -> list[AdContent]:
         if status:
             cursor = await self._db.execute(
-                "SELECT * FROM ad_content WHERE run_id = ? AND status = ?",
+                "SELECT * FROM ad_content WHERE run_id = ? AND status = ? "
+                "ORDER BY scrape_position ASC",
                 (run_id, status.value),
             )
         else:
             cursor = await self._db.execute(
-                "SELECT * FROM ad_content WHERE run_id = ?", (run_id,)
+                "SELECT * FROM ad_content WHERE run_id = ? ORDER BY scrape_position ASC",
+                (run_id,),
             )
         rows = await cursor.fetchall()
         results = []
@@ -234,6 +243,7 @@ class AdStore:
                     transcript_confidence=row["transcript_confidence"] or 0.0,
                     media_path=Path(row["media_path"]) if row["media_path"] else None,
                     word_count=row["word_count"] or 0,
+                    scrape_position=row["scrape_position"] if "scrape_position" in row.keys() else 0,
                     status=AdStatus(row["status"]),
                     filter_reason=(
                         FilterReason(row["filter_reason"]) if row["filter_reason"] else None

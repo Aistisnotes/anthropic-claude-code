@@ -18,7 +18,7 @@ from typing import Any, Optional
 
 import anthropic
 
-from meta_ads_analyzer.models import AdAnalysis, AdContent
+from meta_ads_analyzer.models import AdAnalysis, AdContent, AdType
 from meta_ads_analyzer.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -113,7 +113,11 @@ class AdAnalyzer:
         prompt = prompt.replace("{{headline}}", ad.headline or "N/A")
 
         # Conditional blocks
-        if ad.transcript:
+        # Video ads: use transcript only. Static ads: use primary text only.
+        use_transcript = ad.transcript and ad.ad_type == AdType.VIDEO
+        use_primary = ad.primary_text and ad.ad_type != AdType.VIDEO
+
+        if use_transcript:
             prompt = re.sub(
                 r"\{\{#if transcript\}\}(.*?)\{\{/if\}\}",
                 lambda m: m.group(1).replace("{{transcript}}", ad.transcript),
@@ -125,7 +129,7 @@ class AdAnalyzer:
                 r"\{\{#if transcript\}\}.*?\{\{/if\}\}", "", prompt, flags=re.DOTALL
             )
 
-        if ad.primary_text:
+        if use_primary:
             prompt = re.sub(
                 r"\{\{#if primary_text\}\}(.*?)\{\{/if\}\}",
                 lambda m: m.group(1).replace("{{primary_text}}", ad.primary_text),
@@ -161,15 +165,32 @@ class AdAnalyzer:
                 pain_points=data.get("pain_points", []),
                 pain_point_symptoms=data.get("pain_point_symptoms", []),
                 root_cause=data.get("root_cause", ""),
+                root_cause_chain=data.get("root_cause_chain", []),
+                root_cause_depth=data.get("root_cause_depth", ""),
                 mechanism=data.get("mechanism", ""),
+                mechanism_depth=data.get("mechanism_depth", ""),
                 product_delivery_mechanism=data.get("product_delivery_mechanism", ""),
+                proof_elements=data.get("proof_elements", []),
+                proof_gaps=data.get("proof_gaps", []),
+                beliefs_installed=data.get("beliefs_installed", []),
+                beliefs_missing=data.get("beliefs_missing", []),
+                objections_handled=data.get("objections_handled", []),
+                objections_open=data.get("objections_open", []),
+                ingredient_transparency=data.get("ingredient_transparency", ""),
+                ingredient_transparency_score=float(
+                    data.get("ingredient_transparency_score", 0.0)
+                ),
+                unfalsifiability_techniques=data.get("unfalsifiability_techniques", []),
+                unfalsifiability_cracks=data.get("unfalsifiability_cracks", []),
                 mass_desire=data.get("mass_desire", ""),
                 big_idea=data.get("big_idea", ""),
                 ad_angle=data.get("ad_angle", ""),
                 emotional_triggers=data.get("emotional_triggers", []),
+                emotional_sequence=data.get("emotional_sequence", []),
                 awareness_level=data.get("awareness_level", ""),
                 sophistication_level=data.get("sophistication_level", ""),
                 hook_type=data.get("hook_type", ""),
+                hook_psychology=data.get("hook_psychology", ""),
                 cta_strategy=data.get("cta_strategy", ""),
                 analysis_confidence=float(data.get("analysis_confidence", 0.0)),
                 copy_quality_score=float(data.get("copy_quality_score", 0.0)),

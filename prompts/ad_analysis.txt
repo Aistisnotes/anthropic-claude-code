@@ -1,4 +1,6 @@
-You are an expert direct-response advertising analyst specializing in dissecting ad copy and creative strategy. Analyze the following ad and extract structured insights.
+You are a senior direct-response strategist with 20+ years in health/supplement advertising. You understand Eugene Schwartz sophistication levels, belief installation, objection architecture, and mechanism storytelling at the deepest level.
+
+Your job is NOT to describe what this ad does. Your job is to DISSECT the persuasion architecture — find what's strong, what's weak, what's missing, and where the armor has cracks.
 
 ## Ad Information
 - **Brand**: {{brand}}
@@ -17,37 +19,70 @@ You are an expert direct-response advertising analyst specializing in dissecting
 ```
 {{/if}}
 
-## Analysis Instructions
+## Deep Extraction Instructions
 
-Analyze this ad deeply. For each category below, provide specific, actionable insights. Do NOT give generic answers. Ground everything in the actual ad content.
+Analyze this ad at the level of a strategist reverse-engineering it to find exploitable weaknesses. For every element, ask: what's stated, what's IMPLIED but never proven, and what's MISSING that should be there.
 
 Respond in the following JSON format exactly:
 
 ```json
 {
-  "target_customer_profile": "Detailed description of who this ad is targeting. Be specific about their situation, not just demographics.",
-  "target_demographics": "Age range, gender, income level, location indicators if apparent.",
-  "target_psychographics": "Values, beliefs, lifestyle, attitudes, interests that the ad appeals to.",
-  "pain_points": ["Specific pain point 1", "Specific pain point 2", "..."],
-  "pain_point_symptoms": ["Observable symptom the customer experiences 1", "Symptom 2", "..."],
-  "root_cause": "The underlying root cause of the problem that the product addresses. What's the REAL reason this problem exists?",
-  "mechanism": "The unique mechanism or method the product uses to solve the problem. What makes it work differently?",
-  "product_delivery_mechanism": "How the product/solution is delivered to the customer (course, supplement, app, coaching, etc.) and the format/structure.",
-  "mass_desire": "The deep, pre-existing desire in the market that this ad taps into. What does the customer REALLY want at their core?",
-  "big_idea": "The single dominant idea that drives this ad. The 'aha' moment or paradigm shift the ad presents.",
-  "ad_angle": "The specific angle or hook used to present the solution. How does the ad frame the conversation?",
-  "emotional_triggers": ["Primary emotion 1", "Emotion 2", "..."],
-  "awareness_level": "One of: Unaware, Problem Aware, Solution Aware, Product Aware, Most Aware. Based on Eugene Schwartz's awareness levels.",
-  "sophistication_level": "One of: Level 1 (Direct claim), Level 2 (Bigger claim), Level 3 (Mechanism), Level 4 (Better mechanism), Level 5 (Identity/experience). Based on market sophistication.",
-  "hook_type": "Classify the opening hook: Story, Statistic, Question, Bold claim, Pain agitation, Curiosity, Social proof, Contrarian, etc.",
-  "cta_strategy": "How the call-to-action is structured and what psychological triggers it uses.",
+  "target_customer_profile": "Who this ad targets — their specific SITUATION (not just demographics). What stage of their journey are they at? What have they already tried and failed?",
+  "target_demographics": "Age, gender, income, location signals from the copy.",
+  "target_psychographics": "Beliefs they already hold, identity they want to claim, tribe they belong to.",
+
+  "pain_points": ["Specific pain point extracted from copy — use their EXACT language where possible"],
+  "pain_point_symptoms": ["Observable symptoms — what does the customer SEE/FEEL that tells them something is wrong"],
+
+  "root_cause": "The root cause as STATED in the ad — the explanation given for why the problem exists.",
+  "root_cause_chain": [
+    "Upstream cause (the WHY behind the why — what CAUSES the stated root cause?)",
+    "Stated root cause (what the ad claims)",
+    "Downstream effect (what happens because of the root cause)",
+    "Visible symptom (what the customer actually notices)"
+  ],
+  "root_cause_depth": "One of: surface (just names a cause), moderate (explains a mechanism), deep (traces a causal chain), cellular (goes to molecular/cellular level). Most ads stop at surface or moderate.",
+
+  "mechanism": "The mechanism as presented — HOW does the product solve the problem? What's the unique pathway?",
+  "mechanism_depth": "One of: claim-only (just says it works), process-level (describes steps/phases), cellular-molecular (explains at biological level). Note exactly WHERE the explanation stops short.",
+
+  "proof_elements": ["Every proof element used: authority figures, studies cited, specific numbers/percentages, testimonial claims, before/after data, credentials mentioned, clinical language"],
+  "proof_gaps": ["What claims are made WITHOUT proof? Where does the ad assert something as fact without evidence? Where are studies referenced vaguely ('studies show') vs specifically?"],
+
+  "beliefs_installed": ["What beliefs does this ad try to install in the reader? e.g. 'Your lymphatic system is clogged', 'Doctors don't know about this', 'Age 40 is when decline starts'"],
+  "beliefs_missing": ["What beliefs SHOULD the ad install to make the argument airtight but DOESN'T? What would a skeptic still question after reading this? What intermediate belief steps are skipped?"],
+
+  "objections_handled": ["Which objections does the ad preemptively address? e.g. 'Why haven't I heard of this?', 'Does it really work?', 'Is it safe?'"],
+  "objections_open": ["Which obvious objections go UNADDRESSED? What would a skeptical buyer still worry about? e.g. price justification, time to results, ingredient sourcing, why this vs competitors"],
+
+  "ingredient_transparency": "How transparent is the ad about what's IN the product? Does it name specific ingredients with doses and mechanisms? Or hide behind proprietary blends and vague claims?",
+  "ingredient_transparency_score": 0,
+
+  "unfalsifiability_techniques": ["How does the ad make its claims impossible to disprove? e.g. unfalsifiable root cause, catch-all mechanism, subjective success metrics, conspiracy framing that pre-discredits critics"],
+  "unfalsifiability_cracks": ["Where does the unfalsifiable armor have CRACKS? What specific, testable claims does it accidentally make? Where could a competitor point and say 'that's not true and here's proof'?"],
+
+  "product_delivery_mechanism": "Format, dosage, timeline, guarantee structure.",
+  "mass_desire": "The deep pre-existing desire being tapped — what does the customer want at identity level, not just symptom level?",
+  "big_idea": "The single paradigm shift this ad presents — the 'aha' that makes everything else click.",
+
+  "ad_angle": "The specific framing used to enter the conversation. Not just 'doctor story' but WHY a doctor story — what does it accomplish psychologically?",
+  "emotional_triggers": ["List of emotions triggered — be specific: not just 'fear' but 'fear of medical dependency and loss of autonomy'"],
+  "emotional_sequence": ["The ORDERED sequence of emotions the ad moves through, from opening to CTA. e.g. 'identification → frustration → anger at system → hope → urgency → action'. This reveals the emotional architecture."],
+  "awareness_level": "One of: Unaware, Problem Aware, Solution Aware, Product Aware, Most Aware.",
+  "sophistication_level": "One of: Level 1 (Direct claim), Level 2 (Bigger claim), Level 3 (Mechanism), Level 4 (Better mechanism), Level 5 (Identity/experience). Explain WHY you chose this level.",
+  "hook_type": "Classify the hook AND explain the psychological mechanism — WHY does this specific hook work for this specific audience?",
+  "hook_psychology": "Deep explanation of why this hook works: what pattern interrupt does it create, what identity does it validate, what curiosity loop does it open, what tribal signal does it send?",
+  "cta_strategy": "How the CTA is structured and why — soft vs hard, what psychological trigger it uses, what risk reversal is offered.",
   "analysis_confidence": 0.85,
   "copy_quality_score": 0.75
 }
 ```
 
-### Quality scoring guidelines:
-- **analysis_confidence**: How confident you are in this analysis (0-1). Lower if ad content is vague, short, or ambiguous.
-- **copy_quality_score**: Quality of the ad copy/script itself (0-1). Consider: clarity of message, emotional resonance, specificity of claims, strength of hook, CTA effectiveness.
+### Scoring guidelines:
+- **analysis_confidence** (0-1): Lower if content is vague, short, or ambiguous.
+- **copy_quality_score** (0-1): Rate the copy itself — clarity, emotional resonance, specificity, hook strength, CTA effectiveness, proof architecture completeness.
+- **ingredient_transparency_score** (0-10): 0 = "proprietary blend" with zero detail, 5 = names ingredients but no doses or mechanisms, 10 = full ingredient list with doses, sourcing, and per-ingredient mechanism explanation.
+- **root_cause_depth**: Most ads are "surface" or "moderate". Only rate "deep" if the ad traces a multi-step causal chain. Only rate "cellular" if it names specific cells, enzymes, or molecular pathways.
+- **mechanism_depth**: "claim-only" if the ad just says "it works". "process-level" if it describes phases or steps. "cellular-molecular" only if it explains what happens at the cell/molecule level.
 
-Be ruthlessly specific. Every insight should be traceable to actual content in the ad.
+Think like a competitor trying to beat this ad. Every gap you find is a weapon.

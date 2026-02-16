@@ -50,6 +50,7 @@ class ScrapedAd(BaseModel):
     thumbnail_url: Optional[str] = None
     started_running: Optional[str] = None
     platforms: list[str] = Field(default_factory=list)
+    scrape_position: int = 0  # Order on Meta Ads Library page (0-indexed, sorted by impressions)
     scraped_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -96,6 +97,7 @@ class AdContent(BaseModel):
     transcript_confidence: float = 0.0
     media_path: Optional[Path] = None
     word_count: int = 0
+    scrape_position: int = 0  # Inherited from ScrapedAd — Meta Ads Library order
     status: AdStatus = AdStatus.SCRAPED
     filter_reason: Optional[FilterReason] = None
 
@@ -115,10 +117,31 @@ class AdAnalysis(BaseModel):
     pain_points: list[str] = Field(default_factory=list)
     pain_point_symptoms: list[str] = Field(default_factory=list)
     root_cause: str = ""
+    root_cause_chain: list[str] = Field(default_factory=list)
+    root_cause_depth: str = ""  # surface / moderate / deep / cellular
 
     # Mechanism & delivery
     mechanism: str = ""
+    mechanism_depth: str = ""  # claim-only / process-level / cellular-molecular
     product_delivery_mechanism: str = ""
+
+    # Proof architecture
+    proof_elements: list[str] = Field(default_factory=list)
+    proof_gaps: list[str] = Field(default_factory=list)
+
+    # Belief & objection architecture
+    beliefs_installed: list[str] = Field(default_factory=list)
+    beliefs_missing: list[str] = Field(default_factory=list)
+    objections_handled: list[str] = Field(default_factory=list)
+    objections_open: list[str] = Field(default_factory=list)
+
+    # Ingredient / component transparency
+    ingredient_transparency: str = ""
+    ingredient_transparency_score: float = 0.0  # 0-10
+
+    # Unfalsifiability
+    unfalsifiability_techniques: list[str] = Field(default_factory=list)
+    unfalsifiability_cracks: list[str] = Field(default_factory=list)
 
     # Desire & idea
     mass_desire: str = ""
@@ -127,9 +150,11 @@ class AdAnalysis(BaseModel):
     # Meta
     ad_angle: str = ""
     emotional_triggers: list[str] = Field(default_factory=list)
+    emotional_sequence: list[str] = Field(default_factory=list)
     awareness_level: str = ""
     sophistication_level: str = ""
     hook_type: str = ""
+    hook_psychology: str = ""
     cta_strategy: str = ""
 
     # Quality
@@ -163,7 +188,7 @@ class PatternReport(BaseModel):
     total_ads_analyzed: int = 0
     generated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    # Patterns
+    # Patterns (legacy, still populated)
     common_pain_points: list[dict] = Field(default_factory=list)
     common_symptoms: list[dict] = Field(default_factory=list)
     root_cause_patterns: list[dict] = Field(default_factory=list)
@@ -175,6 +200,23 @@ class PatternReport(BaseModel):
     emotional_trigger_patterns: list[dict] = Field(default_factory=list)
     hook_patterns: list[dict] = Field(default_factory=list)
     awareness_level_distribution: dict = Field(default_factory=dict)
+
+    # Deep analysis: gaps and weaknesses
+    competitive_verdict: str = ""
+    root_cause_gaps: list[dict] = Field(default_factory=list)
+    mechanism_gaps: list[dict] = Field(default_factory=list)
+    proof_gaps: list[dict] = Field(default_factory=list)
+    belief_gaps: list[dict] = Field(default_factory=list)
+    objection_gaps: list[dict] = Field(default_factory=list)
+    ingredient_transparency_analysis: dict = Field(default_factory=dict)
+    unfalsifiability_analysis: dict = Field(default_factory=dict)
+
+    # Loopholes: exploitable weaknesses with scoring
+    loopholes: list[dict] = Field(default_factory=list)
+
+    # Execution guidance
+    priority_matrix: list[dict] = Field(default_factory=list)
+    what_not_to_do: list[str] = Field(default_factory=list)
 
     # Summary
     executive_summary: str = ""
