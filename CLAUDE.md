@@ -8,11 +8,14 @@ CLI tool (`meta-ads`) for surgical market research via Meta Ad Library. Scans me
 bin/meta-ads.js                → CLI entry point (Commander.js)
 src/commands/scan.js           → `meta-ads scan` command
 src/commands/market.js         → `meta-ads market` command (full pipeline)
+src/commands/compare.js        → `meta-ads compare` command (cross-brand)
 src/scraper/meta-ad-library.js → Meta Ad Library API client (metadata-only)
 src/scraper/ad-downloader.js   → Selective ad creative downloader
 src/selection/ad-selector.js   → Priority-based ad selection engine (P1-P4)
 src/analysis/pipeline.js       → Heuristic ad analysis pipeline
 src/reports/brand-report.js    → Per-brand mini-report generator
+src/reports/market-map.js      → Cross-brand Market Map report
+src/reports/loophole-doc.js    → Master Loophole Document (gaps + priority matrix)
 src/utils/config.js            → Configuration (thresholds, paths, API settings)
 src/utils/logger.js            → Colored terminal logging
 src/utils/formatters.js        → Table/JSON/summary output formatters
@@ -23,6 +26,8 @@ src/utils/formatters.js        → Table/JSON/summary output formatters
   - Flags: `--country`, `--pages`, `--status`, `--top`, `--headlines`, `--select`, `--json`, `--output`
 - `meta-ads market "keyword"` — Full pipeline: scan → select → download → analyze → report
   - Flags: `--country`, `--pages`, `--status`, `--top-brands`, `--ads-per-brand`, `--no-download`, `--from-scan`, `--json`, `--output`
+- `meta-ads compare "keyword"` — Cross-brand comparison: Market Map + Loophole Document
+  - Flags: `--brand`, `--from-reports`, `--from-scan`, `--top-brands`, `--ads-per-brand`, `--no-download`, `--json`, `--output`
 
 ## Ad Selection Priority System
 - **P1 ACTIVE_WINNER**: <14 days + high impressions (50K+) — brand is scaling this NOW
@@ -40,19 +45,26 @@ Heuristic-based ad text analysis (no LLM required):
 - **Format classification**: listicle, testimonial, how-to, long form, minimal, emoji heavy, direct response
 - **Emotional register** (Schwartz values): security, achievement, hedonism, stimulation, self-direction, benevolence, conformity, tradition, power, universalism
 
+## Compare Pipeline
+Cross-brand analysis outputs:
+- **Market Map**: Brand-by-brand comparison matrices (hooks × brands, angles × brands, emotions × brands), saturation analysis (saturated/moderate/whitespace), brand strategy profiles
+- **Loophole Document**: Market-wide gaps (nobody uses), saturation zones (everyone uses), underexploited opportunities (1-2 brands use), priority matrix (ranked by gap score × relevance), brand-specific blind spots
+
 ## Setup
 ```bash
 npm install
 export META_ACCESS_TOKEN=your_facebook_token  # Required: ads_read permission
 node bin/meta-ads.js scan "keyword"
 node bin/meta-ads.js market "keyword" --top-brands 5 --ads-per-brand 15
+node bin/meta-ads.js compare "keyword" --brand "BrandName"
 ```
 
 ## Testing
 ```bash
-node --test src/**/*.test.js                    # All tests (56 tests)
+node --test src/**/*.test.js                    # All tests (77 tests)
 node --test src/selection/ad-selector.test.js   # Ad selector (18 tests)
 node --test src/analysis/pipeline.test.js       # Analysis pipeline (38 tests)
+node --test src/reports/compare.test.js         # Market Map + Loophole Doc (21 tests)
 ```
 
 ---
@@ -79,24 +91,14 @@ node --test src/analysis/pipeline.test.js       # Analysis pipeline (38 tests)
 - [x] Unit tests for analysis pipeline (38 tests, all passing)
 - [x] Human-readable terminal report output + JSON export
 
-### Session 3 (NEXT)
-Build `meta-ads compare` command:
-- [ ] Market Map report (brand-by-brand comparison, saturation, gaps, Schwartz scale)
-- [ ] Master Loophole Document (market-wide gaps, brand-specific gaps, priority matrix)
-- [ ] `meta-ads compare --brand "X" --market-keyword "Y"` command
-- [ ] End-to-end pipeline test
-
-Key files to create:
-- `src/commands/compare.js`
-- `src/reports/market-map.js`
-- `src/reports/loophole-doc.js`
-
-The compare command should:
-1. Load market reports for multiple brands (from Session 2 output)
-2. Build cross-brand comparison matrix (hooks, angles, emotions, offers)
-3. Identify market saturation zones (where everyone competes)
-4. Identify gaps/loopholes (underused angles, emotions, formats)
-5. Generate Market Map report + Master Loophole Document
+### Session 3 (COMPLETED)
+- [x] Market Map report — brand-by-brand comparison matrices, saturation analysis, coverage heat maps
+- [x] Master Loophole Document — market gaps, saturation zones, underexploited opportunities, priority matrix
+- [x] Brand-specific gap analysis — blind spots vs competitors, ranked by severity
+- [x] `meta-ads compare "keyword" --brand "X"` command with --from-reports and --from-scan modes
+- [x] End-to-end pipeline test (market map → loophole doc → brand gaps)
+- [x] Unit tests for compare pipeline (21 tests, all passing)
+- [x] All 77 tests passing across the full project
 
 ## Configuration
 All thresholds are in `src/utils/config.js`:
