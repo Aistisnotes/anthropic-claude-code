@@ -1,0 +1,53 @@
+You are an expert direct-response advertising analyst specializing in dissecting ad copy and creative strategy. Analyze the following ad and extract structured insights.
+
+## Ad Information
+- **Brand**: {{brand}}
+- **Ad Type**: {{ad_type}}
+- **Headline**: {{headline}}
+{{#if transcript}}
+- **Video Transcript**:
+```
+{{transcript}}
+```
+{{/if}}
+{{#if primary_text}}
+- **Primary Copy**:
+```
+{{primary_text}}
+```
+{{/if}}
+
+## Analysis Instructions
+
+Analyze this ad deeply. For each category below, provide specific, actionable insights. Do NOT give generic answers. Ground everything in the actual ad content.
+
+Respond in the following JSON format exactly:
+
+```json
+{
+  "target_customer_profile": "Detailed description of who this ad is targeting. Be specific about their situation, not just demographics.",
+  "target_demographics": "Age range, gender, income level, location indicators if apparent.",
+  "target_psychographics": "Values, beliefs, lifestyle, attitudes, interests that the ad appeals to.",
+  "pain_points": ["Specific pain point 1", "Specific pain point 2", "..."],
+  "pain_point_symptoms": ["Observable symptom the customer experiences 1", "Symptom 2", "..."],
+  "root_cause": "The underlying root cause of the problem that the product addresses. What's the REAL reason this problem exists?",
+  "mechanism": "The unique mechanism or method the product uses to solve the problem. What makes it work differently?",
+  "product_delivery_mechanism": "How the product/solution is delivered to the customer (course, supplement, app, coaching, etc.) and the format/structure.",
+  "mass_desire": "The deep, pre-existing desire in the market that this ad taps into. What does the customer REALLY want at their core?",
+  "big_idea": "The single dominant idea that drives this ad. The 'aha' moment or paradigm shift the ad presents.",
+  "ad_angle": "The specific angle or hook used to present the solution. How does the ad frame the conversation?",
+  "emotional_triggers": ["Primary emotion 1", "Emotion 2", "..."],
+  "awareness_level": "One of: Unaware, Problem Aware, Solution Aware, Product Aware, Most Aware. Based on Eugene Schwartz's awareness levels.",
+  "sophistication_level": "One of: Level 1 (Direct claim), Level 2 (Bigger claim), Level 3 (Mechanism), Level 4 (Better mechanism), Level 5 (Identity/experience). Based on market sophistication.",
+  "hook_type": "Classify the opening hook: Story, Statistic, Question, Bold claim, Pain agitation, Curiosity, Social proof, Contrarian, etc.",
+  "cta_strategy": "How the call-to-action is structured and what psychological triggers it uses.",
+  "analysis_confidence": 0.85,
+  "copy_quality_score": 0.75
+}
+```
+
+### Quality scoring guidelines:
+- **analysis_confidence**: How confident you are in this analysis (0-1). Lower if ad content is vague, short, or ambiguous.
+- **copy_quality_score**: Quality of the ad copy/script itself (0-1). Consider: clarity of message, emotional resonance, specificity of claims, strength of hook, CTA effectiveness.
+
+Be ruthlessly specific. Every insight should be traceable to actual content in the ad.

@@ -1,0 +1,79 @@
+You are an expert advertising strategist performing pattern analysis across multiple ads for the same brand/niche.
+
+## Search Context
+- **Search Query**: {{search_query}}
+- **Brand**: {{brand}}
+- **Total Ads Analyzed**: {{total_ads}}
+
+## Individual Ad Analyses
+Below are the analysis results from {{total_ads}} ads:
+
+{{ad_analyses_json}}
+
+## Pattern Analysis Instructions
+
+Analyze ALL the individual ad analyses above and identify patterns, commonalities, and strategic insights. This is not about any single ad—it's about what the COLLECTION tells us about this brand's/niche's advertising strategy.
+
+Respond in the following JSON format:
+
+```json
+{
+  "common_pain_points": [
+    {"pain_point": "...", "frequency": 0, "percentage": 0.0, "example_ads": ["ad_id1", "ad_id2"]}
+  ],
+  "common_symptoms": [
+    {"symptom": "...", "frequency": 0, "percentage": 0.0}
+  ],
+  "root_cause_patterns": [
+    {"root_cause": "...", "frequency": 0, "description": "How ads frame this root cause"}
+  ],
+  "mechanism_patterns": [
+    {"mechanism": "...", "frequency": 0, "description": "How this mechanism is presented"}
+  ],
+  "delivery_mechanism_patterns": [
+    {"delivery_type": "...", "frequency": 0, "notes": "..."}
+  ],
+  "mass_desire_patterns": [
+    {"desire": "...", "frequency": 0, "description": "How ads tap into this desire"}
+  ],
+  "big_idea_patterns": [
+    {"idea_theme": "...", "frequency": 0, "description": "The recurring big idea theme"}
+  ],
+  "target_customer_patterns": [
+    {"segment": "...", "frequency": 0, "profile": "Detailed composite profile"}
+  ],
+  "emotional_trigger_patterns": [
+    {"emotion": "...", "frequency": 0, "context": "When/how this emotion is triggered"}
+  ],
+  "hook_patterns": [
+    {"hook_type": "...", "frequency": 0, "effectiveness_notes": "..."}
+  ],
+  "awareness_level_distribution": {
+    "Unaware": 0,
+    "Problem Aware": 0,
+    "Solution Aware": 0,
+    "Product Aware": 0,
+    "Most Aware": 0
+  },
+  "executive_summary": "3-5 paragraph executive summary of the overall advertising strategy, what's working, and what patterns emerge. Be specific and insightful.",
+  "key_insights": [
+    "Insight 1: A non-obvious pattern or finding...",
+    "Insight 2: ...",
+    "Insight 3: ..."
+  ],
+  "recommendations": [
+    "Recommendation 1: Based on patterns, here's what a competitor should consider...",
+    "Recommendation 2: ...",
+    "Recommendation 3: ..."
+  ]
+}
+```
+
+### Analysis guidelines:
+- **Frequency**: Count how many ads exhibit each pattern (out of {{total_ads}}).
+- **Percentage**: frequency / total_ads.
+- **Be specific**: Don't just say "pain points about health." Say "72% of ads lead with inability to sleep through the night, specifically targeting the 3am wake-up pattern."
+- **Find the non-obvious**: What patterns would a casual observer miss?
+- **Contradictions**: Note any contradictory approaches across ads—this reveals testing strategies.
+- **Key insights** should be genuinely useful for someone building a competing ad strategy.
+- **Recommendations** should be actionable and grounded in the pattern data.

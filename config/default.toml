@@ -1,0 +1,91 @@
+[scraper]
+# Max ads to extract per search
+max_ads = 100
+# Browser headless mode
+headless = true
+# Scroll pause between loads (seconds)
+scroll_pause = 2.0
+# Max scroll attempts before giving up
+max_scroll_attempts = 50
+# Request timeout (seconds)
+request_timeout = 30
+
+[scraper.filters]
+# Country filter (ISO 2-letter code)
+country = "US"
+# Ad type filter: "all", "video", "image"
+ad_type = "all"
+# Active status: "active", "inactive", "all"
+status = "active"
+# Media type: "all", "video", "image_and_meme"
+media_type = "all"
+
+[downloader]
+# Max concurrent downloads
+max_concurrent = 5
+# Download timeout per file (seconds)
+timeout = 120
+# Max file size in MB (skip larger files)
+max_file_size_mb = 500
+# Output directory for downloads
+output_dir = "output/downloads"
+
+[transcriber]
+# Model size: "tiny", "base", "small", "medium", "large-v3"
+model_size = "large-v3"
+# Use MLX (Apple Silicon) or standard whisper
+use_mlx = true
+# Language (auto-detect if empty)
+language = ""
+# Max concurrent transcriptions
+max_concurrent = 2
+# Minimum confidence threshold (0-1)
+min_confidence = 0.5
+
+[analyzer]
+# Claude model to use
+model = "claude-sonnet-4-20250514"
+# Max concurrent API calls
+max_concurrent = 3
+# Temperature for analysis
+temperature = 0.3
+# Max retries on API failure
+max_retries = 3
+
+[filter]
+# Minimum word count for static ad primary copy to be included
+min_static_copy_words = 500
+# Minimum transcript confidence to include
+min_transcript_confidence = 0.4
+# Skip duplicate ads by content similarity
+skip_duplicates = true
+
+[quality]
+# Minimum ads analyzed before running pattern analysis
+min_ads_for_pattern = 10
+# Minimum average transcript confidence
+min_avg_transcript_confidence = 0.5
+# Minimum average analysis confidence
+min_avg_analysis_confidence = 0.6
+# Minimum copy quality score (0-1)
+min_copy_quality_score = 0.4
+# Warn if filtered-out ratio exceeds this
+max_filter_ratio = 0.7
+
+[reporting]
+# Output directory
+output_dir = "output/reports"
+# Report format: "markdown", "html", "json"
+format = "markdown"
+# Include raw ad data in report
+include_raw_data = false
+
+[pipeline]
+# Max brands to process in a batch
+max_brands_per_batch = 15
+# Pause between brands (seconds)
+brand_pause = 10
+# Save intermediate results
+save_checkpoints = true
+# Checkpoint directory
+checkpoint_dir = "output/checkpoints"
