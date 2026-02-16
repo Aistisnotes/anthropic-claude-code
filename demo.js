@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { AdType, filterAds, resolveAdCopy, countWords, MIN_TRANSCRIPT_WORDS_STATIC } = require('./src/adFilter');
-const { extractComponents } = require('./src/adExtractor');
+const { extractFramework } = require('./src/adExtractor');
 const { analyzePatterns } = require('./src/patternAnalyzer');
 const { generateReport } = require('./src/reportGenerator');
 
@@ -48,8 +48,8 @@ const filterSummary = {
 
 console.log(`Filter: kept ${kept.length}/${ads.length} ads\n`);
 
-// --- Step 2: Extract components ---
-const extractions = kept.map(ad => extractComponents(ad));
+// --- Step 2: Extract DR framework elements ---
+const extractions = kept.map(ad => extractFramework(ad));
 
 // --- Step 3: Analyze patterns ---
 const patterns = analyzePatterns(extractions);

@@ -1,13 +1,12 @@
-======================================================================
-  AD ANALYSIS REPORT: GLOW VITAMINS
-======================================================================
+==========================================================================
+  DR FRAMEWORK ANALYSIS: GLOW VITAMINS
+==========================================================================
 
 1. FILTER RESULTS
-----------------------------------------------------------------------
-  Total ads ingested:   13
-  Ads kept:             7 (54%)
-  Ads skipped:          6
-  Skip reasons:
+--------------------------------------------------------------------------
+  Total ads ingested:  13
+  Ads kept:            7 (54%)
+  Ads skipped:         6
     - gv-s03 (static): transcript 16 words (need 500)
     - gv-v03 (video): empty transcript
     - gv-v04 (video): empty transcript
@@ -15,127 +14,274 @@
     - gv-s05 (static): transcript 433 words (need 500)
     - gv-s06 (static): transcript 10 words (need 500)
 
-2. AD TYPE BREAKDOWN
-----------------------------------------------------------------------
-  static   3 ads (43%)
-  video    4 ads (57%)
+2. TARGET CUSTOMER
+--------------------------------------------------------------------------
+  ingredient-aware researcher     5/7 ads ( 71%)  ##############
+  parent                          3/7 ads ( 43%)  #########
+  professional                    2/7 ads ( 29%)  ######
+  aging adult                     2/7 ads ( 29%)  ######
+  health-conscious optimizer      2/7 ads ( 29%)  ######
+  age-specific                    1/7 ads ( 14%)  ###
+  women                           1/7 ads ( 14%)  ###
+  men                             1/7 ads ( 14%)  ###
+  skeptic / tried-everything      1/7 ads ( 14%)  ###
+  fitness-oriented                1/7 ads ( 14%)  ###
 
-3. COPY LENGTH
-----------------------------------------------------------------------
-  Average:  295 words
-  Range:    82 – 548 words
+3. MASS DESIRE
+--------------------------------------------------------------------------
+  Sleeping well and waking rested             5/7 ( 71%)  ##############
+  Having consistent energy and vitality       3/7 ( 43%)  #########
+  Mental clarity and sharp focus              3/7 ( 43%)  #########
+  Being present and active for family         3/7 ( 43%)  #########
+  Peak physical performance and recovery      2/7 ( 29%)  ######
+  Trusting what you put in your body          2/7 ( 29%)  ######
+  Overall health and wellness                 1/7 ( 14%)  ###
 
-  Per ad:
-    gv-s01         548 words  "Longevity blog post"
-    gv-s02         528 words  "Ingredient deep-dive"
-    gv-s04         539 words  "Customer story feature"
-    gv-v01          82 words  "Founder story 60s"
-    gv-v02         125 words  "UGC testimonial - busy mom"
-    gv-v06         137 words  "Doctor Q&A - supplements 101"
-    gv-v07         104 words  "Gym performance spot"
+4. PAIN POINTS & SYMPTOMS
+--------------------------------------------------------------------------
+  [2x] brain fog
+  [2x] 2 pm
+  [1x] energy crash
+  [1x] mental clarity
+  [1x] aging
+  [1x] poor sleep
+  [1x] anxiety
+  [1x] muscle cramps
+  [1x] digestive
+  [1x] gi discomfort
+  [1x] joint stiffness
+  [1x] inflammation
+  [1x] skeptical
+  [1x] chronic fatigue
+  [1x] burned out
+  [1x] exhausted
+  [1x] frustrated
+  [1x] soreness
 
-4. OPENING HOOKS
-----------------------------------------------------------------------
-  gv-s01       "The science of longevity has evolved dramatically over the past decade."
-  gv-s02       "Magnesium is one of the most critical minerals in the human body, yet studies..."
-  gv-s04       "When Marcus first heard about Glow Vitamins from a coworker, he was skeptical."
-  gv-v01       "Hi, I'm Dr."
-  gv-v02       "Okay so I have to tell you about these vitamins because they literally change..."
-  gv-v06       "A lot of people ask me, do I really need to take supplements?"
-  gv-v07       "I've been lifting for twelve years and I thought I had my supplement stack di..."
+5. ROOT CAUSE
+--------------------------------------------------------------------------
+  Ads with root cause signals: 5/7 (71%)
+  Top villain / root cause signals:
+    [2x] the supplement industry
+    [2x] bioavailable
+    [1x] hormonal balance
+    [1x] cellular
+    [1x] mitochondrial
+    [1x] gut microbiome
+    [1x] generic
+    [1x] deficiency
+    [1x] bioavailability
+    [1x] dissolve
+    [1x] absorbed
+    [1x] cheap
+    [1x] inflammation
+    [1x] underdosed
+    [1x] poorly sourced
 
-5. TONE & STYLE
-----------------------------------------------------------------------
-  social_proof      4/7 ads ( 57%)  ###########
-  personal          4/7 ads ( 57%)  ###########
-  clinical          3/7 ads ( 43%)  #########
-  authoritative     3/7 ads ( 43%)  #########
-  urgency           3/7 ads ( 43%)  #########
-  comparative       1/7 ads ( 14%)  ###
+6. MECHANISM (The "New Mechanism")
+--------------------------------------------------------------------------
+  Ads with mechanism signals: 4/7 (57%)
+  Top mechanism signals:
+    [2x] designed to
+    [1x] proprietary
+    [1x] full-spectrum
+    [1x] what sets glow vitamins apart
+    [1x] synergistic
+    [1x] paired it with
+    [1x] cofactors
+    [1x] chelated
+    [1x] that's exactly
 
-6. CALLS TO ACTION
-----------------------------------------------------------------------
-  [4x] "use code shine25"
-  [4x] "25% off"
-  [3x] "free shipping"
-  [3x] "money-back guarantee"
-  [2x] "visit glowvitamins.com"
-  [1x] "try glow daily today"
-  [1x] "join over 200,000 customers who have made it part of their morning routine. use code shine25 at checkout for 25% off your first order. free shipping on all orders over $50. subscribe and save an additional 15%. your body deserves better than generic multivitamins. it deserves glow. visit glowvitamins.com to learn more about our ingredients, read customer reviews, and explore our full product line including glow sleep, glow focus, and glow immunity. each product is designed to work independently or as part of our complete wellness system. start your journey to better health today"
+7. PRODUCT DELIVERY MECHANISM
+--------------------------------------------------------------------------
+  [5x] magnesium
+  [3x] third-party test
+  [2x] vitamin d3
+  [2x] mushroom
+  [2x] certified
+  [2x] every batch
+  [2x] capsule
+  [2x] vitamin d
+  [1x] coq10
+  [1x] adaptogen
+  [1x] lion's mane
+  [1x] reishi
+  [1x] zinc
+  [1x] selenium
+  [1x] b-complex
 
-7. OFFERS & PROMOTIONS
-----------------------------------------------------------------------
-  [4x] 25% off
-  [4x] code shine25
-  [3x] free shipping
-  [3x] money-back guarantee
-  [2x] 90-day money-back guarantee
-  [1x] subscribe and save
+8. MARKET SOPHISTICATION STRATEGY
+--------------------------------------------------------------------------
+  New Information       3/7 ads ( 43%)  #########
+  None detected         3/7 ads ( 43%)  #########
+  New Identity          1/7 ads ( 14%)  ###
 
-8. TOP KEYWORDS
-----------------------------------------------------------------------
-  glow (29)                      daily (13)
-  supplement (11)                first (11)
-  magnesium (11)                 vitamins (7)
-  results (7)                    marcus (6)
-  customer (5)                   like (5)
-  report (5)                     people (5)
-  supplements (5)                years (5)
-  product (4)                    full (4)
-  glycinate (4)                  properly (4)
-  something (4)                  science (3)
+9. CUSTOMER AWARENESS STAGE
+--------------------------------------------------------------------------
+  Unaware               2/7 ads ( 29%)  ######
+  Solution-Aware        2/7 ads ( 29%)  ######
+  Most Aware            1/7 ads ( 14%)  ###
+  Problem-Aware         1/7 ads ( 14%)  ###
+  Unknown               1/7 ads ( 14%)  ###
 
-9. PER-AD DETAIL
-----------------------------------------------------------------------
-  gv-s01 — "Longevity blog post" (static, 548 words)
-    Tone:    clinical, social_proof, authoritative, urgency
-    CTAs:    Try Glow Daily today | join over 200,000 customers who have made it part of their morning routine. Use code SHINE25 at checkout for 25% off your first order. Free shipping on all orders over $50. Subscribe and save an additional 15%. Your body deserves better than generic multivitamins. It deserves Glow. Visit glowvitamins.com to learn more about our ingredients, read customer reviews, and explore our full product line including Glow Sleep, Glow Focus, and Glow Immunity. Each product is designed to work independently or as part of our complete wellness system. Start your journey to better health today | Use code SHINE25 | Visit glowvitamins.com | Free shipping | money-back guarantee | 25% off
-    Offers:  25% off | code SHINE25 | Free shipping | Subscribe and save | money-back guarantee | 90-day money-back guarantee
-    Stats:   1,200 participants | 34% improvement | 200,000 customers
-    Keywords: glow, supplement, first, customer, product, science, health, daily
+10. BIG IDEA / CREATIVE ANGLES
+--------------------------------------------------------------------------
+  Science / data-driven education       3/7 ( 43%)  #########
+  Founder / authority narrative         3/7 ( 43%)  #########
+  Customer story / social proof         2/7 ( 29%)  ######
+  Competitive comparison                2/7 ( 29%)  ######
+  UGC / authentic voice                 1/7 ( 14%)  ###
+  Expert Q&A / objection handling       1/7 ( 14%)  ###
 
-  gv-s02 — "Ingredient deep-dive" (static, 528 words)
-    Tone:    clinical, authoritative, social_proof, comparative
-    CTAs:    Use code SHINE25 | free shipping | 25% off
-    Offers:  25% off | code SHINE25 | free shipping
-    Stats:   400mg | 5000 IU | 5,000 customer
-    Keywords: magnesium, report, glow, glycinate, daily, properly, supplement, results
+11. FRAMEWORK COMPLETENESS (QA)
+--------------------------------------------------------------------------
+  Elements: Target Customer | Mass Desire | Pain Points | Root Cause | Mechanism | Product Delivery
 
-  gv-s04 — "Customer story feature" (static, 539 words)
-    Tone:    clinical, social_proof, urgency
-    CTAs:    Use code SHINE25 | Visit glowvitamins.com | Free shipping | money-back guarantee | 25% off
-    Offers:  25% off | code SHINE25 | Free shipping | money-back guarantee | 90-day money-back guarantee
-    Stats:   28% improvement | 200,000 customers
-    Keywords: glow, marcus, something, daily, first, supplements, results, maybe
+  gv-s01       ###### 6/6 (100%)  "Longevity blog post"
+  gv-s02       ###### 6/6 (100%)  "Ingredient deep-dive"
+  gv-s04       #####. 5/6 (83%)  "Customer story feature"
+  gv-v01       #####. 5/6 (83%)  "Founder story 60s"
+  gv-v02       ###... 3/6 (50%)  "UGC testimonial - busy mom"
+  gv-v06       #####. 5/6 (83%)  "Doctor Q&A - supplements 101"
+  gv-v07       ####.. 4/6 (67%)  "Gym performance spot"
 
-  gv-v01 — "Founder story 60s" (video, 82 words)
-    Tone:    personal, authoritative, social_proof
-    CTAs:    Use code SHINE25 | 25% off
-    Offers:  25% off | code SHINE25
-    Stats:   200,000 people
-    Keywords: glow, daily, 200000, i'm, lisa, park, founder, vitamins
+12. PER-AD FRAMEWORK DETAIL
+--------------------------------------------------------------------------
+  gv-s01 - "Longevity blog post" (static, 548 words)
 
-  gv-v02 — "UGC testimonial - busy mom" (video, 125 words)
-    Tone:    personal, urgency
-    CTAs:    money-back guarantee
-    Offers:  money-back guarantee
-    Stats:   none
-    Keywords: literally, i'm, work, like, actually, now, okay, tell
+    Target Customer:    parent, professional, aging adult, health-conscious optimizer, ingredient-aware researcher
+    Mass Desire:        Having consistent energy and vitality, Sleeping well and waking rested, Mental clarity and sharp focus, Overall health and wellness, Peak physical performance and recovery, Trusting what you put in your body, Being present and active for family
+    Pain Points:        energy crash | mental clarity | aging
 
-  gv-v06 — "Doctor Q&A - supplements 101" (video, 137 words)
-    Tone:    personal
-    CTAs:    none
-    Offers:  none
-    Stats:   none
-    Keywords: people, supplements, stress, well-designed, lot, ask, really, need
+    Root Cause:         YES
+      Signals:          The supplement industry | hormonal balance | cellular | mitochondrial | gut microbiome | bioavailable | generic
 
-  gv-v07 — "Gym performance spot" (video, 104 words)
-    Tone:    personal
-    CTAs:    none
-    Offers:  none
-    Stats:   none
-    Keywords: lifting, years, heavy, it's, i've, twelve, thought, supplement
+    Mechanism:          YES
+      Signals:          designed to | proprietary | full-spectrum | What sets Glow Vitamins apart
 
-======================================================================
+    Product Delivery:   YES
+      Signals:          CoQ10 | magnesium | vitamin D3 | adaptogen | mushroom | lion's mane | reishi | zinc | selenium | B-complex | third-party test | independent lab | certified | Every batch | purity | potency | heavy metals
+
+    Sophistication:     Stage 4 / New Information
+    Awareness Stage:    Most Aware
+    Creative Angles:    Customer story / social proof, Science / data-driven education, Competitive comparison
+
+--------------------------------------------------------------------------
+  gv-s02 - "Ingredient deep-dive" (static, 528 words)
+
+    Target Customer:    health-conscious optimizer, ingredient-aware researcher
+    Mass Desire:        Sleeping well and waking rested, Mental clarity and sharp focus
+    Pain Points:        poor sleep | brain fog | anxiety | muscle cramps | digestive | GI discomfort
+
+    Root Cause:         YES
+      Signals:          deficiency | bioavailability | dissolve | absorbed | cheap
+
+    Mechanism:          YES
+      Signals:          synergistic | paired it with | cofactors | chelated
+
+    Product Delivery:   YES
+      Signals:          Magnesium | vitamin D3 | vitamin K2 | 400mg | 5000 IU | capsule | certified | certificate of analysis | dissolution rate | facility in | low-temperature | encapsulation
+
+    Sophistication:     Stage 3 / New Information
+    Awareness Stage:    Unaware
+    Creative Angles:    Science / data-driven education, Competitive comparison
+
+--------------------------------------------------------------------------
+  gv-s04 - "Customer story feature" (static, 539 words)
+
+    Target Customer:    parent, age-specific, professional, aging adult, women, men, skeptic / tried-everything, ingredient-aware researcher
+    Mass Desire:        Having consistent energy and vitality, Mental clarity and sharp focus, Trusting what you put in your body, Being present and active for family
+    Pain Points:        brain fog | joint stiffness | inflammation | skeptical | 2 PM | chronic fatigue
+
+    Root Cause:         YES
+      Signals:          inflammation
+
+    Mechanism:          NO
+
+    Product Delivery:   YES
+      Signals:          vitamin D | magnesium | vitamin t | capsule | every batch
+
+    Sophistication:     Stage 3 / New Information
+    Awareness Stage:    Solution-Aware
+    Creative Angles:    Customer story / social proof, Science / data-driven education
+
+--------------------------------------------------------------------------
+  gv-v01 - "Founder story 60s" (video, 82 words)
+
+    Target Customer:    ingredient-aware researcher
+    Mass Desire:        none detected
+    Pain Points:        burned out | exhausted | frustrated
+
+    Root Cause:         YES
+      Signals:          the supplement industry | underdosed | poorly sourced | fillers
+
+    Mechanism:          YES
+      Signals:          designed to
+
+    Product Delivery:   YES
+      Signals:          third-party test
+
+    Sophistication:     Stage 3 / None detected
+    Awareness Stage:    Problem-Aware
+    Creative Angles:    Founder / authority narrative
+
+--------------------------------------------------------------------------
+  gv-v02 - "UGC testimonial - busy mom" (video, 125 words)
+
+    Target Customer:    parent
+    Mass Desire:        Having consistent energy and vitality, Sleeping well and waking rested, Being present and active for family
+    Pain Points:        2 PM
+
+    Root Cause:         NO
+
+    Mechanism:          NO
+
+    Product Delivery:   NO
+
+    Sophistication:     Stage 3 / None detected
+    Awareness Stage:    Solution-Aware
+    Creative Angles:    Founder / authority narrative, UGC / authentic voice
+
+--------------------------------------------------------------------------
+  gv-v06 - "Doctor Q&A - supplements 101" (video, 137 words)
+
+    Target Customer:    ingredient-aware researcher
+    Mass Desire:        Sleeping well and waking rested
+    Pain Points:        none detected
+
+    Root Cause:         YES
+      Signals:          depleted | bioavailable | Modern agriculture | soil minerals
+
+    Mechanism:          YES
+      Signals:          That's exactly
+
+    Product Delivery:   YES
+      Signals:          vitamin D | magnesium | third-party test
+
+    Sophistication:     Stage 5 / New Identity
+    Awareness Stage:    Unaware
+    Creative Angles:    Expert Q&A / objection handling
+
+--------------------------------------------------------------------------
+  gv-v07 - "Gym performance spot" (video, 104 words)
+
+    Target Customer:    fitness-oriented
+    Mass Desire:        Sleeping well and waking rested, Peak physical performance and recovery
+    Pain Points:        soreness
+
+    Root Cause:         NO
+
+    Mechanism:          NO
+
+    Product Delivery:   YES
+      Signals:          magnesium | mushroom
+
+    Sophistication:     Stage 3 / None detected
+    Awareness Stage:    Unknown
+    Creative Angles:    Founder / authority narrative
+
+--------------------------------------------------------------------------
+
+==========================================================================
   END OF REPORT
-======================================================================
+==========================================================================
