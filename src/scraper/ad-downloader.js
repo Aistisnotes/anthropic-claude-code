@@ -104,20 +104,19 @@ export async function downloadAdCreatives(selectedAds, opts = {}) {
 
 /**
  * Fetch the HTML from a Meta ad snapshot URL.
+ * Uses browser-style headers — no API token required.
  */
 async function fetchSnapshotHtml(url) {
-  const token = config.meta.accessToken;
-
-  // Meta snapshot URLs often require the access token as a parameter
-  const separator = url.includes('?') ? '&' : '?';
-  const fullUrl = token ? `${url}${separator}access_token=${token}` : url;
-
-  const response = await axios.get(fullUrl, {
+  const response = await axios.get(url, {
     timeout: SNAPSHOT_TIMEOUT_MS,
     headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; MetaAdsResearch/1.0)',
-      'Accept': 'text/html,application/xhtml+xml',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
     },
+    maxRedirects: 5,
     // Don't throw on non-2xx — we want to handle gracefully
     validateStatus: (status) => status < 500,
   });

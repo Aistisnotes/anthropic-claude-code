@@ -6,19 +6,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 
 export const config = {
-  // Meta Ad Library API
+  // Meta Ad Library scraper
   meta: {
-    apiBase: 'https://graph.facebook.com/v21.0',
-    adLibraryEndpoint: '/ads_archive',
-    // Token loaded from env — required for API access
-    accessToken: process.env.META_ACCESS_TOKEN || null,
     // Default search params
     defaultCountry: 'US',
     defaultAdType: 'ALL',
-    // Rate limiting
-    requestDelayMs: 500,
+    // Rate limiting between scrape requests
+    requestDelayMs: 800,
     maxPagesPerScan: 20,
-    resultsPerPage: 100,
+    resultsPerPage: 30,
+    // Scraper timeouts
+    pageTimeoutMs: 30000,
+    sessionTimeoutMs: 20000,
   },
 
   // Ad selection thresholds (days)

@@ -9,7 +9,7 @@ bin/meta-ads.js                → CLI entry point (Commander.js)
 src/commands/scan.js           → `meta-ads scan` command
 src/commands/market.js         → `meta-ads market` command (full pipeline)
 src/commands/compare.js        → `meta-ads compare` command (cross-brand)
-src/scraper/meta-ad-library.js → Meta Ad Library API client (metadata-only)
+src/scraper/meta-ad-library.js → Meta Ad Library web scraper (no API token)
 src/scraper/ad-downloader.js   → Selective ad creative downloader
 src/selection/ad-selector.js   → Priority-based ad selection engine (P1-P4)
 src/analysis/claude-client.js  → Anthropic Claude API client (deep analysis)
@@ -78,12 +78,12 @@ Cross-brand analysis outputs:
 ## Setup
 ```bash
 npm install
-export META_ACCESS_TOKEN=your_facebook_token  # Required: ads_read permission
 export ANTHROPIC_API_KEY=your_anthropic_key   # Optional: enables deep Claude analysis
 node bin/meta-ads.js scan "keyword"
 node bin/meta-ads.js market "keyword" --top-brands 5 --ads-per-brand 15
 node bin/meta-ads.js compare "keyword" --brand "BrandName"
 ```
+No Meta API token required — the scraper fetches data directly from the public Ad Library page.
 
 ## Testing
 ```bash
@@ -99,7 +99,7 @@ node --test src/reports/compare.test.js         # Market Map + Loophole Doc (21 
 
 ### Session 1 (COMPLETED)
 - [x] Project scaffolding (package.json, Commander.js CLI, directory structure)
-- [x] Meta Ad Library API client — metadata-only scanning, pagination, rate limiting
+- [x] Meta Ad Library web scraper — direct page scraping, no API token required
 - [x] Advertiser aggregation + ranking (recent activity + impressions composite score)
 - [x] Priority-based ad selection engine (P1-P4 classification + skip rules)
 - [x] Deduplication logic (same text prefix per advertiser, keep highest impressions)
@@ -138,10 +138,19 @@ node --test src/reports/compare.test.js         # Market Map + Loophole Doc (21 
 - [x] Updated market.js + compare.js for async pipeline
 - [x] All 77 tests passing (heuristic fallback mode in tests)
 
+### Web Scraper Rewrite (COMPLETED)
+- [x] Replaced Meta Graph API client with direct web scraper — no META_ACCESS_TOKEN required
+- [x] Session management (cookies, fb_dtsg CSRF, lsd tokens)
+- [x] Multi-strategy HTML parsing (data-sjs, application/json, ServerJS, regex fallback)
+- [x] GraphQL-based pagination via facebook.com/api/graphql/
+- [x] Ad downloader updated to use browser-style headers (no token)
+- [x] Config updated: removed API token, added scraper settings (timeouts, delays)
+- [x] Same public interface preserved: scanAdLibrary, rankAdvertisers exports
+
 ## Configuration
 All thresholds are in `src/utils/config.js`:
 - Impression thresholds: high=50K, moderate=10K, low=1K
 - Time windows: P1=14d, P2=30d, P3=7d, P4=60d, skip=180d
 - Min primary text: 50 words
-- Meta API: 500ms delay between pages, 100 results/page, 20 max pages
+- Scraper: 800ms delay between pages, 30 results/page, 20 max pages
 - Claude API: model=claude-sonnet-4-5-20250929, maxTokens=4096, maxConcurrent=3, retryAttempts=2
