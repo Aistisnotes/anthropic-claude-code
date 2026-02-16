@@ -246,10 +246,13 @@ class PatternAnalyzer:
             lines.append("| Pain Point | Frequency | % |")
             lines.append("|---|---|---|")
             for pp in report.common_pain_points:
+                pct = pp.get("percentage", 0)
+                # Normalize: if > 1, it's already a whole-number percentage
+                pct_display = pct if pct > 1 else pct * 100
                 lines.append(
                     f"| {pp.get('pain_point', 'N/A')} | "
                     f"{pp.get('frequency', 0)} | "
-                    f"{pp.get('percentage', 0):.0%} |"
+                    f"{pct_display:.0f}% |"
                 )
             lines.append("")
 
