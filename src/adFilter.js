@@ -1,5 +1,7 @@
 'use strict';
 
+const videoAnalyzer = require('./videoAnalyzer');
+
 const MIN_TRANSCRIPT_WORDS_STATIC = 500;
 
 const AdType = {
@@ -29,10 +31,15 @@ function countWords(transcript) {
  * - Static ads require a transcript with at least 500 words.
  *   If the transcript is below the minimum, the ad is rejected (returns null).
  * - Video ads with a non-empty transcript use the transcript as copy.
- * - Video ads with a zero-word transcript fall back to the ad's primary copy.
- *   If no primary copy is available either, the ad is rejected.
+ * - Video ads with a zero-word transcript attempt visual extraction
+ *   (overlay text, headlines, scene content). If extraction fails,
+ *   times out, or exceeds cost budget, the ad is skipped.
+ *
+ * @param {Object} ad
+ * @param {Object} [analyzerOptions] - Options passed to extractVisualContent
+ * @returns {Promise<Object|null>}
  */
-function resolveAdCopy(ad) {
+async function resolveAdCopy(ad, analyzerOptions) {
   if (!ad || !ad.type) {
     return null;
   }
@@ -47,13 +54,22 @@ function resolveAdCopy(ad) {
   }
 
   if (ad.type === AdType.VIDEO) {
+    // Videos with transcript: use it directly (no word minimum)
     if (wordCount > 0) {
       return { source: 'transcript', text: ad.transcript.trim() };
     }
-    // Zero-word transcript: fall back to primary copy
-    if (ad.primaryCopy && ad.primaryCopy.trim().length > 0) {
-      return { source: 'primary_copy', text: ad.primaryCopy.trim() };
+
+    // Empty transcript: try to extract visual content from the video itself
+    const extraction = await videoAnalyzer.extractVisualContent(ad, analyzerOptions);
+    if (videoAnalyzer.hasUsableContent(extraction)) {
+      return {
+        source: 'visual_extraction',
+        text: videoAnalyzer.extractionToText(extraction),
+        extraction,
+      };
     }
+
+    // Nothing usable — skip this ad
     return null;
   }
 
@@ -63,19 +79,24 @@ function resolveAdCopy(ad) {
 /**
  * Filter a list of ads, returning only those with valid resolved copy.
  * Each returned ad is augmented with a `resolvedCopy` field.
+ *
+ * @param {Object[]} ads
+ * @param {Object} [analyzerOptions] - Options passed to extractVisualContent
+ * @returns {Promise<Object[]>}
  */
-function filterAds(ads) {
+async function filterAds(ads, analyzerOptions) {
   if (!Array.isArray(ads)) {
     return [];
   }
 
-  return ads.reduce((kept, ad) => {
-    const resolved = resolveAdCopy(ad);
-    if (resolved) {
-      kept.push({ ...ad, resolvedCopy: resolved });
-    }
-    return kept;
-  }, []);
+  const results = await Promise.all(
+    ads.map(async (ad) => {
+      const resolved = await resolveAdCopy(ad, analyzerOptions);
+      return resolved ? { ...ad, resolvedCopy: resolved } : null;
+    })
+  );
+
+  return results.filter(Boolean);
 }
 
 module.exports = {
