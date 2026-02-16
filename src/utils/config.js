@@ -38,6 +38,16 @@ export const config = {
     lowMax: 1000,
   },
 
+  // Claude API (for deep analysis)
+  claude: {
+    apiKey: process.env.ANTHROPIC_API_KEY || null,
+    model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20250929',
+    maxTokens: 4096,
+    maxConcurrent: 3,
+    retryAttempts: 2,
+    retryDelayMs: 1000,
+  },
+
   // Output paths
   paths: {
     root: PROJECT_ROOT,

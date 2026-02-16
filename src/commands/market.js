@@ -160,7 +160,7 @@ async function runMarket(keyword, opts) {
 
     // Step 5: Run analysis pipeline
     const analyzeSpinner = ora('Analyzing ads...').start();
-    const analysisResult = analyzeAdBatch(enrichedAds);
+    const analysisResult = await analyzeAdBatch(enrichedAds);
     analyzeSpinner.succeed(
       `Analyzed ${analysisResult.summary.totalAnalyzed} ads ` +
       `(hook: ${getTopKey(analysisResult.summary.hookDistribution)}, ` +
@@ -169,7 +169,7 @@ async function runMarket(keyword, opts) {
 
     // Step 6: Generate report
     const reportSpinner = ora('Generating report...').start();
-    const report = generateBrandReport(brand, analysisResult, selectionStats, {
+    const report = await generateBrandReport(brand, analysisResult, selectionStats, {
       keyword,
       scanDate: scanResult.scanDate,
     });

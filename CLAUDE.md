@@ -1,7 +1,7 @@
 # Meta Ads Market Research Pipeline
 
 ## Project Overview
-CLI tool (`meta-ads`) for surgical market research via Meta Ad Library. Scans metadata first, selects ads by strategic priority, then runs deep analysis only on high-signal ads.
+CLI tool (`meta-ads`) for surgical market research via Meta Ad Library. Scans metadata first, selects ads by strategic priority, then runs deep Claude-powered analysis on high-signal ads (with heuristic fallback when no API key).
 
 ## Architecture
 ```
@@ -12,10 +12,11 @@ src/commands/compare.js        → `meta-ads compare` command (cross-brand)
 src/scraper/meta-ad-library.js → Meta Ad Library API client (metadata-only)
 src/scraper/ad-downloader.js   → Selective ad creative downloader
 src/selection/ad-selector.js   → Priority-based ad selection engine (P1-P4)
-src/analysis/pipeline.js       → Heuristic ad analysis pipeline
-src/reports/brand-report.js    → Per-brand mini-report generator
+src/analysis/claude-client.js  → Anthropic Claude API client (deep analysis)
+src/analysis/pipeline.js       → Analysis pipeline (Claude + heuristic fallback)
+src/reports/brand-report.js    → Per-brand report with Claude strategy synthesis
 src/reports/market-map.js      → Cross-brand Market Map report
-src/reports/loophole-doc.js    → Master Loophole Document (gaps + priority matrix)
+src/reports/loophole-doc.js    → Master Loophole Doc with Claude strategic recommendations
 src/utils/config.js            → Configuration (thresholds, paths, API settings)
 src/utils/logger.js            → Colored terminal logging
 src/utils/formatters.js        → Table/JSON/summary output formatters
@@ -36,24 +37,49 @@ src/utils/formatters.js        → Table/JSON/summary output formatters
 - **P4 RECENT_MODERATE**: <60 days + high impressions (50K+) — still relevant
 - **SKIP**: Legacy (6+ months), failed tests (low impressions + >30 days), thin text (<50 words), duplicates
 
-## Analysis Pipeline
-Heuristic-based ad text analysis (no LLM required):
-- **Hook detection**: question, statistic, bold claim, fear/urgency, story, social proof, curiosity, direct address
-- **Messaging angles**: mechanism, social proof, transformation, problem-agitate, scarcity, authority, educational
-- **Offer detection**: discount, free trial, guarantee, bonus, free shipping, bundle, subscription, limited time
-- **CTA classification**: shop now, learn more, sign up, claim offer, watch, download, contact
-- **Format classification**: listicle, testimonial, how-to, long form, minimal, emoji heavy, direct response
-- **Emotional register** (Schwartz values): security, achievement, hedonism, stimulation, self-direction, benevolence, conformity, tradition, power, universalism
+## Analysis Pipeline (Dual Mode)
+When `ANTHROPIC_API_KEY` is set, Claude provides deep competitive intelligence per ad:
+- **Hook analysis**: type classification + reasoning + effectiveness score + scroll-stop power
+- **Messaging angles**: evidence-based angle detection with strength scoring (1-10)
+- **Emotional triggers**: Schwartz value classification with mechanism description + intensity
+- **Target audience**: primary segment, psychographic profile, pain points, awareness level
+- **Unique mechanism**: detection + credibility scoring
+- **Persuasion techniques**: identification + per-technique effectiveness scoring
+- **Copy quality**: score + specific strengths/weaknesses/missing elements
+- **Strategic intent**: funnel position, objective, testing hypothesis
+- **Overall assessment**: score, summary, top strength/weakness, actionable insight
+
+When no API key is set, heuristic fallback (regex/keyword matching) provides:
+- Hook detection, messaging angles, offer types, CTA classification, format, Schwartz values
+
+### Brand Strategy Synthesis (Claude)
+Per-brand deep synthesis includes:
+- Positioning narrative (2-3 paragraphs)
+- Messaging strategy (primary message, tone, copywriting style)
+- Offer psychology (strategy, risk reversal, urgency tactics)
+- Audience profiling (segments, psychographic, awareness spectrum)
+- Strengths, vulnerabilities, blind spots
+- Strategic direction (phase, testing patterns, likely next moves)
+- Threat level (1-10 score with reasoning)
+
+### Market Loophole Analysis (Claude)
+Strategic recommendations include:
+- Executive market narrative (3-4 paragraph competitive landscape summary)
+- Top exploitable opportunities (with exploitation strategy + impact + difficulty)
+- Contrarian plays (conventional wisdom vs. contrarian approach + upside)
+- Immediate action items (with timeline + expected outcome)
+- Brand-specific action plans (when focus brand specified)
 
 ## Compare Pipeline
 Cross-brand analysis outputs:
 - **Market Map**: Brand-by-brand comparison matrices (hooks × brands, angles × brands, emotions × brands), saturation analysis (saturated/moderate/whitespace), brand strategy profiles
-- **Loophole Document**: Market-wide gaps (nobody uses), saturation zones (everyone uses), underexploited opportunities (1-2 brands use), priority matrix (ranked by gap score × relevance), brand-specific blind spots
+- **Loophole Document**: Market-wide gaps (nobody uses), saturation zones (everyone uses), underexploited opportunities (1-2 brands use), priority matrix (ranked by gap score × relevance), brand-specific blind spots, Claude strategic recommendations
 
 ## Setup
 ```bash
 npm install
 export META_ACCESS_TOKEN=your_facebook_token  # Required: ads_read permission
+export ANTHROPIC_API_KEY=your_anthropic_key   # Optional: enables deep Claude analysis
 node bin/meta-ads.js scan "keyword"
 node bin/meta-ads.js market "keyword" --top-brands 5 --ads-per-brand 15
 node bin/meta-ads.js compare "keyword" --brand "BrandName"
@@ -100,9 +126,22 @@ node --test src/reports/compare.test.js         # Market Map + Loophole Doc (21 
 - [x] Unit tests for compare pipeline (21 tests, all passing)
 - [x] All 77 tests passing across the full project
 
+### Claude API Integration (COMPLETED)
+- [x] Added @anthropic-ai/sdk dependency + config (ANTHROPIC_API_KEY, model, concurrency, retry)
+- [x] Claude client module — Anthropic SDK wrapper with retry logic, structured JSON prompts
+- [x] Per-ad deep analysis — hook reasoning, angles with evidence, emotional triggers, target audience, unique mechanism, persuasion techniques, copy quality, strategic intent, overall assessment
+- [x] Brand strategy synthesis — positioning narrative, messaging strategy, offer psychology, audience profiling, strengths/vulnerabilities/blind spots, strategic direction, threat level
+- [x] Market loophole analysis — executive narrative, top opportunities, contrarian plays, immediate actions, brand-specific action plans
+- [x] Dual-mode pipeline: Claude primary with heuristic fallback (no API key = pure heuristic)
+- [x] Async pipeline: analyzeAd/analyzeAdBatch, generateBrandReport, generateLoopholeDoc all async
+- [x] Concurrency control (3 concurrent Claude calls) with progress callbacks
+- [x] Updated market.js + compare.js for async pipeline
+- [x] All 77 tests passing (heuristic fallback mode in tests)
+
 ## Configuration
 All thresholds are in `src/utils/config.js`:
 - Impression thresholds: high=50K, moderate=10K, low=1K
 - Time windows: P1=14d, P2=30d, P3=7d, P4=60d, skip=180d
 - Min primary text: 50 words
-- API: 500ms delay between pages, 100 results/page, 20 max pages
+- Meta API: 500ms delay between pages, 100 results/page, 20 max pages
+- Claude API: model=claude-sonnet-4-5-20250929, maxTokens=4096, maxConcurrent=3, retryAttempts=2

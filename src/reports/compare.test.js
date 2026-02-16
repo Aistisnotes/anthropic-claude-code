@@ -217,24 +217,24 @@ describe('formatMarketMapText', () => {
 describe('generateLoopholeDoc', () => {
   const map = generateMarketMap(ALL_REPORTS, { keyword: 'test' });
 
-  it('generates loophole doc with correct metadata', () => {
-    const doc = generateLoopholeDoc(map, ALL_REPORTS);
+  it('generates loophole doc with correct metadata', async () => {
+    const doc = await generateLoopholeDoc(map, ALL_REPORTS);
 
     assert.equal(doc.meta.keyword, 'test');
     assert.equal(doc.meta.brandsCompared, 3);
     assert.equal(doc.meta.focusBrand, null);
   });
 
-  it('finds market-wide gaps (dimensions nobody uses)', () => {
-    const doc = generateLoopholeDoc(map, ALL_REPORTS);
+  it('finds market-wide gaps (dimensions nobody uses)', async () => {
+    const doc = await generateLoopholeDoc(map, ALL_REPORTS);
 
     // "transformation" angle: none of our 3 brands use it
     const angleGaps = doc.marketGaps.angles.map((g) => g.dimension);
     assert.ok(angleGaps.includes('transformation'));
   });
 
-  it('finds saturation zones', () => {
-    const doc = generateLoopholeDoc(map, ALL_REPORTS);
+  it('finds saturation zones', async () => {
+    const doc = await generateLoopholeDoc(map, ALL_REPORTS);
 
     // Check that saturation zones exist and have structure
     assert.ok(doc.saturationZones);
@@ -245,8 +245,8 @@ describe('generateLoopholeDoc', () => {
     }
   });
 
-  it('finds underexploited opportunities (coverage threshold aware)', () => {
-    const doc = generateLoopholeDoc(map, ALL_REPORTS);
+  it('finds underexploited opportunities (coverage threshold aware)', async () => {
+    const doc = await generateLoopholeDoc(map, ALL_REPORTS);
 
     // With 3 brands: 1/3 = 33% which is >= 30%, so no underexploited items
     // This is correct — underexploited requires <30% coverage with at least 1 user
@@ -265,7 +265,7 @@ describe('generateLoopholeDoc', () => {
       ctas: { download: 4 },
     });
     const map4 = generateMarketMap([...ALL_REPORTS, brand4], { keyword: 'test' });
-    const doc4 = generateLoopholeDoc(map4, [...ALL_REPORTS, brand4]);
+    const doc4 = await generateLoopholeDoc(map4, [...ALL_REPORTS, brand4]);
 
     assert.ok(doc4.underexploited.length > 0, 'With 4 brands, 1/4 = 25% should produce underexploited items');
     for (const item of doc4.underexploited) {
@@ -273,8 +273,8 @@ describe('generateLoopholeDoc', () => {
     }
   });
 
-  it('builds a priority matrix sorted by score', () => {
-    const doc = generateLoopholeDoc(map, ALL_REPORTS);
+  it('builds a priority matrix sorted by score', async () => {
+    const doc = await generateLoopholeDoc(map, ALL_REPORTS);
 
     assert.ok(doc.priorityMatrix.length > 0);
     // Verify sorted descending by priorityScore
@@ -286,8 +286,8 @@ describe('generateLoopholeDoc', () => {
     }
   });
 
-  it('assigns priority tiers correctly', () => {
-    const doc = generateLoopholeDoc(map, ALL_REPORTS);
+  it('assigns priority tiers correctly', async () => {
+    const doc = await generateLoopholeDoc(map, ALL_REPORTS);
 
     for (const entry of doc.priorityMatrix) {
       if (entry.priorityScore >= 80) assert.equal(entry.tier, 'P1_HIGH');
@@ -297,8 +297,8 @@ describe('generateLoopholeDoc', () => {
     }
   });
 
-  it('generates brand-specific gaps when focus brand specified', () => {
-    const doc = generateLoopholeDoc(map, ALL_REPORTS, 'BrandAlpha');
+  it('generates brand-specific gaps when focus brand specified', async () => {
+    const doc = await generateLoopholeDoc(map, ALL_REPORTS, 'BrandAlpha');
 
     assert.equal(doc.meta.focusBrand, 'BrandAlpha');
     assert.ok(doc.brandGaps);
@@ -311,15 +311,15 @@ describe('generateLoopholeDoc', () => {
     assert.ok(paGap.competitorsUsing.includes('BrandBeta'));
   });
 
-  it('is case-insensitive on focus brand', () => {
-    const doc = generateLoopholeDoc(map, ALL_REPORTS, 'brandalpha');
+  it('is case-insensitive on focus brand', async () => {
+    const doc = await generateLoopholeDoc(map, ALL_REPORTS, 'brandalpha');
 
     assert.ok(doc.brandGaps);
     assert.ok(doc.brandGaps.length > 0);
   });
 
-  it('handles unknown focus brand gracefully', () => {
-    const doc = generateLoopholeDoc(map, ALL_REPORTS, 'NonexistentBrand');
+  it('handles unknown focus brand gracefully', async () => {
+    const doc = await generateLoopholeDoc(map, ALL_REPORTS, 'NonexistentBrand');
 
     // No brandGaps property since the brand wasn't found
     assert.equal(doc.brandGaps, undefined);
@@ -327,9 +327,9 @@ describe('generateLoopholeDoc', () => {
 });
 
 describe('formatLoopholeDocText', () => {
-  it('produces non-empty formatted output', () => {
+  it('produces non-empty formatted output', async () => {
     const map = generateMarketMap(ALL_REPORTS, { keyword: 'test supplements' });
-    const doc = generateLoopholeDoc(map, ALL_REPORTS, 'BrandAlpha');
+    const doc = await generateLoopholeDoc(map, ALL_REPORTS, 'BrandAlpha');
     const text = formatLoopholeDocText(doc);
 
     assert.ok(text.length > 100);
@@ -343,12 +343,12 @@ describe('formatLoopholeDocText', () => {
 // ─── End-to-End Pipeline ─────────────────────────────────────
 
 describe('End-to-end: Market Map → Loophole Doc', () => {
-  it('full pipeline produces actionable output', () => {
+  it('full pipeline produces actionable output', async () => {
     // 1. Generate Market Map
     const map = generateMarketMap(ALL_REPORTS, { keyword: 'supplements', scanDate: '2026-02-15' });
 
     // 2. Generate Loophole Doc with brand focus
-    const doc = generateLoopholeDoc(map, ALL_REPORTS, 'BrandBeta');
+    const doc = await generateLoopholeDoc(map, ALL_REPORTS, 'BrandBeta');
 
     // 3. Verify key outputs exist
     assert.ok(map.matrices.hooks.length > 0, 'Market map has hook matrix');

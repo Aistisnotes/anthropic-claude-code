@@ -1,24 +1,27 @@
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { config, ensureDataDirs } from '../utils/config.js';
+import { isClaudeAvailable, synthesizeBrandStrategy } from '../analysis/claude-client.js';
 
 /**
- * Per-brand mini-report generator.
+ * Per-brand report generator.
  *
- * Takes analyzed ads for a single brand and produces a structured report
- * covering strategy patterns, messaging themes, top performers, and gaps.
+ * Two modes:
+ *   1. Claude API — deep strategy synthesis with positioning narrative,
+ *      audience profiling, vulnerability analysis, threat assessment
+ *   2. Heuristic fallback — distribution-based strategy derivation
  */
 
 /**
- * Generate a mini-report for a single brand.
+ * Generate a report for a single brand.
  *
  * @param {object} brand - Advertiser entry from rankAdvertisers()
  * @param {object} analysisResult - Output of analyzeAdBatch() for this brand's ads
  * @param {object} selectionStats - Output of selectAdsForBrand().stats
  * @param {object} meta - { keyword, scanDate }
- * @returns {object} Structured report object
+ * @returns {Promise<object>} Structured report object
  */
-export function generateBrandReport(brand, analysisResult, selectionStats, meta = {}) {
+export async function generateBrandReport(brand, analysisResult, selectionStats, meta = {}) {
   const { analyzed, summary } = analysisResult;
 
   const report = {
@@ -54,18 +57,28 @@ export function generateBrandReport(brand, analysisResult, selectionStats, meta 
     // Analysis summary
     analysis: summary,
 
-    // Strategy insights (derived)
+    // Strategy insights (heuristic base — always present)
     strategy: deriveStrategy(analyzed, summary, brand),
 
     // Top ads (sorted by priority, then impressions)
     topAds: analyzed.slice(0, 10).map(formatAdForReport),
   };
 
+  // Enrich with Claude strategy synthesis if available
+  if (isClaudeAvailable()) {
+    try {
+      const synthesis = await synthesizeBrandStrategy(brand, analyzed, summary);
+      report.strategy.claudeSynthesis = synthesis;
+    } catch {
+      // Claude failed — heuristic strategy already in place
+    }
+  }
+
   return report;
 }
 
 /**
- * Derive strategy insights from analyzed ads.
+ * Derive strategy insights from analyzed ads (heuristic).
  */
 function deriveStrategy(analyzed, summary, brand) {
   const strategy = {
@@ -120,7 +133,7 @@ function assessActivity(brand) {
  * Format a single ad record for the report output.
  */
 function formatAdForReport(ad) {
-  return {
+  const base = {
     id: ad.id,
     priority: ad.priority,
     label: ad.label,
@@ -129,7 +142,7 @@ function formatAdForReport(ad) {
     headline: ad.headlines?.[0] || null,
     primaryTextPreview: ad.primaryTexts?.[0]?.slice(0, 300) || null,
     analysis: {
-      hook: ad.analysis.hook.type,
+      hook: ad.analysis.hook.type || ad.analysis.hook,
       dominantAngle: ad.analysis.dominantAngle,
       format: ad.analysis.format,
       emotion: ad.analysis.dominantEmotion,
@@ -140,14 +153,28 @@ function formatAdForReport(ad) {
     snapshotUrl: ad.snapshotUrl,
     landingPage: ad.analysis.landingPage,
   };
+
+  // Include Claude deep analysis if present
+  if (ad.claudeAnalysis) {
+    base.deepAnalysis = {
+      overallScore: ad.claudeAnalysis.overallAssessment?.score,
+      summary: ad.claudeAnalysis.overallAssessment?.summary,
+      topStrength: ad.claudeAnalysis.overallAssessment?.topStrength,
+      topWeakness: ad.claudeAnalysis.overallAssessment?.topWeakness,
+      actionableInsight: ad.claudeAnalysis.overallAssessment?.actionableInsight,
+      targetAudience: ad.claudeAnalysis.targetAudience,
+      uniqueMechanism: ad.claudeAnalysis.uniqueMechanism,
+      copyQuality: ad.claudeAnalysis.copyQuality,
+      strategicIntent: ad.claudeAnalysis.strategicIntent,
+      persuasionTechniques: ad.claudeAnalysis.persuasionTechniques,
+    };
+  }
+
+  return base;
 }
 
 /**
  * Save a brand report to disk as JSON.
- *
- * @param {object} report - Output of generateBrandReport()
- * @param {string} keyword - Search keyword slug
- * @returns {string} Path to saved report file
  */
 export function saveBrandReport(report, keyword) {
   ensureDataDirs();
@@ -171,9 +198,9 @@ export function formatBrandReportText(report) {
   const s = report.strategy;
 
   // Header
-  lines.push(`${'═'.repeat(60)}`);
+  lines.push(`${'='.repeat(60)}`);
   lines.push(`  BRAND REPORT: ${b.name}`);
-  lines.push(`${'═'.repeat(60)}`);
+  lines.push(`${'='.repeat(60)}`);
   lines.push('');
 
   // Brand overview
@@ -209,6 +236,64 @@ export function formatBrandReportText(report) {
   }
   lines.push('');
 
+  // Claude synthesis (if available)
+  if (s.claudeSynthesis) {
+    const cs = s.claudeSynthesis;
+
+    lines.push(`${'─'.repeat(60)}`);
+    lines.push('  COMPETITIVE INTELLIGENCE (Claude Analysis)');
+    lines.push(`${'─'.repeat(60)}`);
+    lines.push('');
+
+    if (cs.positioningNarrative) {
+      lines.push('  POSITIONING:');
+      wrapText(cs.positioningNarrative, 56).forEach((l) => lines.push(`  ${l}`));
+      lines.push('');
+    }
+
+    if (cs.messagingStrategy) {
+      lines.push(`  MESSAGING: ${cs.messagingStrategy.primaryMessage || ''}`);
+      lines.push(`  Tone: ${cs.messagingStrategy.toneProfile || 'N/A'}`);
+      lines.push(`  Style: ${cs.messagingStrategy.copywritingStyle || 'N/A'}`);
+      lines.push('');
+    }
+
+    if (cs.audienceProfile) {
+      lines.push(`  TARGET: ${cs.audienceProfile.primarySegment || 'N/A'}`);
+      lines.push(`  Psychographic: ${cs.audienceProfile.psychographicProfile || 'N/A'}`);
+      lines.push(`  Awareness: ${cs.audienceProfile.awarenessSpectrum || 'N/A'}`);
+      lines.push('');
+    }
+
+    if (cs.strengths?.length) {
+      lines.push('  STRENGTHS:');
+      cs.strengths.slice(0, 3).forEach((str) => lines.push(`    + ${str}`));
+    }
+    if (cs.vulnerabilities?.length) {
+      lines.push('  VULNERABILITIES:');
+      cs.vulnerabilities.slice(0, 3).forEach((v) => lines.push(`    - ${v}`));
+    }
+    if (cs.blindSpots?.length) {
+      lines.push('  BLIND SPOTS:');
+      cs.blindSpots.slice(0, 3).forEach((bs) => lines.push(`    * ${bs}`));
+    }
+    lines.push('');
+
+    if (cs.threatLevel) {
+      lines.push(`  THREAT LEVEL: ${cs.threatLevel.score}/10 — ${cs.threatLevel.reasoning || ''}`);
+      lines.push('');
+    }
+
+    if (cs.strategicDirection) {
+      lines.push(`  PHASE: ${cs.strategicDirection.currentPhase || 'N/A'}`);
+      if (cs.strategicDirection.likelyNextMoves?.length) {
+        lines.push('  LIKELY NEXT MOVES:');
+        cs.strategicDirection.likelyNextMoves.slice(0, 3).forEach((m) => lines.push(`    > ${m}`));
+      }
+      lines.push('');
+    }
+  }
+
   // Top ads
   lines.push(`${'─'.repeat(60)}`);
   lines.push('  TOP ADS');
@@ -224,10 +309,13 @@ export function formatBrandReportText(report) {
       const preview = ad.primaryTextPreview.slice(0, 120).replace(/\n/g, ' ');
       lines.push(`     "${preview}..."`);
     }
+    if (ad.deepAnalysis) {
+      lines.push(`     Score: ${ad.deepAnalysis.overallScore}/10 | ${ad.deepAnalysis.summary || ''}`);
+    }
   }
 
   lines.push('');
-  lines.push(`${'═'.repeat(60)}`);
+  lines.push(`${'='.repeat(60)}`);
 
   return lines.join('\n');
 }
@@ -261,4 +349,24 @@ function formatNumber(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
+}
+
+/**
+ * Wrap text to a given line width.
+ */
+function wrapText(text, width) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let current = '';
+
+  for (const word of words) {
+    if (current.length + word.length + 1 > width) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = current ? `${current} ${word}` : word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
 }

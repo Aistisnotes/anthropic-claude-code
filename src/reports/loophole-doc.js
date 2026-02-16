@@ -1,19 +1,19 @@
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { config, ensureDataDirs } from '../utils/config.js';
+import { isClaudeAvailable, generateStrategicRecommendations } from '../analysis/claude-client.js';
 import { ALL_HOOKS, ALL_ANGLES, ALL_EMOTIONS, ALL_FORMATS, ALL_OFFERS, ALL_CTAS } from './market-map.js';
 
 /**
  * Master Loophole Document generator.
  *
- * Cross-references market saturation data with individual brand strategies
- * to identify:
- *   1. Market-wide gaps (dimensions NO brand is using)
- *   2. Brand-specific gaps (dimensions THIS brand isn't using but could)
- *   3. Saturation zones to avoid (everyone is already here)
- *   4. Priority matrix (gap size × potential impact)
+ * Two modes:
+ *   1. Claude API — strategic narrative, exploitation guides, contrarian plays,
+ *      brand-specific action plans with priority reasoning
+ *   2. Heuristic fallback — matrix-based gap/saturation/priority computation
  *
- * This is the core strategic output — tells you WHERE to compete.
+ * The heuristic layer always runs (produces the data foundation).
+ * Claude adds strategic interpretation on top when available.
  */
 
 /**
@@ -22,9 +22,9 @@ import { ALL_HOOKS, ALL_ANGLES, ALL_EMOTIONS, ALL_FORMATS, ALL_OFFERS, ALL_CTAS 
  * @param {object} marketMap - Output of generateMarketMap()
  * @param {Array<object>} brandReports - Original brand report objects
  * @param {string} focusBrand - Optional: generate brand-specific gaps for this brand
- * @returns {object} Loophole document
+ * @returns {Promise<object>} Loophole document
  */
-export function generateLoopholeDoc(marketMap, brandReports, focusBrand = null) {
+export async function generateLoopholeDoc(marketMap, brandReports, focusBrand = null) {
   const doc = {
     meta: {
       keyword: marketMap.meta.keyword,
@@ -53,6 +53,16 @@ export function generateLoopholeDoc(marketMap, brandReports, focusBrand = null) 
     );
     if (focusReport) {
       doc.brandGaps = findBrandSpecificGaps(focusReport, marketMap, brandReports);
+    }
+  }
+
+  // Enrich with Claude strategic recommendations if available
+  if (isClaudeAvailable()) {
+    try {
+      const recommendations = await generateStrategicRecommendations(marketMap, brandReports, focusBrand);
+      doc.strategicRecommendations = recommendations;
+    } catch {
+      // Claude failed — heuristic analysis already in place
     }
   }
 
@@ -137,7 +147,7 @@ function findUnderexploited(marketMap) {
 /**
  * Build a priority matrix combining gap analysis with potential impact.
  *
- * Score = gap_size (inverse of coverage) × relevance_signal
+ * Score = gap_size (inverse of coverage) x relevance_signal
  * Relevance signal: if ANY brand is successfully using it, it's validated.
  */
 function buildPriorityMatrix(marketMap, brandReports) {
@@ -263,6 +273,15 @@ export function formatLoopholeDocText(doc) {
   lines.push(`${'═'.repeat(70)}`);
   lines.push('');
 
+  // Claude strategic narrative (if available)
+  if (doc.strategicRecommendations?.marketNarrative) {
+    lines.push(`${'─'.repeat(70)}`);
+    lines.push('  EXECUTIVE SUMMARY (Claude Analysis)');
+    lines.push(`${'─'.repeat(70)}`);
+    wrapText(doc.strategicRecommendations.marketNarrative, 66).forEach((l) => lines.push(`  ${l}`));
+    lines.push('');
+  }
+
   // Market-wide gaps
   lines.push(`${'─'.repeat(70)}`);
   lines.push('  MARKET GAPS — Nobody Is Doing This');
@@ -305,6 +324,19 @@ export function formatLoopholeDocText(doc) {
   }
   lines.push('');
 
+  // Claude top opportunities (if available)
+  if (doc.strategicRecommendations?.topOpportunities?.length) {
+    lines.push(`${'─'.repeat(70)}`);
+    lines.push('  TOP OPPORTUNITIES (Claude Analysis)');
+    lines.push(`${'─'.repeat(70)}`);
+    for (const opp of doc.strategicRecommendations.topOpportunities.slice(0, 5)) {
+      lines.push(`\n  [${(opp.expectedImpact || 'N/A').toUpperCase()}] ${opp.gap}`);
+      lines.push(`    Strategy: ${opp.exploitationStrategy || ''}`);
+      lines.push(`    Difficulty: ${opp.implementationDifficulty || 'N/A'}`);
+    }
+    lines.push('');
+  }
+
   // Underexploited opportunities
   lines.push(`${'─'.repeat(70)}`);
   lines.push('  UNDEREXPLOITED — Proven but Uncrowded');
@@ -321,6 +353,19 @@ export function formatLoopholeDocText(doc) {
     lines.push('  No underexploited opportunities detected.');
   }
   lines.push('');
+
+  // Claude contrarian plays (if available)
+  if (doc.strategicRecommendations?.contrarianPlays?.length) {
+    lines.push(`${'─'.repeat(70)}`);
+    lines.push('  CONTRARIAN PLAYS (Claude Analysis)');
+    lines.push(`${'─'.repeat(70)}`);
+    for (const play of doc.strategicRecommendations.contrarianPlays.slice(0, 3)) {
+      lines.push(`\n  CONVENTIONAL: ${play.conventionalWisdom || ''}`);
+      lines.push(`  CONTRARIAN:   ${play.contrarianApproach || ''}`);
+      lines.push(`  UPSIDE:       ${play.upside || ''}`);
+    }
+    lines.push('');
+  }
 
   // Priority matrix (top 15)
   lines.push(`${'─'.repeat(70)}`);
@@ -343,6 +388,18 @@ export function formatLoopholeDocText(doc) {
   }
   lines.push('');
 
+  // Claude immediate actions (if available)
+  if (doc.strategicRecommendations?.immediateActions?.length) {
+    lines.push(`${'─'.repeat(70)}`);
+    lines.push('  IMMEDIATE ACTIONS (Claude Analysis)');
+    lines.push(`${'─'.repeat(70)}`);
+    for (const action of doc.strategicRecommendations.immediateActions.slice(0, 5)) {
+      lines.push(`  [${(action.timeline || 'N/A').toUpperCase()}] ${action.action}`);
+      lines.push(`    Expected: ${action.expectedOutcome || ''}`);
+    }
+    lines.push('');
+  }
+
   // Brand-specific gaps (if focus brand)
   if (doc.brandGaps) {
     lines.push(`${'─'.repeat(70)}`);
@@ -362,7 +419,40 @@ export function formatLoopholeDocText(doc) {
     lines.push('');
   }
 
+  // Claude brand-specific actions (if available)
+  if (doc.strategicRecommendations?.brandSpecificActions?.length) {
+    lines.push(`${'─'.repeat(70)}`);
+    lines.push(`  ACTION PLAN FOR "${doc.meta.focusBrand}" (Claude Analysis)`);
+    lines.push(`${'─'.repeat(70)}`);
+    for (const action of doc.strategicRecommendations.brandSpecificActions.slice(0, 5)) {
+      lines.push(`  [${action.priority || 'N/A'}] ${action.action}`);
+      lines.push(`    Rationale: ${action.rationale || ''}`);
+      lines.push(`    Expected: ${action.expectedOutcome || ''}`);
+    }
+    lines.push('');
+  }
+
   lines.push(`${'═'.repeat(70)}`);
 
   return lines.join('\n');
+}
+
+/**
+ * Wrap text to a given line width.
+ */
+function wrapText(text, width) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let current = '';
+
+  for (const word of words) {
+    if (current.length + word.length + 1 > width) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = current ? `${current} ${word}` : word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
 }

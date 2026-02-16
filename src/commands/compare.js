@@ -70,7 +70,7 @@ async function runCompare(keyword, opts) {
   // ── Generate Loophole Document ─────────────────────────────
 
   const loopSpinner = ora('Generating Loophole Document...').start();
-  const loopholeDoc = generateLoopholeDoc(marketMap, brandReports, opts.brand || null);
+  const loopholeDoc = await generateLoopholeDoc(marketMap, brandReports, opts.brand || null);
   const loopPath = saveLoopholeDoc(loopholeDoc, keyword);
   loopSpinner.succeed(`Loophole Document saved: ${loopPath}`);
 
@@ -214,10 +214,10 @@ async function runFreshAnalysis(keyword, opts) {
     }
 
     // Analyze
-    const analysisResult = analyzeAdBatch(enrichedAds);
+    const analysisResult = await analyzeAdBatch(enrichedAds);
 
     // Generate report
-    const report = generateBrandReport(brand, analysisResult, selectionStats, {
+    const report = await generateBrandReport(brand, analysisResult, selectionStats, {
       keyword, scanDate: scanResult.scanDate,
     });
 

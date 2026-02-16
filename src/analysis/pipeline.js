@@ -1,17 +1,17 @@
 /**
  * Ad analysis pipeline.
  *
- * Runs heuristic-based analysis on enriched ad records to extract:
- *   - Hook type (question, statistic, story, bold claim, fear/urgency)
- *   - Messaging angle (mechanism, social proof, scarcity, transformation, problem-agitate)
- *   - Offer structure (discount, free trial, guarantee, bonus, shipping)
- *   - CTA classification
- *   - Ad format (listicle, testimonial, story, direct response, educational)
- *   - Emotional register (Schwartz values: security, achievement, hedonism, etc.)
+ * Two modes:
+ *   1. Claude API (deep) — structured competitive intelligence analysis per ad
+ *   2. Heuristic fallback — regex/keyword pattern matching (when no API key)
  *
- * This is text-based pattern matching — no LLM required. Good enough for
- * market-level pattern detection and gap analysis.
+ * The pipeline always runs heuristics first (fast, deterministic) then enriches
+ * with Claude analysis when available. This ensures the output shape is always
+ * consistent for downstream consumers (market-map.js, brand-report.js).
  */
+
+import { isClaudeAvailable, analyzeAdWithClaude, mapWithConcurrency } from './claude-client.js';
+import { config } from '../utils/config.js';
 
 // ─── Hook Detection ──────────────────────────────────────────
 
@@ -223,15 +223,13 @@ function detectEmotionalRegister(primaryText) {
   return values;
 }
 
-// ─── Main Pipeline ───────────────────────────────────────────
+// ─── Heuristic Analysis ──────────────────────────────────────
 
 /**
- * Run the full analysis pipeline on a single ad.
- *
- * @param {object} ad - Enriched ad record (with creative data if available)
- * @returns {object} Ad record with `.analysis` attached
+ * Run heuristic-only analysis on a single ad.
+ * Always returns synchronously. Used as fallback and as base layer.
  */
-export function analyzeAd(ad) {
+function analyzeAdHeuristic(ad) {
   const primaryText = ad.primaryTexts?.[0] || '';
   const ctaText = ad.creative?.ctaText || null;
 
@@ -254,22 +252,107 @@ export function analyzeAd(ad) {
   // Derive dominant emotion
   analysis.dominantEmotion = analysis.emotionalRegister[0]?.value || 'unknown';
 
-  return { ...ad, analysis };
+  return analysis;
+}
+
+// ─── Main Pipeline ───────────────────────────────────────────
+
+/**
+ * Run the full analysis pipeline on a single ad.
+ *
+ * When Claude API is available: runs deep analysis and merges with heuristic base.
+ * When no API key: pure heuristic analysis (same as before).
+ *
+ * @param {object} ad - Enriched ad record (with creative data if available)
+ * @returns {Promise<object>} Ad record with `.analysis` and optionally `.claudeAnalysis`
+ */
+export async function analyzeAd(ad) {
+  // Always run heuristics first (fast, deterministic)
+  const heuristicAnalysis = analyzeAdHeuristic(ad);
+  const result = { ...ad, analysis: heuristicAnalysis };
+
+  // Enrich with Claude if available
+  if (isClaudeAvailable()) {
+    try {
+      const claude = await analyzeAdWithClaude(ad);
+      result.claudeAnalysis = claude;
+
+      // Override heuristic classifications with Claude's (more accurate)
+      if (claude.hook?.type) result.analysis.hook = claude.hook;
+      if (claude.dominantAngle) result.analysis.dominantAngle = claude.dominantAngle;
+      if (claude.dominantEmotion) result.analysis.dominantEmotion = claude.dominantEmotion;
+      if (claude.format) result.analysis.format = claude.format;
+      if (claude.cta) result.analysis.cta = claude.cta;
+
+      // Merge angles from Claude into standard format
+      if (claude.angles?.length) {
+        result.analysis.angles = claude.angles.map((a) => ({
+          angle: a.angle,
+          confidence: a.strength || 1,
+          matchedKeywords: [a.evidence || ''],
+        }));
+      }
+
+      // Merge emotions from Claude into standard format
+      if (claude.emotionalTriggers?.length) {
+        result.analysis.emotionalRegister = claude.emotionalTriggers.map((e) => ({
+          value: e.emotion,
+          strength: e.intensity || 1,
+          keywords: [e.mechanism || ''],
+        }));
+      }
+
+      // Merge offers from Claude
+      if (claude.offers?.length) {
+        result.analysis.offers = claude.offers.map((o) => ({
+          type: o.type,
+          matched: o.detail || '',
+        }));
+      }
+    } catch {
+      // Claude failed — heuristic analysis already in place
+    }
+  }
+
+  return result;
 }
 
 /**
  * Run the analysis pipeline on a batch of ads.
  *
  * @param {Array} ads - Enriched ad records
- * @returns {{ analyzed: Array, summary: object }}
+ * @param {object} opts - Options { onProgress?: (i, total) => void }
+ * @returns {Promise<{ analyzed: Array, summary: object }>}
  */
-export function analyzeAdBatch(ads) {
-  const analyzed = ads.map(analyzeAd);
+export async function analyzeAdBatch(ads, opts = {}) {
+  let analyzed;
+
+  if (isClaudeAvailable()) {
+    // Process with concurrency limit for Claude API
+    const concurrency = config.claude.maxConcurrent;
+    let completed = 0;
+    analyzed = await mapWithConcurrency(
+      ads,
+      async (ad) => {
+        const result = await analyzeAd(ad);
+        completed++;
+        if (opts.onProgress) opts.onProgress(completed, ads.length);
+        return result;
+      },
+      concurrency,
+    );
+  } else {
+    // Pure heuristic — synchronous map wrapped in array
+    analyzed = ads.map((ad) => {
+      const heuristic = analyzeAdHeuristic(ad);
+      return { ...ad, analysis: heuristic };
+    });
+  }
 
   // Build batch summary stats
   const summary = {
     totalAnalyzed: analyzed.length,
-    hookDistribution: countBy(analyzed, (a) => a.analysis.hook.type),
+    hookDistribution: countBy(analyzed, (a) => a.analysis.hook.type || a.analysis.hook),
     angleDistribution: countBy(analyzed, (a) => a.analysis.dominantAngle),
     formatDistribution: countBy(analyzed, (a) => a.analysis.format),
     emotionDistribution: countBy(analyzed, (a) => a.analysis.dominantEmotion),
@@ -279,6 +362,7 @@ export function analyzeAdBatch(ads) {
     withCreative: analyzed.filter((a) => a.analysis.hasCreative).length,
     withVideo: analyzed.filter((a) => a.analysis.videoCount > 0).length,
     withImages: analyzed.filter((a) => a.analysis.imageCount > 0).length,
+    usedClaude: isClaudeAvailable() && analyzed.some((a) => a.claudeAnalysis),
   };
 
   return { analyzed, summary };

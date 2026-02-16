@@ -230,13 +230,13 @@ describe('detectEmotionalRegister', () => {
 // ─── analyzeAd (full pipeline) ──────────────────────────────
 
 describe('analyzeAd', () => {
-  it('attaches full analysis to ad record', () => {
+  it('attaches full analysis to ad record', async () => {
     const ad = makeAd({
       primaryTexts: ['Are you tired of struggling with acne? Our clinically proven formula uses a patented ingredient to clear your skin in 14 days. Over 500,000 happy customers. Order now with free shipping and a 60-day money-back guarantee.'],
       headlines: ['Shop Now — Clear Skin Guaranteed'],
     });
 
-    const result = analyzeAd(ad);
+    const result = await analyzeAd(ad);
 
     assert.ok(result.analysis);
     assert.ok(result.analysis.hook);
@@ -248,9 +248,9 @@ describe('analyzeAd', () => {
     assert.equal(typeof result.analysis.wordCount, 'number');
   });
 
-  it('handles minimal ad text gracefully', () => {
+  it('handles minimal ad text gracefully', async () => {
     const ad = makeAd({ primaryTexts: ['Buy now.'], headlines: [] });
-    const result = analyzeAd(ad);
+    const result = await analyzeAd(ad);
     assert.ok(result.analysis);
     assert.equal(result.analysis.format, 'minimal');
   });
@@ -259,14 +259,14 @@ describe('analyzeAd', () => {
 // ─── analyzeAdBatch ─────────────────────────────────────────
 
 describe('analyzeAdBatch', () => {
-  it('analyzes a batch and produces summary stats', () => {
+  it('analyzes a batch and produces summary stats', async () => {
     const ads = [
       makeAd({ id: 'a1', primaryTexts: ['Are you struggling? Our clinically proven breakthrough formula works in 14 days.'], headlines: ['Shop Now'] }),
       makeAd({ id: 'a2', primaryTexts: ['I was skeptical but this product changed my story. My journey to clear skin started here.'], headlines: ['Learn More'] }),
       makeAd({ id: 'a3', primaryTexts: ['97% of users saw results. Trusted by millions of customers worldwide. Best seller rated.'], headlines: ['Get Started'] }),
     ];
 
-    const { analyzed, summary } = analyzeAdBatch(ads);
+    const { analyzed, summary } = await analyzeAdBatch(ads);
 
     assert.equal(analyzed.length, 3);
     assert.equal(summary.totalAnalyzed, 3);
