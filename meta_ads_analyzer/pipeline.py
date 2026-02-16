@@ -57,6 +57,10 @@ class Pipeline:
         self.save_checkpoints = pipeline_cfg.get("save_checkpoints", True)
         self.checkpoint_dir = Path(pipeline_cfg.get("checkpoint_dir", "output/checkpoints"))
 
+        # Enable debug screenshots if requested
+        if config.get("scraper", {}).get("debug", False):
+            self.scraper.debug_dir = Path("output/debug")
+
     async def run(
         self,
         query: str,

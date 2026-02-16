@@ -42,6 +42,7 @@ def run(
         None, "--format", "-f", help="Report format: markdown, json, html"
     ),
     log_level: str = typer.Option("INFO", "--log-level", "-l", help="Log level"),
+    debug: bool = typer.Option(False, "--debug", help="Save debug screenshots to output/debug/"),
 ):
     """Analyze ads for a single brand/keyword."""
     setup_logging(log_level)
@@ -53,6 +54,8 @@ def run(
     config.setdefault("scraper", {})["headless"] = headless
     if report_format:
         config.setdefault("reporting", {})["format"] = report_format
+    if debug:
+        config.setdefault("scraper", {})["debug"] = True
 
     console.print(f"\n[bold]Meta Ads Analyzer[/]")
     console.print(f"Query: [cyan]{query}[/]")

@@ -1,14 +1,41 @@
-"""Smoke tests - validate imports, config, models, filtering logic, and quality gates.
+"""Smoke tests - validate imports, config, models, filtering, quality gates, and scraper.
 
-Run with: python -m pytest tests/test_smoke.py -v
+Run all tests:
+    python -m pytest tests/test_smoke.py -v
+
+Run a specific section:
+    python -m pytest tests/test_smoke.py -v -k "filter"
+    python -m pytest tests/test_smoke.py -v -k "quality"
+    python -m pytest tests/test_smoke.py -v -k "scraper"
+    python -m pytest tests/test_smoke.py -v -k "db"
 """
 
 import asyncio
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+# Check for optional heavy dependencies (not available in CI)
+try:
+    import playwright  # noqa: F401
+    HAS_PLAYWRIGHT = True
+except ImportError:
+    HAS_PLAYWRIGHT = False
+
+try:
+    import anthropic  # noqa: F401
+    HAS_ANTHROPIC = True
+except ImportError:
+    HAS_ANTHROPIC = False
+
+needs_playwright = pytest.mark.skipif(not HAS_PLAYWRIGHT, reason="playwright not installed")
+needs_anthropic = pytest.mark.skipif(not HAS_ANTHROPIC, reason="anthropic not installed")
+needs_full_deps = pytest.mark.skipif(
+    not (HAS_PLAYWRIGHT and HAS_ANTHROPIC), reason="requires playwright + anthropic"
+)
 
 # ── Import tests ──
 
@@ -390,7 +417,7 @@ async def test_db_store_roundtrip():
             assert stats["ad_content"] == 1
 
 
-# ── Config env override test ──
+# ── Config tests ──
 
 
 def test_config_env_override(monkeypatch):
@@ -399,6 +426,15 @@ def test_config_env_override(monkeypatch):
     monkeypatch.setenv("META_ADS_SCRAPER_MAX_ADS", "200")
     config = load_config()
     assert config["scraper"]["max_ads"] == 200
+
+
+def test_config_env_nested_underscore_key(monkeypatch):
+    """Env vars with underscored keys like min_static_copy_words should work."""
+    from meta_ads_analyzer.utils.config import load_config
+
+    monkeypatch.setenv("META_ADS_FILTER_MIN_STATIC_COPY_WORDS", "300")
+    config = load_config()
+    assert config["filter"]["min_static_copy_words"] == 300
 
 
 # ── Report generation test ──
@@ -430,3 +466,110 @@ def test_report_markdown_generation():
     data = report.model_dump(mode="json")
     restored = PatternReport.model_validate(data)
     assert restored.total_ads_analyzed == 25
+
+
+# ── Scraper unit tests ──
+
+
+@needs_playwright
+def test_scraper_url_encoding():
+    """Verify search query is properly URL-encoded."""
+    from meta_ads_analyzer.scraper.meta_library import MetaAdsScraper
+
+    config = {"scraper": {"filters": {"country": "US", "status": "active", "ad_type": "all", "media_type": "all"}}}
+    scraper = MetaAdsScraper(config)
+
+    url = scraper._build_search_url("Athletic Greens")
+    assert "Athletic+Greens" in url or "Athletic%20Greens" in url
+    assert " " not in url.split("q=")[1]
+
+
+@needs_playwright
+def test_scraper_url_special_chars():
+    """Special characters in query should be encoded."""
+    from meta_ads_analyzer.scraper.meta_library import MetaAdsScraper
+
+    config = {"scraper": {"filters": {}}}
+    scraper = MetaAdsScraper(config)
+
+    url = scraper._build_search_url("AG1 (Athletic Greens)")
+    assert "(" not in url.split("q=")[1].split("&")[0]
+
+
+@needs_playwright
+def test_scraper_url_default_filters():
+    """URL should include correct default filter params."""
+    from meta_ads_analyzer.scraper.meta_library import MetaAdsScraper
+
+    config = {"scraper": {"filters": {}}}
+    scraper = MetaAdsScraper(config)
+
+    url = scraper._build_search_url("test")
+    assert "active_status=active" in url
+    assert "country=US" in url
+    assert "ad_type=all" in url
+
+
+@needs_playwright
+def test_scraper_debug_dir_default():
+    """Debug dir should be None by default."""
+    from meta_ads_analyzer.scraper.meta_library import MetaAdsScraper
+
+    config = {"scraper": {}}
+    scraper = MetaAdsScraper(config)
+    assert scraper.debug_dir is None
+
+
+@needs_playwright
+def test_scraper_generate_id_deterministic():
+    """Generated IDs should be deterministic for same content."""
+    from meta_ads_analyzer.scraper.meta_library import MetaAdsScraper
+
+    raw = {"page_name": "TestBrand", "primary_text": "Some ad copy here"}
+    id1 = MetaAdsScraper._generate_id(raw)
+    id2 = MetaAdsScraper._generate_id(raw)
+    assert id1 == id2
+    assert len(id1) == 16
+
+
+@needs_playwright
+def test_scraper_generate_id_different_content():
+    """Different content should produce different IDs."""
+    from meta_ads_analyzer.scraper.meta_library import MetaAdsScraper
+
+    id1 = MetaAdsScraper._generate_id({"page_name": "Brand1", "primary_text": "Copy A"})
+    id2 = MetaAdsScraper._generate_id({"page_name": "Brand2", "primary_text": "Copy B"})
+    assert id1 != id2
+
+
+# ── Pipeline wiring test ──
+
+
+@needs_full_deps
+def test_pipeline_debug_flag_wiring():
+    """Pipeline should set debug_dir on scraper when debug=True in config."""
+    from meta_ads_analyzer.pipeline import Pipeline
+
+    config = _make_pipeline_config(debug=True)
+    pipeline = Pipeline(config)
+    assert pipeline.scraper.debug_dir is not None
+    assert "debug" in str(pipeline.scraper.debug_dir)
+
+
+@needs_full_deps
+def test_pipeline_no_debug_by_default():
+    """Pipeline should NOT set debug_dir by default."""
+    from meta_ads_analyzer.pipeline import Pipeline
+
+    config = _make_pipeline_config(debug=False)
+    pipeline = Pipeline(config)
+    assert pipeline.scraper.debug_dir is None
+
+
+def _make_pipeline_config(debug: bool = False) -> dict:
+    """Create a minimal config for Pipeline instantiation tests."""
+    from meta_ads_analyzer.utils.config import load_config
+
+    config = load_config()
+    config.setdefault("scraper", {})["debug"] = debug
+    return config
