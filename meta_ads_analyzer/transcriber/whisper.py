@@ -45,6 +45,14 @@ class WhisperTranscriber:
                 # mlx_whisper uses model paths, not model objects
                 self._model = f"mlx-community/whisper-{self.model_size}-mlx"
                 self._backend = "mlx"
+                # MLX Whisper is not thread-safe (Metal GPU) — force sequential execution
+                if self.max_concurrent > 1:
+                    logger.info(
+                        "MLX backend: limiting concurrency to 1 (Metal GPU is not thread-safe)"
+                    )
+                    self.max_concurrent = 1
+                    self._executor.shutdown(wait=False)
+                    self._executor = ThreadPoolExecutor(max_workers=1)
                 logger.info("MLX Whisper model ready (Apple Silicon optimized)")
                 return
             except ImportError:
