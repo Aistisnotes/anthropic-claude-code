@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { chromium } from 'playwright';
 import { writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { config, ensureDataDirs } from '../utils/config.js';
@@ -8,14 +8,11 @@ import { log } from '../utils/logger.js';
  * Selective ad creative downloader.
  *
  * Takes selected ads (output of ad-selector) and fetches additional creative
- * data from Meta's snapshot URLs. Falls back gracefully to metadata-only when
- * snapshot fetches fail (common — Meta requires auth + rate limits snapshots).
- *
- * This is intentionally lightweight: we extract what we can from snapshot HTML
- * and enrich the ad record, rather than trying to render full creatives.
+ * data from Meta's snapshot URLs using Playwright browser automation.
+ * This avoids 403 errors from Meta's bot detection.
  */
 
-const SNAPSHOT_TIMEOUT_MS = 8000;
+const SNAPSHOT_TIMEOUT_MS = 30000;
 const DELAY_BETWEEN_FETCHES_MS = 800;
 
 /**
@@ -46,53 +43,83 @@ export async function downloadAdCreatives(selectedAds, opts = {}) {
 
   const enrichedAds = [];
 
-  for (let i = 0; i < selectedAds.length; i++) {
-    const ad = { ...selectedAds[i] };
-    ad.creative = {
-      imageUrls: [],
-      videoUrls: [],
-      ctaText: null,
-      landingPageUrl: null,
-      rawSnapshotHtml: null,
-      fetchStatus: 'pending',
-    };
+  // Launch browser once and reuse for all downloads
+  let browser = null;
+  let page = null;
 
-    if (!fetchSnapshots || !ad.snapshotUrl) {
-      ad.creative.fetchStatus = ad.snapshotUrl ? 'skipped' : 'no_url';
-      if (!ad.snapshotUrl) skippedNoUrl++;
-      enrichedAds.push(ad);
-      continue;
+  try {
+    if (fetchSnapshots && selectedAds.some(ad => ad.snapshotUrl)) {
+      browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--disable-blink-features=AutomationControlled',
+          '--disable-dev-shm-usage',
+          '--no-sandbox',
+        ],
+      });
+
+      const context = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        viewport: { width: 1920, height: 1080 },
+        locale: 'en-US',
+      });
+
+      page = await context.newPage();
     }
 
-    try {
-      const html = await fetchSnapshotHtml(ad.snapshotUrl);
-      const extracted = extractCreativeData(html);
-
+    for (let i = 0; i < selectedAds.length; i++) {
+      const ad = { ...selectedAds[i] };
       ad.creative = {
-        ...ad.creative,
-        ...extracted,
-        fetchStatus: 'success',
+        imageUrls: [],
+        videoUrls: [],
+        ctaText: null,
+        landingPageUrl: null,
+        rawSnapshotHtml: null,
+        fetchStatus: 'pending',
       };
 
-      // Save raw HTML for debugging/deep analysis
-      const htmlPath = join(outputDir, `${ad.id}.html`);
-      writeFileSync(htmlPath, html, 'utf-8');
+      if (!fetchSnapshots || !ad.snapshotUrl) {
+        ad.creative.fetchStatus = ad.snapshotUrl ? 'skipped' : 'no_url';
+        if (!ad.snapshotUrl) skippedNoUrl++;
+        enrichedAds.push(ad);
+        continue;
+      }
 
-      downloaded++;
-      log.dim(`  [${i + 1}/${selectedAds.length}] Downloaded ${ad.id}`);
-    } catch (err) {
-      ad.creative.fetchStatus = 'failed';
-      ad.creative.fetchError = err.message;
-      failed++;
-      log.dim(`  [${i + 1}/${selectedAds.length}] Failed ${ad.id}: ${err.message.slice(0, 60)}`);
+      try {
+        const html = await fetchSnapshotHtml(ad.snapshotUrl, page);
+        const extracted = extractCreativeData(html);
+
+        ad.creative = {
+          ...ad.creative,
+          ...extracted,
+          fetchStatus: 'success',
+        };
+
+        // Save raw HTML for debugging/deep analysis
+        const htmlPath = join(outputDir, `${ad.id}.html`);
+        writeFileSync(htmlPath, html, 'utf-8');
+
+        downloaded++;
+        log.dim(`  [${i + 1}/${selectedAds.length}] Downloaded ${ad.id}`);
+      } catch (err) {
+        ad.creative.fetchStatus = 'failed';
+        ad.creative.fetchError = err.message;
+        failed++;
+        log.dim(`  [${i + 1}/${selectedAds.length}] Failed ${ad.id}: ${err.message.slice(0, 60)}`);
+      }
+
+      // Rate limit
+      if (i < selectedAds.length - 1) {
+        await sleep(DELAY_BETWEEN_FETCHES_MS);
+      }
+
+      enrichedAds.push(ad);
     }
-
-    // Rate limit
-    if (i < selectedAds.length - 1) {
-      await sleep(DELAY_BETWEEN_FETCHES_MS);
+  } finally {
+    // Clean up browser
+    if (browser) {
+      await browser.close();
     }
-
-    enrichedAds.push(ad);
   }
 
   // Save enriched ad data as JSON
@@ -103,29 +130,27 @@ export async function downloadAdCreatives(selectedAds, opts = {}) {
 }
 
 /**
- * Fetch the HTML from a Meta ad snapshot URL.
- * Uses browser-style headers — no API token required.
+ * Fetch the HTML from a Meta ad snapshot URL using Playwright.
+ * Avoids 403 errors from Meta's bot detection.
  */
-async function fetchSnapshotHtml(url) {
-  const response = await axios.get(url, {
-    timeout: SNAPSHOT_TIMEOUT_MS,
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-    },
-    maxRedirects: 5,
-    // Don't throw on non-2xx — we want to handle gracefully
-    validateStatus: (status) => status < 500,
-  });
+async function fetchSnapshotHtml(url, page) {
+  try {
+    // Navigate to the ad snapshot page
+    await page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: SNAPSHOT_TIMEOUT_MS,
+    });
 
-  if (response.status !== 200) {
-    throw new Error(`HTTP ${response.status}`);
+    // Wait a bit for any dynamic content to load
+    await page.waitForTimeout(2000);
+
+    // Get the full HTML content
+    const html = await page.content();
+
+    return html;
+  } catch (err) {
+    throw new Error(`Failed to fetch snapshot: ${err.message}`);
   }
-
-  return typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
 }
 
 /**

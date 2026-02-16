@@ -42,6 +42,10 @@ export function classifyAd(ad, now = new Date()) {
 
   const impressionLower = ad.impressions?.lower || 0;
 
+  // Meta has removed impression data from public search results (all impressions = 0)
+  // When impressions are 0, treat as "unknown" rather than "low"
+  const hasImpressionData = impressionLower > 0;
+
   // --- SKIP RULES (evaluated first) ---
 
   // Skip: No launch date means we can't classify
@@ -55,7 +59,8 @@ export function classifyAd(ad, now = new Date()) {
   }
 
   // Skip: Failed tests (low impressions + older than 30 days)
-  if (impressionLower < lowMax && daysSinceLaunch > provenRecentMaxDays) {
+  // BUT: Only skip if we actually have impression data - don't penalize unknown impressions
+  if (hasImpressionData && impressionLower < lowMax && daysSinceLaunch > provenRecentMaxDays) {
     return { priority: null, label: 'SKIP', skipReason: 'failed_test' };
   }
 
@@ -66,32 +71,56 @@ export function classifyAd(ad, now = new Date()) {
 
   // --- PRIORITY ASSIGNMENT ---
 
-  // Priority 1: ACTIVE WINNERS — launched <14 days ago + high impressions
-  // These are ads the brand is actively scaling RIGHT NOW
-  if (daysSinceLaunch <= activeWinnerMaxDays && impressionLower >= highMin) {
-    return { priority: 1, label: 'ACTIVE_WINNER', skipReason: null };
-  }
+  // When impression data is available, use original priority logic
+  if (hasImpressionData) {
+    // Priority 1: ACTIVE WINNERS — launched <14 days ago + high impressions
+    // These are ads the brand is actively scaling RIGHT NOW
+    if (daysSinceLaunch <= activeWinnerMaxDays && impressionLower >= highMin) {
+      return { priority: 1, label: 'ACTIVE_WINNER', skipReason: null };
+    }
 
-  // Priority 2: PROVEN RECENT — launched <30 days ago + moderate-high impressions
-  // Recently proven angles that survived initial testing
-  if (daysSinceLaunch <= provenRecentMaxDays && impressionLower >= moderateMin) {
-    return { priority: 2, label: 'PROVEN_RECENT', skipReason: null };
-  }
+    // Priority 2: PROVEN RECENT — launched <30 days ago + moderate-high impressions
+    // Recently proven angles that survived initial testing
+    if (daysSinceLaunch <= provenRecentMaxDays && impressionLower >= moderateMin) {
+      return { priority: 2, label: 'PROVEN_RECENT', skipReason: null };
+    }
 
-  // Priority 3: STRATEGIC DIRECTION — launched <7 days ago (any impression level)
-  // Brand new tests showing where the brand is heading
-  if (daysSinceLaunch <= strategicDirectionMaxDays) {
-    return { priority: 3, label: 'STRATEGIC_DIRECTION', skipReason: null };
-  }
+    // Priority 3: STRATEGIC DIRECTION — launched <7 days ago (any impression level)
+    // Brand new tests showing where the brand is heading
+    if (daysSinceLaunch <= strategicDirectionMaxDays) {
+      return { priority: 3, label: 'STRATEGIC_DIRECTION', skipReason: null };
+    }
 
-  // Priority 4: RECENT MODERATE — launched <60 days ago + high impressions
-  // Still relevant but less strategic signal
-  if (daysSinceLaunch <= recentModerateMaxDays && impressionLower >= highMin) {
-    return { priority: 4, label: 'RECENT_MODERATE', skipReason: null };
+    // Priority 4: RECENT MODERATE — launched <60 days ago + high impressions
+    // Still relevant but less strategic signal
+    if (daysSinceLaunch <= recentModerateMaxDays && impressionLower >= highMin) {
+      return { priority: 4, label: 'RECENT_MODERATE', skipReason: null };
+    }
+  } else {
+    // When impressions are unavailable (Meta removed public access),
+    // fall back to recency-based classification
+    // Priority 1: Very recent ads (<14 days) - likely being actively tested
+    if (daysSinceLaunch <= activeWinnerMaxDays) {
+      return { priority: 1, label: 'ACTIVE_WINNER', skipReason: null };
+    }
+
+    // Priority 2: Recent ads (<30 days) - recently launched campaigns
+    if (daysSinceLaunch <= provenRecentMaxDays) {
+      return { priority: 2, label: 'PROVEN_RECENT', skipReason: null };
+    }
+
+    // Priority 3: Moderate age (<60 days) - still relevant
+    if (daysSinceLaunch <= recentModerateMaxDays) {
+      return { priority: 3, label: 'STRATEGIC_DIRECTION', skipReason: null };
+    }
+
+    // Priority 4: Older but not legacy (<180 days)
+    if (daysSinceLaunch < skipOlderThanDays) {
+      return { priority: 4, label: 'RECENT_MODERATE', skipReason: null };
+    }
   }
 
   // Everything else: doesn't meet any priority criteria
-  // Older than 7 days with low impressions, or 30-60 days with moderate impressions
   return { priority: null, label: 'SKIP', skipReason: 'below_threshold' };
 }
 
