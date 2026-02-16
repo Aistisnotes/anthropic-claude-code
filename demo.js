@@ -1,6 +1,8 @@
 'use strict';
 
-const { AdType, filterAds, countWords } = require('./src/adFilter');
+const { AdType, resolveAdCopy, filterAds, countWords, MIN_TRANSCRIPT_WORDS_STATIC } = require('./src/adFilter');
+
+const verbose = process.argv.includes('--verbose') || process.argv.includes('-v');
 
 // Helper: generate filler transcript of N words
 function makeTranscript(n) {
@@ -24,36 +26,56 @@ const sampleAds = [
   { id: 'video-4',  type: AdType.VIDEO,  name: 'Whitespace transcript', transcript: '   \t\n  ' },
 ];
 
-console.log('=== Ad Filter Demo ===\n');
+console.log('=== Ad Filter Demo ===');
+console.log(`Tip: run with --verbose or -v to see full transcripts\n`);
 console.log(`Input: ${sampleAds.length} ads\n`);
+
+const kept = filterAds(sampleAds);
+const keptIds = new Set(kept.map(a => a.id));
 
 for (const ad of sampleAds) {
   const wc = countWords(ad.transcript);
-  console.log(`  [${ad.type.padEnd(6)}] ${ad.id.padEnd(12)} "${ad.name}" — transcript: ${wc} words`);
-}
+  const resolved = resolveAdCopy(ad);
+  const status = resolved ? '+' : 'x';
+  let reason;
 
-console.log('\n--- Running filter ---\n');
+  if (resolved) {
+    reason = `KEPT (source: ${resolved.source})`;
+  } else if (ad.type === AdType.STATIC) {
+    reason = `SKIPPED — transcript ${wc} words (need ${MIN_TRANSCRIPT_WORDS_STATIC})`;
+  } else if (ad.type === AdType.VIDEO && wc === 0) {
+    reason = `SKIPPED — empty transcript, no fallback`;
+  } else {
+    reason = `SKIPPED`;
+  }
 
-const start = performance.now();
-const kept = filterAds(sampleAds);
-const elapsed = (performance.now() - start).toFixed(3);
+  console.log(`  ${status} [${ad.type.padEnd(6)}] ${ad.id.padEnd(12)} "${ad.name}"`);
+  console.log(`    words: ${wc} | ${reason}`);
 
-console.log(`Kept ${kept.length} of ${sampleAds.length} ads (${elapsed}ms)\n`);
-
-for (const ad of kept) {
-  const preview = ad.resolvedCopy.text.length > 60
-    ? ad.resolvedCopy.text.slice(0, 57) + '...'
-    : ad.resolvedCopy.text;
-  console.log(`  + ${ad.id.padEnd(12)} source=${ad.resolvedCopy.source.padEnd(12)} "${preview}"`);
-}
-
-const keptIds = new Set(kept.map(a => a.id));
-const rejected = sampleAds.filter(a => !keptIds.has(a.id));
-if (rejected.length) {
-  console.log('');
-  for (const ad of rejected) {
-    console.log(`  x ${ad.id.padEnd(12)} SKIPPED  "${ad.name}"`);
+  if (verbose) {
+    const raw = ad.transcript;
+    if (raw === null || raw === undefined) {
+      console.log(`    transcript: (null)`);
+    } else if (raw.trim().length === 0) {
+      console.log(`    transcript: (empty)`);
+    } else {
+      console.log(`    transcript:`);
+      // Wrap long transcripts at ~80 chars per line, indented
+      const lines = raw.trim().match(/.{1,76}/g) || [];
+      for (const line of lines) {
+        console.log(`      ${line}`);
+      }
+    }
+    if (resolved) {
+      console.log(`    resolved copy:`);
+      const copyLines = resolved.text.match(/.{1,76}/g) || [];
+      for (const line of copyLines) {
+        console.log(`      ${line}`);
+      }
+    }
+    console.log('');
   }
 }
 
+console.log(`\nResult: kept ${kept.length} of ${sampleAds.length} ads`);
 console.log('\n=== Done ===');
