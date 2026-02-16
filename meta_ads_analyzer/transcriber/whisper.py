@@ -45,6 +45,15 @@ class WhisperTranscriber:
                 # mlx_whisper uses model paths, not model objects
                 self._model = f"mlx-community/whisper-{self.model_size}-mlx"
                 self._backend = "mlx"
+                # MLX Whisper is NOT thread-safe — concurrent Metal GPU access
+                # causes SIGABRT/SIGSEGV. Force sequential execution.
+                if self.max_concurrent > 1:
+                    logger.info(
+                        "MLX backend detected: forcing max_concurrent=1 "
+                        "(Metal GPU is not thread-safe)"
+                    )
+                    self.max_concurrent = 1
+                    self._executor = ThreadPoolExecutor(max_workers=1)
                 logger.info("MLX Whisper model ready (Apple Silicon optimized)")
                 return
             except ImportError:
@@ -158,13 +167,18 @@ class WhisperTranscriber:
             if self._backend == "mlx":
                 import mlx_whisper
 
-                result = mlx_whisper.transcribe(
-                    file_path,
-                    path_or_hf_repo=self._model,
-                    language=self.language,
-                    verbose=False,
-                )
-                return result
+                try:
+                    result = mlx_whisper.transcribe(
+                        file_path,
+                        path_or_hf_repo=self._model,
+                        language=self.language,
+                        verbose=False,
+                    )
+                    return result
+                except (OSError, RuntimeError) as e:
+                    # Metal GPU errors can surface as OSError or RuntimeError
+                    logger.error(f"MLX Whisper Metal error for {file_path}: {e}")
+                    return None
 
             else:
                 # openai-whisper
