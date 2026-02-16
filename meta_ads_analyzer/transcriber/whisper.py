@@ -166,13 +166,18 @@ class WhisperTranscriber:
             if self._backend == "mlx":
                 import mlx_whisper
 
-                result = mlx_whisper.transcribe(
-                    file_path,
-                    path_or_hf_repo=self._model,
-                    language=self.language,
-                    verbose=False,
-                )
-                return result
+                try:
+                    result = mlx_whisper.transcribe(
+                        file_path,
+                        path_or_hf_repo=self._model,
+                        language=self.language,
+                        verbose=False,
+                    )
+                    return result
+                except (OSError, RuntimeError) as e:
+                    # Metal GPU errors can surface as OSError or RuntimeError
+                    logger.error(f"MLX Whisper Metal error for {file_path}: {e}")
+                    return None
 
             else:
                 # openai-whisper
