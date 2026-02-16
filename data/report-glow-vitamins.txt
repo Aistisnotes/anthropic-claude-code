@@ -1,9 +1,9 @@
-==========================================================================
+==============================================================================
   DR FRAMEWORK ANALYSIS: GLOW VITAMINS
-==========================================================================
+==============================================================================
 
 1. FILTER RESULTS
---------------------------------------------------------------------------
+------------------------------------------------------------------------------
   Total ads ingested:  13
   Ads kept:            7 (54%)
   Ads skipped:         6
@@ -14,88 +14,126 @@
     - gv-s05 (static): transcript 433 words (need 500)
     - gv-s06 (static): transcript 10 words (need 500)
 
-2. TARGET CUSTOMER
---------------------------------------------------------------------------
-  ingredient-aware researcher     5/7 ads ( 71%)  ##############
-  parent                          3/7 ads ( 43%)  #########
-  professional                    2/7 ads ( 29%)  ######
-  aging adult                     2/7 ads ( 29%)  ######
-  health-conscious optimizer      2/7 ads ( 29%)  ######
-  age-specific                    1/7 ads ( 14%)  ###
-  women                           1/7 ads ( 14%)  ###
-  men                             1/7 ads ( 14%)  ###
-  skeptic / tried-everything      1/7 ads ( 14%)  ###
-  fitness-oriented                1/7 ads ( 14%)  ###
+2. TARGET CUSTOMER (Synthesized Avatars)
+------------------------------------------------------------------------------
+
+  Per-ad avatar:
+    gv-s01: busy / time-pressed parent and professional and aging adult, experiencing energy & fatigue, sleep, cognitive & focus, who has tried multiple products without lasting results and health-conscious / actively optimizing
+    gv-s02: healthcare professional, experiencing sleep, cognitive & focus, stress & mood, who health-conscious / actively optimizing and evaluates ingredients, dosage, and testing
+    gv-s04: 42-year-old, over 40, mother and father and professional and healthcare professional, experiencing energy & fatigue, sleep, cognitive & focus, who skeptical of supplements after past disappointments and has tried multiple products without lasting results
+    gv-v01: healthcare professional, experiencing energy & fatigue, tried everything / past failures, who evaluates ingredients, dosage, and testing
+    gv-v02: busy / time-pressed mother, experiencing energy & fatigue, sleep, who skeptical of supplements after past disappointments and influenced by trusted personal referral
+    gv-v06: who evaluates ingredients, dosage, and testing
+    gv-v07: fitness-oriented, experiencing sleep, physical (muscle, joint, inflammation), who influenced by trusted personal referral
+
+  Cross-ad demographic patterns:
+    healthcare professional      3/7 ads (43%)
+    professional                 2/7 ads (29%)
+    busy / time-pressed          2/7 ads (29%)
+    mother                       2/7 ads (29%)
+    parent                       1/7 ads (14%)
+    aging adult                  1/7 ads (14%)
+    father                       1/7 ads (14%)
+    42-year-old                  1/7 ads (14%)
+    over 40                      1/7 ads (14%)
+    fitness-oriented             1/7 ads (14%)
+
+  Cross-ad psychographic patterns:
+    5/7 (71%): evaluates ingredients, dosage, and testing
+    3/7 (43%): influenced by trusted personal referral
+    2/7 (29%): has tried multiple products without lasting results
+    2/7 (29%): health-conscious / actively optimizing
+    2/7 (29%): skeptical of supplements after past disappointments
 
 3. MASS DESIRE
---------------------------------------------------------------------------
-  Sleeping well and waking rested             5/7 ( 71%)  ##############
-  Having consistent energy and vitality       3/7 ( 43%)  #########
-  Mental clarity and sharp focus              3/7 ( 43%)  #########
-  Being present and active for family         3/7 ( 43%)  #########
-  Peak physical performance and recovery      2/7 ( 29%)  ######
-  Trusting what you put in your body          2/7 ( 29%)  ######
-  Overall health and wellness                 1/7 ( 14%)  ###
+------------------------------------------------------------------------------
+  PRIMARY: "Sleeping well and waking rested"
+           5/7 ads (71%)
 
-4. PAIN POINTS & SYMPTOMS
---------------------------------------------------------------------------
-  [2x] brain fog
-  [2x] 2 pm
-  [1x] energy crash
-  [1x] mental clarity
-  [1x] aging
-  [1x] poor sleep
-  [1x] anxiety
-  [1x] muscle cramps
-  [1x] digestive
-  [1x] gi discomfort
-  [1x] joint stiffness
-  [1x] inflammation
-  [1x] skeptical
-  [1x] chronic fatigue
-  [1x] burned out
-  [1x] exhausted
-  [1x] frustrated
-  [1x] soreness
+  Secondary desires:
+    Mental clarity and sharp focus             3/7 (43%)
+    Having consistent energy and vitality      3/7 (43%)
+    Being present and active for family        3/7 (43%)
+    Trusting what you put in your body         2/7 (29%)
+    Peak physical performance and recovery     2/7 (29%)
+    Overall health and wellness                1/7 (14%)
 
-5. ROOT CAUSE
---------------------------------------------------------------------------
-  Ads with root cause signals: 5/7 (71%)
-  Top villain / root cause signals:
-    [2x] the supplement industry
-    [2x] bioavailable
-    [1x] hormonal balance
-    [1x] cellular
-    [1x] mitochondrial
-    [1x] gut microbiome
-    [1x] generic
-    [1x] deficiency
-    [1x] bioavailability
-    [1x] dissolve
-    [1x] absorbed
-    [1x] cheap
-    [1x] inflammation
-    [1x] underdosed
-    [1x] poorly sourced
+4. PAIN POINTS & SYMPTOMS (by category)
+------------------------------------------------------------------------------
+  Sleep                                    5/7 ads (71%)  ##############
+    Signals: sleep quality (2x), poor sleep (1x), sleeping through (1x), waking at 3 (1x), fall asleep (1x)
+  Energy & Fatigue                         4/7 ads (57%)  ###########
+    Signals: 2 pm (2x), energy crashes (1x), chronic fatigue (1x), collapsing (1x), burned out (1x)
+  Cognitive & Focus                        3/7 ads (43%)  #########
+    Signals: brain fog (2x), cognitive (1x), mental clarity (1x)
+  Tried everything / past failures         3/7 ads (43%)  #########
+    Signals: tried over a dozen (1x), nothing else came close (1x), skeptical (1x), tried countless (1x), medicine cabinet (1x)
+  Physical (Muscle, Joint, Inflammation)   3/7 ads (43%)  #########
+    Signals: muscle cramps (1x), muscle tension (1x), joint stiffness (1x), inflammation (1x), soreness (1x)
+  Appearance (Skin, Hair, Aging)           1/7 ads (14%)  ###
+    Signals: aging (1x), skin health (1x), hair growth (1x)
+  Stress & Mood                            1/7 ads (14%)  ###
+    Signals: anxiety (1x), mood stability (1x)
+  Digestive                                1/7 ads (14%)  ###
+    Signals: digestive (1x), stomach (1x), gi discomfort (1x)
 
-6. MECHANISM (The "New Mechanism")
---------------------------------------------------------------------------
-  Ads with mechanism signals: 4/7 (57%)
-  Top mechanism signals:
-    [2x] designed to
-    [1x] proprietary
-    [1x] full-spectrum
-    [1x] what sets glow vitamins apart
-    [1x] synergistic
-    [1x] paired it with
-    [1x] cofactors
-    [1x] chelated
-    [1x] that's exactly
+5. ROOT CAUSE (Villain Narrative)
+------------------------------------------------------------------------------
+  Ads with root cause narrative: 4/7 (57%)
+
+  Villain types:
+    Industry / system blame              3 ads
+    Hidden nutritional deficiency        1 ads
+
+  Actual villain sentences from ad copy:
+    [gv-s01] "The supplement industry is full of empty promises and flashy marketing."
+    [gv-s01] "Your body deserves better than generic multivitamins."
+    [gv-s02] "Magnesium is one of the most critical minerals in the human body, yet studies show that nearly 50% of Americans do no..."
+    [gv-s02] "We also test every finished batch for dissolution rates because a supplement that does not dissolve properly in your ..."
+    [gv-s02] "Dr. Emily Chen, a naturopathic physician who advises our formulation team, explains it this way: most supplement comp..."
+    [gv-v01] "As a physician, I knew most products on the market were underdosed, poorly sourced, or filled with unnecessary fillers."
+    [gv-v06] "Modern agriculture has depleted soil minerals."
+    [gv-v06] "And chronic stress burns through magnesium faster than most people realize."
+
+6. MECHANISM (Causal Chain Analysis)
+------------------------------------------------------------------------------
+  Ads with mechanism: 4/7 (57%)
+  Ads with COMPLETE chain (all 5 steps): 2/7
+
+  Most commonly missing chain steps:
+    "Root cause (villain)" — missing in 3/7 ads
+    "How this works" — missing in 3/7 ads
+    "Why others fail" — missing in 3/7 ads
+    "Problem state" — missing in 1/7 ads
+    "Outcome" — missing in 1/7 ads
+
+  Best chain example (gv-s01 - "Longevity blog post"):
+    Step 1 — The problem:
+      "Improved sleep quality, fewer afternoon energy crashes, and a general
+      sense of vitality that they had been missing."
+    Step 2 — Why it happens (the villain):
+      "The supplement industry is full of empty promises and flashy
+      marketing."
+      "Your body deserves better than generic multivitamins."
+    Step 3 — Why other solutions fail:
+      "One customer, Sarah from Austin, wrote to us saying she had tried over
+      a dozen supplement brands before finding Glow and that nothing els..."
+    Step 4 — How this mechanism works:
+      "We also integrated bioavailable zinc, selenium, and a full-spectrum
+      B-complex to support immune resilience and cognitive clarity."
+      "What sets Glow Vitamins apart from the crowded supplement market is our
+      commitment to third-party testing."
+    Step 5 — The outcome:
+      "Clinical trials conducted with over 1,200 participants showed a 34%
+      improvement in energy levels after just 30 days of consistent use."
+      "We offer a 90-day money-back guarantee because we are confident you
+      will feel the difference."
 
 7. PRODUCT DELIVERY MECHANISM
---------------------------------------------------------------------------
-  [5x] magnesium
+------------------------------------------------------------------------------
+  [4x] magnesium
   [3x] third-party test
+  [2x] magnesium glycinate
   [2x] vitamin d3
   [2x] mushroom
   [2x] certified
@@ -108,180 +146,189 @@
   [1x] reishi
   [1x] zinc
   [1x] selenium
-  [1x] b-complex
 
 8. MARKET SOPHISTICATION STRATEGY
---------------------------------------------------------------------------
+------------------------------------------------------------------------------
   New Information       3/7 ads ( 43%)  #########
   None detected         3/7 ads ( 43%)  #########
   New Identity          1/7 ads ( 14%)  ###
 
 9. CUSTOMER AWARENESS STAGE
---------------------------------------------------------------------------
-  Unaware               2/7 ads ( 29%)  ######
-  Solution-Aware        2/7 ads ( 29%)  ######
-  Most Aware            1/7 ads ( 14%)  ###
-  Problem-Aware         1/7 ads ( 14%)  ###
-  Unknown               1/7 ads ( 14%)  ###
+------------------------------------------------------------------------------
+  WARNING: No dominant awareness stage (60%+ threshold not met)
 
-10. BIG IDEA / CREATIVE ANGLES
---------------------------------------------------------------------------
-  Science / data-driven education       3/7 ( 43%)  #########
-  Founder / authority narrative         3/7 ( 43%)  #########
-  Customer story / social proof         2/7 ( 29%)  ######
-  Competitive comparison                2/7 ( 29%)  ######
-  UGC / authentic voice                 1/7 ( 14%)  ###
-  Expert Q&A / objection handling       1/7 ( 14%)  ###
+  Stage distribution:
+    Unaware              2/7 (29%)  ######
+    Solution-Aware       2/7 (29%)  ######
+    Most Aware           1/7 (14%)  ###
+    Problem-Aware        1/7 (14%)  ###
+    Unknown              1/7 (14%)  ###
 
-11. FRAMEWORK COMPLETENESS (QA)
---------------------------------------------------------------------------
+  This brand splits awareness targeting across multiple stages.
+  Recommend consolidating around 1-2 primary stages for stronger
+  creative consistency.
+
+10. BIG IDEA
+------------------------------------------------------------------------------
+  Per-ad concept synthesis:
+    gv-s01: People suffering from energy & fatigue because of industry / system blame can finally achieve mental clarity and sharp focus through a properly designed mechanism
+           Style: Customer story / testimonial
+    gv-s02: People suffering from sleep because of industry / system blame can finally achieve sleeping well and waking rested through a properly designed mechanism
+           Style: Head-to-head comparison
+    gv-s04: People experiencing energy & fatigue find relief (root cause and mechanism not articulated — weak narrative arc)
+           Style: Customer story / testimonial
+    gv-v01: People suffering from energy & fatigue because of industry / system blame can finally achieve results through a properly designed mechanism
+           Style: Founder / authority narrative
+    gv-v02: People experiencing energy & fatigue find relief (root cause and mechanism not articulated — weak narrative arc)
+           Style: UGC / authentic voice
+    gv-v06: Big idea not clearly articulated — ad lacks a strong pain-to-outcome narrative arc
+           Style: Expert Q&A / objection handling
+    gv-v07: People experiencing sleep find relief (root cause and mechanism not articulated — weak narrative arc)
+           Style: Unclear
+
+  Creative style distribution:
+    Customer story / testimonial         2/7 (29%)  ######
+    Science / data-driven education      2/7 (29%)  ######
+    Expert Q&A / objection handling      2/7 (29%)  ######
+    Head-to-head comparison              1/7 (14%)  ###
+    Founder / authority narrative        1/7 (14%)  ###
+    UGC / authentic voice                1/7 (14%)  ###
+
+11. STRATEGIC GAPS / LOOPHOLES
+------------------------------------------------------------------------------
+  No systematic gaps detected by ad type.
+
+12. FRAMEWORK COMPLETENESS (QA)
+------------------------------------------------------------------------------
   Elements: Target Customer | Mass Desire | Pain Points | Root Cause | Mechanism | Product Delivery
 
   gv-s01       ###### 6/6 (100%)  "Longevity blog post"
   gv-s02       ###### 6/6 (100%)  "Ingredient deep-dive"
-  gv-s04       #####. 5/6 (83%)  "Customer story feature"
+  gv-s04       ####.. 4/6 (67%)  "Customer story feature"
+               MISSING: Root Cause, Mechanism
   gv-v01       #####. 5/6 (83%)  "Founder story 60s"
+               MISSING: Mass Desire
   gv-v02       ###... 3/6 (50%)  "UGC testimonial - busy mom"
+               MISSING: Root Cause, Mechanism, Product Delivery
   gv-v06       #####. 5/6 (83%)  "Doctor Q&A - supplements 101"
+               MISSING: Pain Points
   gv-v07       ####.. 4/6 (67%)  "Gym performance spot"
+               MISSING: Root Cause, Mechanism
 
-12. PER-AD FRAMEWORK DETAIL
---------------------------------------------------------------------------
+13. PER-AD MECHANISM CHAINS
+------------------------------------------------------------------------------
   gv-s01 - "Longevity blog post" (static, 548 words)
+    Step 1 — The problem:
+      "Improved sleep quality, fewer afternoon energy crashes, and a general
+      sense of vitality that they had been missing."
+    Step 2 — Why it happens (the villain):
+      "The supplement industry is full of empty promises and flashy
+      marketing."
+      "Your body deserves better than generic multivitamins."
+    Step 3 — Why other solutions fail:
+      "One customer, Sarah from Austin, wrote to us saying she had tried over
+      a dozen supplement brands before finding Glow ..."
+    Step 4 — How this mechanism works:
+      "We also integrated bioavailable zinc, selenium, and a full-spectrum
+      B-complex to support immune resilience and cognit..."
+      "What sets Glow Vitamins apart from the crowded supplement market is our
+      commitment to third-party testing."
+    Step 5 — The outcome:
+      "Clinical trials conducted with over 1,200 participants showed a 34%
+      improvement in energy levels after just 30 days o..."
+      "We offer a 90-day money-back guarantee because we are confident you
+      will feel the difference."
 
-    Target Customer:    parent, professional, aging adult, health-conscious optimizer, ingredient-aware researcher
-    Mass Desire:        Having consistent energy and vitality, Sleeping well and waking rested, Mental clarity and sharp focus, Overall health and wellness, Peak physical performance and recovery, Trusting what you put in your body, Being present and active for family
-    Pain Points:        energy crash | mental clarity | aging
-
-    Root Cause:         YES
-      Signals:          The supplement industry | hormonal balance | cellular | mitochondrial | gut microbiome | bioavailable | generic
-
-    Mechanism:          YES
-      Signals:          designed to | proprietary | full-spectrum | What sets Glow Vitamins apart
-
-    Product Delivery:   YES
-      Signals:          CoQ10 | magnesium | vitamin D3 | adaptogen | mushroom | lion's mane | reishi | zinc | selenium | B-complex | third-party test | independent lab | certified | Every batch | purity | potency | heavy metals
-
-    Sophistication:     Stage 4 / New Information
-    Awareness Stage:    Most Aware
-    Creative Angles:    Customer story / social proof, Science / data-driven education, Competitive comparison
-
---------------------------------------------------------------------------
+------------------------------------------------------------------------------
   gv-s02 - "Ingredient deep-dive" (static, 528 words)
+    Step 1 — The problem:
+      "This deficiency manifests in ways most people never connect to
+      magnesium: poor sleep, muscle cramps, anxiety, brain f..."
+    Step 2 — Why it happens (the villain):
+      "Magnesium is one of the most critical minerals in the human body, yet
+      studies show that nearly 50% of Americans do no..."
+      "We also test every finished batch for dissolution rates because a
+      supplement that does not dissolve properly in your ..."
+    Step 3 — Why other solutions fail:
+      "If you have been taking magnesium and not noticing results, the form
+      matters more than you think."
+    Step 4 — How this mechanism works:
+      "At Glow Vitamins, we chose magnesium glycinate as our preferred form
+      because it offers superior bioavailability compa..."
+      "Our Glow Daily formula contains 400mg of elemental magnesium from
+      glycinate, which meets the recommended daily allowa..."
+    Step 5 — The outcome:
+      "Eighty-two percent report better sleep within the first month."
 
-    Target Customer:    health-conscious optimizer, ingredient-aware researcher
-    Mass Desire:        Sleeping well and waking rested, Mental clarity and sharp focus
-    Pain Points:        poor sleep | brain fog | anxiety | muscle cramps | digestive | GI discomfort
-
-    Root Cause:         YES
-      Signals:          deficiency | bioavailability | dissolve | absorbed | cheap
-
-    Mechanism:          YES
-      Signals:          synergistic | paired it with | cofactors | chelated
-
-    Product Delivery:   YES
-      Signals:          Magnesium | vitamin D3 | vitamin K2 | 400mg | 5000 IU | capsule | certified | certificate of analysis | dissolution rate | facility in | low-temperature | encapsulation
-
-    Sophistication:     Stage 3 / New Information
-    Awareness Stage:    Unaware
-    Creative Angles:    Science / data-driven education, Competitive comparison
-
---------------------------------------------------------------------------
+------------------------------------------------------------------------------
   gv-s04 - "Customer story feature" (static, 539 words)
+    Step 1 — The problem:
+      "By day ten, he noticed something subtle but significant: he was not
+      reaching for his third cup of coffee at 2 PM."
+      "And on weekends, instead of collapsing on the couch after the kids went
+      to bed, he found himself with energy to spare."
+    Step 3 — Why other solutions fail:
+      "As a 42-year-old project manager and father of two, he had tried
+      countless supplements over the years, each promising..."
+      "None delivered lasting results."
+    Step 5 — The outcome:
+      "By week three, the change was undeniable."
+      "He was sleeping through the night without waking at 3 AM."
+    MISSING: Root cause (villain), How this works
 
-    Target Customer:    parent, age-specific, professional, aging adult, women, men, skeptic / tried-everything, ingredient-aware researcher
-    Mass Desire:        Having consistent energy and vitality, Mental clarity and sharp focus, Trusting what you put in your body, Being present and active for family
-    Pain Points:        brain fog | joint stiffness | inflammation | skeptical | 2 PM | chronic fatigue
-
-    Root Cause:         YES
-      Signals:          inflammation
-
-    Mechanism:          NO
-
-    Product Delivery:   YES
-      Signals:          vitamin D | magnesium | vitamin t | capsule | every batch
-
-    Sophistication:     Stage 3 / New Information
-    Awareness Stage:    Solution-Aware
-    Creative Angles:    Customer story / social proof, Science / data-driven education
-
---------------------------------------------------------------------------
+------------------------------------------------------------------------------
   gv-v01 - "Founder story 60s" (video, 82 words)
+    Step 1 — The problem:
+      "Three years ago, I was burned out, exhausted, and frustrated with the
+      supplement industry."
+    Step 2 — Why it happens (the villain):
+      "As a physician, I knew most products on the market were underdosed,
+      poorly sourced, or filled with unnecessary fillers."
+    Step 4 — How this mechanism works:
+      "Every ingredient is clinically dosed, third-party tested, and designed
+      to actually work."
+    Step 5 — The outcome:
+      "Try Glow Daily and feel the difference."
+    MISSING: Why others fail
 
-    Target Customer:    ingredient-aware researcher
-    Mass Desire:        none detected
-    Pain Points:        burned out | exhausted | frustrated
-
-    Root Cause:         YES
-      Signals:          the supplement industry | underdosed | poorly sourced | fillers
-
-    Mechanism:          YES
-      Signals:          designed to
-
-    Product Delivery:   YES
-      Signals:          third-party test
-
-    Sophistication:     Stage 3 / None detected
-    Awareness Stage:    Problem-Aware
-    Creative Angles:    Founder / authority narrative
-
---------------------------------------------------------------------------
+------------------------------------------------------------------------------
   gv-v02 - "UGC testimonial - busy mom" (video, 125 words)
+    Step 1 — The problem:
+      "I'm a mom of three, I work full time, and by 2 PM every day I was just
+      done."
+      "Like, could not function."
+    Step 3 — Why other solutions fail:
+      "My friend told me about Glow Daily and I was like, sure, another
+      supplement, whatever."
+    Step 5 — The outcome:
+      "Okay so I have to tell you about these vitamins because they literally
+      changed my life."
+      "I actually have energy to play with my kids after work now."
+    MISSING: Root cause (villain), How this works
 
-    Target Customer:    parent
-    Mass Desire:        Having consistent energy and vitality, Sleeping well and waking rested, Being present and active for family
-    Pain Points:        2 PM
-
-    Root Cause:         NO
-
-    Mechanism:          NO
-
-    Product Delivery:   NO
-
-    Sophistication:     Stage 3 / None detected
-    Awareness Stage:    Solution-Aware
-    Creative Angles:    Founder / authority narrative, UGC / authentic voice
-
---------------------------------------------------------------------------
+------------------------------------------------------------------------------
   gv-v06 - "Doctor Q&A - supplements 101" (video, 137 words)
+    Step 2 — Why it happens (the villain):
+      "Modern agriculture has depleted soil minerals."
+      "And chronic stress burns through magnesium faster than most people
+      realize."
+    Step 4 — How this mechanism works:
+      "So for the vast majority of adults, a well-designed supplement protocol
+      can fill critical gaps."
+      "That's exactly what we built into Glow Daily."
+    MISSING: Problem state, Why others fail, Outcome
 
-    Target Customer:    ingredient-aware researcher
-    Mass Desire:        Sleeping well and waking rested
-    Pain Points:        none detected
-
-    Root Cause:         YES
-      Signals:          depleted | bioavailable | Modern agriculture | soil minerals
-
-    Mechanism:          YES
-      Signals:          That's exactly
-
-    Product Delivery:   YES
-      Signals:          vitamin D | magnesium | third-party test
-
-    Sophistication:     Stage 5 / New Identity
-    Awareness Stage:    Unaware
-    Creative Angles:    Expert Q&A / objection handling
-
---------------------------------------------------------------------------
+------------------------------------------------------------------------------
   gv-v07 - "Gym performance spot" (video, 104 words)
+    Step 1 — The problem:
+      "Less soreness after heavy sessions, better sleep quality, and my joints
+      feel smoother than they have in years."
+    Step 5 — The outcome:
+      "The recovery difference was noticeable within the first week."
+    MISSING: Root cause (villain), Why others fail, How this works
 
-    Target Customer:    fitness-oriented
-    Mass Desire:        Sleeping well and waking rested, Peak physical performance and recovery
-    Pain Points:        soreness
+------------------------------------------------------------------------------
 
-    Root Cause:         NO
-
-    Mechanism:          NO
-
-    Product Delivery:   YES
-      Signals:          magnesium | mushroom
-
-    Sophistication:     Stage 3 / None detected
-    Awareness Stage:    Unknown
-    Creative Angles:    Founder / authority narrative
-
---------------------------------------------------------------------------
-
-==========================================================================
+==============================================================================
   END OF REPORT
-==========================================================================
+==============================================================================
