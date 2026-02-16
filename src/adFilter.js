@@ -1,7 +1,5 @@
 'use strict';
 
-const videoAnalyzer = require('./videoAnalyzer');
-
 const MIN_TRANSCRIPT_WORDS_STATIC = 500;
 
 const AdType = {
@@ -29,17 +27,10 @@ function countWords(transcript) {
  *
  * Rules:
  * - Static ads require a transcript with at least 500 words.
- *   If the transcript is below the minimum, the ad is rejected (returns null).
  * - Video ads with a non-empty transcript use the transcript as copy.
- * - Video ads with a zero-word transcript attempt visual extraction
- *   (overlay text, headlines, scene content). If extraction fails,
- *   times out, or exceeds cost budget, the ad is skipped.
- *
- * @param {Object} ad
- * @param {Object} [analyzerOptions] - Options passed to extractVisualContent
- * @returns {Promise<Object|null>}
+ * - Video ads with an empty transcript are skipped.
  */
-async function resolveAdCopy(ad, analyzerOptions) {
+function resolveAdCopy(ad) {
   if (!ad || !ad.type) {
     return null;
   }
@@ -54,22 +45,10 @@ async function resolveAdCopy(ad, analyzerOptions) {
   }
 
   if (ad.type === AdType.VIDEO) {
-    // Videos with transcript: use it directly (no word minimum)
     if (wordCount > 0) {
       return { source: 'transcript', text: ad.transcript.trim() };
     }
-
-    // Empty transcript: try to extract visual content from the video itself
-    const extraction = await videoAnalyzer.extractVisualContent(ad, analyzerOptions);
-    if (videoAnalyzer.hasUsableContent(extraction)) {
-      return {
-        source: 'visual_extraction',
-        text: videoAnalyzer.extractionToText(extraction),
-        extraction,
-      };
-    }
-
-    // Nothing usable — skip this ad
+    // Empty transcript — skip for now
     return null;
   }
 
@@ -79,24 +58,19 @@ async function resolveAdCopy(ad, analyzerOptions) {
 /**
  * Filter a list of ads, returning only those with valid resolved copy.
  * Each returned ad is augmented with a `resolvedCopy` field.
- *
- * @param {Object[]} ads
- * @param {Object} [analyzerOptions] - Options passed to extractVisualContent
- * @returns {Promise<Object[]>}
  */
-async function filterAds(ads, analyzerOptions) {
+function filterAds(ads) {
   if (!Array.isArray(ads)) {
     return [];
   }
 
-  const results = await Promise.all(
-    ads.map(async (ad) => {
-      const resolved = await resolveAdCopy(ad, analyzerOptions);
-      return resolved ? { ...ad, resolvedCopy: resolved } : null;
-    })
-  );
-
-  return results.filter(Boolean);
+  return ads.reduce((kept, ad) => {
+    const resolved = resolveAdCopy(ad);
+    if (resolved) {
+      kept.push({ ...ad, resolvedCopy: resolved });
+    }
+    return kept;
+  }, []);
 }
 
 module.exports = {
