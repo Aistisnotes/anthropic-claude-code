@@ -34,3 +34,6 @@ Thumbs.db
 models/
 *.pt
 *.bin
+
+# Node
+node_modules/
