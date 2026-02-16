@@ -33,10 +33,13 @@ dev = [
 [project.scripts]
 meta-ads = "meta_ads_analyzer.cli:app"
 
+[tool.setuptools.packages.find]
+include = ["meta_ads_analyzer*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
 
 [build-system]
 requires = ["setuptools>=68"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
