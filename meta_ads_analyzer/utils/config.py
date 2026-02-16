@@ -32,24 +32,40 @@ def _apply_env_overrides(config: dict[str, Any]) -> None:
     """Override config values with META_ADS_ prefixed environment variables.
 
     Example: META_ADS_SCRAPER_MAX_ADS=200 overrides config["scraper"]["max_ads"]
+
+    Uses greedy matching against actual config keys to handle underscored key names.
     """
     prefix = "META_ADS_"
     for key, value in os.environ.items():
         if not key.startswith(prefix):
             continue
-        parts = key[len(prefix) :].lower().split("_")
-        _set_nested(config, parts, value)
+        remainder = key[len(prefix) :].lower()
+        _set_nested_greedy(config, remainder, value)
 
 
-def _set_nested(d: dict, keys: list[str], value: str) -> None:
-    """Set a value in a nested dict using a list of keys."""
-    for key in keys[:-1]:
-        if key not in d:
+def _set_nested_greedy(d: dict, remainder: str, value: str) -> None:
+    """Set a value in a nested dict, greedily matching keys that may contain underscores."""
+    if not remainder:
+        return
+
+    # Try matching current-level keys (longest match first to handle underscored keys)
+    for config_key in sorted(d.keys(), key=len, reverse=True):
+        prefix = config_key.lower()
+        # Check if remainder starts with this key (followed by _ or end of string)
+        if remainder == prefix:
+            # Exact match - this is the leaf key, set the value
+            existing = d[config_key]
+            if isinstance(existing, dict):
+                continue  # Can't override a section with a scalar
+            d[config_key] = _cast_value(value, type(existing))
             return
-        d = d[key]
-    if keys[-1] in d:
-        existing = d[keys[-1]]
-        d[keys[-1]] = _cast_value(value, type(existing))
+        elif remainder.startswith(prefix + "_"):
+            # This key matches as a prefix, recurse into subsection
+            child = d[config_key]
+            if isinstance(child, dict):
+                sub_remainder = remainder[len(prefix) + 1 :]
+                _set_nested_greedy(child, sub_remainder, value)
+                return
 
 
 def _cast_value(value: str, target_type: type) -> Any:
