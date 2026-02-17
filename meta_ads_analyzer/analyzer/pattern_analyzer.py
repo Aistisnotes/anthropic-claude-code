@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import anthropic
+from jinja2 import Template
 
 from meta_ads_analyzer.models import AdAnalysis, PatternReport, QualityReport
 from meta_ads_analyzer.utils.logging import get_logger
@@ -100,11 +101,17 @@ class PatternAnalyzer:
                 "copy_quality_score": a.copy_quality_score,
             })
 
+        # Calculate dataset size for adaptive depth
+        total_ads = len(analyses)
+        dataset_size = "small" if total_ads < 8 else "medium" if total_ads < 20 else "large"
+
         prompt = self._build_prompt(
             search_query=search_query,
             brand=brand or "Unknown",
-            total_ads=len(analyses),
+            total_ads=total_ads,
             analyses_json=json.dumps(analyses_data, indent=2),
+            small_dataset=(dataset_size == "small"),
+            dataset_size=dataset_size,
         )
 
         # Call Claude for pattern analysis (with retries)
@@ -155,13 +162,19 @@ class PatternAnalyzer:
         brand: str,
         total_ads: int,
         analyses_json: str,
+        small_dataset: bool = False,
+        dataset_size: str = "large",
     ) -> str:
-        prompt = self._prompt_template
-        prompt = prompt.replace("{{search_query}}", search_query)
-        prompt = prompt.replace("{{brand}}", brand)
-        prompt = prompt.replace("{{total_ads}}", str(total_ads))
-        prompt = prompt.replace("{{ad_analyses_json}}", analyses_json)
-        return prompt
+        # Use Jinja2 for template rendering with conditional support
+        template = Template(self._prompt_template)
+        return template.render(
+            search_query=search_query,
+            brand=brand,
+            total_ads=total_ads,
+            ad_analyses_json=analyses_json,
+            small_dataset=small_dataset,
+            dataset_size=dataset_size,
+        )
 
     def _parse_response(
         self,

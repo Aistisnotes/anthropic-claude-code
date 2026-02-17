@@ -7,6 +7,24 @@ Think like a war room strategist. Every pattern is a vulnerability waiting to be
 - **Brand**: {{brand}}
 - **Total Ads Analyzed**: {{total_ads}}
 
+{{#if small_dataset}}
+
+⚠️ DATASET SIZE: SMALL ({{total_ads}} ads)
+
+With limited data, apply ENHANCED ANALYTICAL DEPTH:
+- Analyze each ad with 40% more thoroughness
+- Extract maximum signal from available data
+- Identify patterns even from 2-3 instances (annotate confidence)
+- Extrapolate market trends from limited sample
+- Note data limitations in analysis
+
+Pattern Detection Thresholds for Small Datasets:
+- 2+ instances = emerging pattern (mark as "limited sample")
+- 1 instance = potential signal (mark as "single data point")
+- Provide confidence levels for all patterns
+
+{{/if}}
+
 ## Individual Ad Analyses
 Below are deep analysis results from {{total_ads}} ads:
 

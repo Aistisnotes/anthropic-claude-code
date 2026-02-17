@@ -94,12 +94,35 @@ def _build_strategic_prompt(
                           for c in zone.whitespace[:10]],
         }
 
+    # Dataset size adaptation
+    brand_count = len(brand_reports)
+    dataset_context = ""
+
+    if brand_count < 5:
+        dataset_context = f"""
+
+## Dataset Size Context
+
+This analysis covers only {brand_count} brands. Apply these adjustments:
+
+1. **Increased Scrutiny Per Brand**: With limited competitors, analyze each brand's strategy in greater depth
+2. **Pattern Confidence**: Mark all patterns with confidence levels (low/medium/high based on sample size)
+3. **Extrapolation Caution**: Note where conclusions are drawn from limited data
+4. **Missing Market Segments**: Consider that {brand_count} brands may not represent full market spectrum
+
+For each opportunity identified, annotate:
+- Sample size used (e.g., "2 of 3 brands avoid X")
+- Confidence level (high/medium/low)
+- Risk of sampling bias
+"""
+
     prompt = f"""You are an expert direct response copywriter and competitive strategist. Analyze this market comparison data with the depth of a Dan Kennedy or Eugene Schwartz competitive analysis.
 
 ## Market Context
 - **Keyword**: {market_map.meta.get('keyword', 'Unknown')}
 - **Brands Compared**: {', '.join(brand_names)}
 - **Focus Brand**: {focus_brand or 'None (market-wide analysis)'}
+{dataset_context}
 
 ## Brand Comparative Analysis
 {json.dumps(brand_analyses, indent=2)}
