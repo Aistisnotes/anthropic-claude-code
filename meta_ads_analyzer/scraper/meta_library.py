@@ -23,6 +23,51 @@ logger = get_logger(__name__)
 ADS_LIBRARY_URL = "https://www.facebook.com/ads/library/"
 
 
+def _parse_number_text(text: str) -> int:
+    """Parse human-readable numbers like '10K', '1.5M', '1,250' to integers."""
+    if not text:
+        return 0
+
+    text = text.strip().upper().replace(",", "")
+
+    # Handle "Less than X"
+    if "LESS THAN" in text:
+        text = text.replace("LESS THAN", "").strip()
+
+    # Extract numeric part
+    match = re.match(r"([\d.]+)([KM])?", text)
+    if not match:
+        return 0
+
+    number = float(match.group(1))
+    multiplier = match.group(2)
+
+    if multiplier == "K":
+        return int(number * 1000)
+    elif multiplier == "M":
+        return int(number * 1000000)
+    else:
+        return int(number)
+
+
+def _parse_impression_range(text: str) -> tuple[int, int | None]:
+    """Parse impression text like '10K-50K' into (lower, upper) tuple."""
+    if not text:
+        return 0, None
+
+    # Check for range (e.g., "10K-50K")
+    if "-" in text and "LESS THAN" not in text:
+        parts = text.split("-")
+        if len(parts) == 2:
+            lower = _parse_number_text(parts[0])
+            upper = _parse_number_text(parts[1])
+            return lower, upper
+
+    # Single value or "Less than X"
+    value = _parse_number_text(text)
+    return value, None
+
+
 class MetaAdsScraper:
     """Scrape ads from Meta Ads Library."""
 
@@ -547,6 +592,25 @@ class MetaAdsScraper:
                             ad.started_running = dateMatch[1].trim();
                         }
 
+                        // ── Impressions ──
+                        // Meta shows impression ranges like "10K-50K", "1M-5M", "Less than 1,000"
+                        // Note: Meta removed public impression data in 2024, so this may return null
+                        const impressionMatch = cardText.match(
+                            /(?:impressions?|views?)[:\s]+([0-9KM,.]+(?:\s*-\s*[0-9KM,.]+)?|Less than [0-9,]+)/i
+                        );
+                        if (impressionMatch) {
+                            ad.impression_text = impressionMatch[1].trim();
+                        }
+
+                        // ── Spend ──
+                        const spendMatch = cardText.match(
+                            /(?:spent?|budget)[:\s]+([A-Z$€£¥₹]{1,3})?([0-9KM,.]+(?:\s*-\s*[0-9KM,.]+)?)/i
+                        );
+                        if (spendMatch) {
+                            ad.spend_currency = spendMatch[1] || 'USD';
+                            ad.spend_text = spendMatch[2].trim();
+                        }
+
                         // ── Platforms ──
                         ad.platforms = [];
                         for (const platform of [
@@ -588,6 +652,21 @@ class MetaAdsScraper:
             except ValueError:
                 ad_type = AdType.UNKNOWN
 
+            # Parse impression range
+            impression_lower, impression_upper = 0, None
+            if raw.get("impression_text"):
+                impression_lower, impression_upper = _parse_impression_range(
+                    raw.get("impression_text")
+                )
+
+            # Parse spend range
+            spend_lower, spend_upper = 0.0, None
+            spend_currency = raw.get("spend_currency", "USD")
+            if raw.get("spend_text"):
+                spend_lower_int, spend_upper_int = _parse_impression_range(raw.get("spend_text"))
+                spend_lower = float(spend_lower_int)
+                spend_upper = float(spend_upper_int) if spend_upper_int else None
+
             ads.append(
                 ScrapedAd(
                     ad_id=ad_id,
@@ -600,6 +679,11 @@ class MetaAdsScraper:
                     media_url=raw.get("media_url"),
                     started_running=raw.get("started_running"),
                     platforms=raw.get("platforms", []),
+                    impression_lower=impression_lower,
+                    impression_upper=impression_upper,
+                    spend_lower=spend_lower,
+                    spend_upper=spend_upper,
+                    spend_currency=spend_currency,
                 )
             )
 
