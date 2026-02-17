@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from meta_ads_analyzer.models import PatternReport
+from meta_ads_analyzer.models import BrandReport, PatternReport
 from meta_ads_analyzer.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -95,6 +95,43 @@ class ReportWriter:
         path.write_text(html, encoding="utf-8")
         logger.info(f"Report saved: {path}")
         return path
+
+    def save_brand_report(
+        self,
+        brand_report: BrandReport,
+        market_subdir: Path,
+    ) -> Path:
+        """Save per-brand market research report.
+
+        Args:
+            brand_report: Brand-specific report
+            market_subdir: Subdirectory for this market research batch
+
+        Returns:
+            Path to saved JSON file
+        """
+        # Create subdirectory
+        market_subdir.mkdir(parents=True, exist_ok=True)
+
+        # Generate filename
+        brand_slug = "".join(
+            c if c.isalnum() or c in "-_" else "_" for c in brand_report.advertiser.page_name
+        )[:30]
+        timestamp = brand_report.generated_at.strftime("%Y%m%d_%H%M%S")
+        filename = f"brand_report_{brand_slug}_{timestamp}"
+
+        # Save JSON
+        json_path = market_subdir / f"{filename}.json"
+        with open(json_path, "w") as f:
+            json.dump(brand_report.model_dump(mode="json"), f, indent=2, default=str)
+
+        # Save markdown (reuse existing pattern report markdown)
+        md_path = market_subdir / f"{filename}.md"
+        with open(md_path, "w") as f:
+            f.write(brand_report.pattern_report.full_report_markdown)
+
+        logger.info(f"Brand report saved: {json_path}")
+        return json_path
 
 
 def _simple_md_to_html(md: str) -> str:

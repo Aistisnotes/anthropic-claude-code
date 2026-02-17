@@ -33,6 +33,7 @@ class MarketPipeline:
     def __init__(self, config: dict[str, Any]):
         self.config = config
         self.pipeline = Pipeline(config)
+        self.market_subdir: Optional[Path] = None
 
     async def run(
         self,
@@ -79,6 +80,14 @@ class MarketPipeline:
             )
 
         console.print(f"[cyan]Selected {len(brand_selections)} brands for analysis[/]")
+
+        # Create market subdirectory for reports
+        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword)[:50]
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        output_dir = Path(self.config.get("reporting", {}).get("output_dir", "output/reports"))
+        self.market_subdir = output_dir / f"market_{keyword_slug}_{timestamp}"
+        self.market_subdir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Market reports will be saved to: {self.market_subdir}")
 
         # 3. Analyze each brand
         brand_reports = []
@@ -221,10 +230,16 @@ class MarketPipeline:
         )
 
         # Package as BrandReport
-        return BrandReport(
+        brand_report = BrandReport(
             advertiser=selection.advertiser,
             keyword=keyword,
             selection_stats=selection.selection_stats,
             pattern_report=pattern_report,
             generated_at=datetime.utcnow(),
         )
+
+        # Save brand report to market subdirectory
+        if self.market_subdir:
+            self.pipeline.reporter.save_brand_report(brand_report, self.market_subdir)
+
+        return brand_report

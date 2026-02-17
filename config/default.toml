@@ -120,3 +120,11 @@ output_dir = "output/scans"
 auto_save = true
 # Default top N advertisers to display
 default_top_advertisers = 25
+
+[market]
+# Default number of top brands to analyze
+default_top_brands = 5
+# Default max ads per brand
+default_ads_per_brand = 10
+# Pause between brands (seconds) for rate limiting
+brand_pause = 5

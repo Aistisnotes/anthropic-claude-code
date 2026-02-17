@@ -18,7 +18,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from meta_ads_analyzer.models import ScanResult, SelectionResult
+from meta_ads_analyzer.models import MarketResult, ScanResult, SelectionResult
 from meta_ads_analyzer.utils.config import load_config
 from meta_ads_analyzer.utils.logging import setup_logging
 
@@ -269,6 +269,102 @@ def scan(
         console.print(
             f"  Selected for analysis: {scan_result.selection.stats.total_selected}"
         )
+
+
+@app.command()
+def market(
+    query: str = typer.Argument(..., help="Search keyword"),
+    top_brands: int = typer.Option(5, "--top-brands", help="Top N brands to analyze"),
+    ads_per_brand: int = typer.Option(10, "--ads-per-brand", help="Max ads per brand"),
+    from_scan: Optional[Path] = typer.Option(None, "--from-scan", help="Load from saved scan JSON"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+    country: str = typer.Option("US", "--country"),
+    headless: bool = typer.Option(True, "--headless/--no-headless"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+):
+    """Competitive market research - analyze multiple brands for a keyword."""
+    setup_logging(log_level)
+    config = load_config(config_path)
+
+    # Apply overrides
+    config.setdefault("scraper", {})["headless"] = headless
+    config.setdefault("scraper", {}).setdefault("filters", {})["country"] = country
+    if output:
+        config.setdefault("reporting", {})["output_dir"] = str(output)
+
+    console.print(f"\n[bold]Market Research: {query}[/]")
+    console.print(
+        f"Top brands: [cyan]{top_brands}[/]  |  Ads per brand: [cyan]{ads_per_brand}[/]"
+    )
+
+    from meta_ads_analyzer.market_pipeline import MarketPipeline
+
+    market_pipeline = MarketPipeline(config)
+    result = asyncio.run(
+        market_pipeline.run(
+            keyword=query,
+            top_brands=top_brands,
+            ads_per_brand=ads_per_brand,
+            from_scan=from_scan,
+        )
+    )
+
+    # Display cross-brand summary
+    _display_market_summary(result)
+
+
+def _display_market_summary(result: MarketResult):
+    """Display cross-brand comparison table."""
+    console.print(f"\n[bold green]✓[/] Market research complete")
+    console.print(
+        f"Analyzed {result.brands_analyzed} of {result.total_advertisers} advertisers"
+    )
+
+    if not result.brand_reports:
+        console.print("[yellow]No brands analyzed[/]")
+        return
+
+    table = Table(title=f"Market Overview: {result.keyword}")
+    table.add_column("Brand", style="green", width=25)
+    table.add_column("Ads", justify="right", style="cyan")
+    table.add_column("Top Hook", style="yellow", width=20)
+    table.add_column("Top Angle", style="magenta", width=20)
+    table.add_column("Primary Format", style="blue")
+
+    for br in result.brand_reports:
+        pr = br.pattern_report
+
+        # Extract primary patterns (safely handle empty lists)
+        top_hook = "—"
+        if pr.hook_patterns and len(pr.hook_patterns) > 0:
+            top_hook = pr.hook_patterns[0].get("pattern", "—")[:18]
+
+        top_angle = "—"
+        if pr.common_pain_points and len(pr.common_pain_points) > 0:
+            top_angle = pr.common_pain_points[0].get("pain_point", "—")[:18]
+
+        # Determine primary format (video vs static)
+        video_count = sum(
+            1 for insight in pr.key_insights if "video" in insight.lower()
+        )
+        primary_format = "Video" if video_count > pr.total_ads_analyzed // 2 else "Static"
+
+        table.add_row(
+            br.advertiser.page_name[:23],
+            str(pr.total_ads_analyzed),
+            top_hook,
+            top_angle,
+            primary_format,
+        )
+
+    console.print(table)
+
+    # Show output directory
+    keyword_slug = result.keyword.replace(" ", "_")
+    console.print(
+        f"\n[dim]Reports saved to: output/reports/market_{keyword_slug}_*/[/]"
+    )
 
 
 @app.command()
