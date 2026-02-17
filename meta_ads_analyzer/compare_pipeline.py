@@ -1,4 +1,7 @@
-"""Compare pipeline - orchestrates market map and loophole document generation."""
+"""Strategic compare pipeline - orchestrates DR-focused market analysis.
+
+Transformation: Replaced ad craft analysis (hooks, angles, formats) with DR strategy (root causes, mechanisms, avatars).
+"""
 
 from __future__ import annotations
 
@@ -7,26 +10,34 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from meta_ads_analyzer.models import BrandReport, CompareResult
-from meta_ads_analyzer.compare.market_map import generate_market_map, save_market_map
-from meta_ads_analyzer.compare.loophole_doc import generate_loophole_doc, save_loophole_doc
-from meta_ads_analyzer.compare.claude_enhancements import (
-    generate_strategic_recommendations,
+from meta_ads_analyzer.models import BrandReport
+from meta_ads_analyzer.compare.strategic_market_map import (
+    generate_strategic_market_map,
+    save_strategic_market_map,
+    format_strategic_market_map_text,
 )
+from meta_ads_analyzer.compare.strategic_loophole_doc import (
+    generate_strategic_loophole_doc,
+    save_strategic_loophole_doc,
+    format_strategic_loophole_doc_text,
+)
+from meta_ads_analyzer.compare.strategic_dimensions import StrategicCompareResult
 from meta_ads_analyzer.utils.logging import get_logger
+from rich.console import Console
 
 logger = get_logger(__name__)
+console = Console()
 
 
 class ComparePipeline:
-    """Competitive comparison analysis pipeline.
+    """Strategic competitive comparison pipeline.
 
     Orchestrates:
     1. Load brand reports (from disk or fresh market analysis)
-    2. Generate market map (dimension matrices, saturation zones)
-    3. Generate loophole document (gaps, priority matrix, brand gaps)
-    4. Optional Claude enhancement (strategic recommendations)
-    5. Save results to subdirectory
+    2. Extract strategic dimensions for each brand (6 dimensions: root causes, mechanisms, audiences, pain points, symptoms, desires)
+    3. Generate strategic market map (compare patterns across brands)
+    4. Generate loophole document (5-7 execution-ready arbitrage opportunities)
+    5. Save results and display summary
     """
 
     def __init__(self, config: dict[str, Any]):
@@ -41,11 +52,11 @@ class ComparePipeline:
         focus_brand: Optional[str] = None,
         from_reports: Optional[Path] = None,
         from_scan: Optional[Path] = None,
-        enhance: bool = False,
+        enhance: bool = True,  # Changed default to True - strategic analysis always uses Claude
         top_brands: int = 5,
         ads_per_brand: int = 10,
-    ) -> CompareResult:
-        """Run comparison analysis.
+    ) -> StrategicCompareResult:
+        """Run strategic comparison analysis.
 
         Two modes:
         1. Load existing brand reports (default or from_reports)
@@ -53,17 +64,17 @@ class ComparePipeline:
 
         Args:
             keyword: Search keyword
-            focus_brand: Optional focus brand for brand-specific gap analysis
+            focus_brand: Optional focus brand for brand-specific loophole identification
             from_reports: Optional custom reports directory
             from_scan: Optional saved scan file for fresh analysis
-            enhance: Whether to add Claude strategic layer
+            enhance: Whether to generate loopholes (default True - always strategic)
             top_brands: Number of brands for fresh analysis
             ads_per_brand: Max ads per brand for fresh analysis
 
         Returns:
-            CompareResult with market map and loophole document
+            StrategicCompareResult with strategic market map and loophole document
         """
-        logger.info(f"Starting compare pipeline for keyword: {keyword}")
+        logger.info(f"Starting STRATEGIC compare pipeline for keyword: {keyword}")
 
         # Stage 1: Get brand reports
         if from_scan:
@@ -80,38 +91,46 @@ class ComparePipeline:
                 f"Need at least 2 brand reports for comparison, found {len(brand_reports)}"
             )
 
-        logger.info(f"Comparing {len(brand_reports)} brands")
+        logger.info(f"Comparing {len(brand_reports)} brands using DR strategy framework")
 
-        # Stage 2: Generate market map
-        logger.info("Generating market map")
-        market_map = generate_market_map(
-            brand_reports, meta={'keyword': keyword, 'scan_date': datetime.utcnow()}
+        # Stage 2: Generate strategic market map (6-dimension analysis)
+        logger.info("Generating strategic market map (root causes, mechanisms, audiences, pain points, symptoms, desires)")
+        market_map = await generate_strategic_market_map(
+            brand_reports,
+            meta={'keyword': keyword, 'scan_date': datetime.utcnow()},
+            focus_brand=focus_brand,
+            config=self.config,
         )
 
-        # Stage 3: Generate loophole document
-        logger.info("Generating loophole document")
-        loophole_doc = generate_loophole_doc(market_map, brand_reports, focus_brand)
+        # Display market map summary
+        console.print(format_strategic_market_map_text(market_map))
 
-        # Stage 4: Optional Claude enhancement
+        # Stage 3: Generate strategic loophole document (5-7 execution-ready opportunities)
+        loophole_doc = None
         if enhance:
-            logger.info("Generating Claude strategic recommendations")
+            logger.info("Generating strategic loophole document (arbitrage opportunities)")
             try:
-                recommendations = await generate_strategic_recommendations(
+                loophole_doc = await generate_strategic_loophole_doc(
                     market_map, brand_reports, focus_brand, self.config
                 )
-                loophole_doc.strategic_recommendations = recommendations
+
+                # Display loophole summary
+                console.print(format_strategic_loophole_doc_text(loophole_doc))
+
             except Exception as e:
-                logger.error(f"Failed to generate strategic recommendations: {e}")
-                logger.warning("Continuing without Claude enhancement")
+                logger.error(f"Failed to generate strategic loopholes: {e}")
+                logger.warning("Continuing with market map only")
 
-        # Stage 5: Save results
+        # Stage 4: Save results
         output_subdir = self._create_output_dir(keyword)
-        save_market_map(market_map, output_subdir)
-        save_loophole_doc(loophole_doc, output_subdir)
+        save_strategic_market_map(market_map, output_subdir)
 
-        logger.info(f"Compare pipeline complete, results saved to: {output_subdir}")
+        if loophole_doc:
+            save_strategic_loophole_doc(loophole_doc, output_subdir)
 
-        return CompareResult(
+        logger.info(f"Strategic compare complete, results saved to: {output_subdir}")
+
+        return StrategicCompareResult(
             keyword=keyword,
             market_map=market_map,
             loophole_doc=loophole_doc,
