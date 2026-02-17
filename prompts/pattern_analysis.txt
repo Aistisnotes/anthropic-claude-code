@@ -7,7 +7,7 @@ Think like a war room strategist. Every pattern is a vulnerability waiting to be
 - **Brand**: {{brand}}
 - **Total Ads Analyzed**: {{total_ads}}
 
-{{#if small_dataset}}
+{% if small_dataset %}
 
 ⚠️ DATASET SIZE: SMALL ({{total_ads}} ads)
 
@@ -23,7 +23,7 @@ Pattern Detection Thresholds for Small Datasets:
 - 1 instance = potential signal (mark as "single data point")
 - Provide confidence levels for all patterns
 
-{{/if}}
+{% endif %}
 
 ## Individual Ad Analyses
 Below are deep analysis results from {{total_ads}} ads:
