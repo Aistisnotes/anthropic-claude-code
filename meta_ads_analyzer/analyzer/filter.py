@@ -1,9 +1,9 @@
 """Ad classification and filtering pipeline.
 
 Determines which ads qualify for analysis based on:
-- Video ads: included if EITHER (a) transcript meets quality threshold OR (b) has text overlay (10+ words)
-- Static ads with primary copy >= 50 words: included
-- Static ads with primary copy < 50 words: skipped
+- Video ads: included if EITHER (a) transcript meets quality threshold OR (b) OCR text extraction >= 50 words
+- Static ads with primary copy >= 500 words: included (only long-form have strategic depth)
+- Static ads with primary copy < 500 words: skipped
 - Duplicate detection via content similarity
 """
 
@@ -33,8 +33,10 @@ class AdFilter:
         f_cfg = config.get("filter", {})
         self.min_static_copy_words = f_cfg.get("min_static_copy_words", 500)
         self.min_transcript_confidence = f_cfg.get("min_transcript_confidence", 0.4)
+        self.min_video_text_words = f_cfg.get("min_video_text_words", 50)
         self.skip_duplicates = f_cfg.get("skip_duplicates", True)
         self._seen_hashes: set[str] = set()
+        self.config = config
 
     def process_ads(
         self,
@@ -105,39 +107,49 @@ class AdFilter:
                 logger.debug(f"Ad {ad.ad_id}: filtered (video download failed)")
                 return content
 
-            # Check for transcript
+            # Check for voiceover transcript
             has_transcript = (
                 transcript
                 and transcript.confidence >= self.min_transcript_confidence
-                and transcript.word_count > 0
+                and transcript.word_count >= 20  # Meaningful voiceover
             )
 
-            # Check for text overlay (headline or primary text)
-            overlay_text = (ad.primary_text or "") + " " + (ad.headline or "")
-            overlay_word_count = len(overlay_text.split())
-            has_text_overlay = overlay_word_count >= 10
+            # If no good transcript, try OCR text extraction from video frames
+            video_text_overlay = None
+            video_text_word_count = 0
 
-            # Video passes if it has EITHER transcript OR text overlay
+            if not has_transcript:
+                from meta_ads_analyzer.extractor.video_text import VideoTextExtractor
+                extractor = VideoTextExtractor(self.config)
+                video_text_overlay = extractor.extract_text_from_video(download.file_path)
+
+                if video_text_overlay:
+                    video_text_word_count = len(video_text_overlay.split())
+                    content.video_text_overlay = video_text_overlay
+
+            has_video_text = video_text_word_count >= self.min_video_text_words
+
+            # Video passes if it has EITHER transcript OR video text overlays
             if has_transcript:
                 content.transcript = transcript.text
                 content.transcript_confidence = transcript.confidence
                 content.word_count = transcript.word_count
                 content.status = AdStatus.TRANSCRIBED
                 logger.debug(
-                    f"Ad {ad.ad_id}: included (video with transcript, "
+                    f"Ad {ad.ad_id}: included (video with voiceover, "
                     f"{transcript.word_count} words, confidence={transcript.confidence:.2f})"
                 )
-            elif has_text_overlay:
-                content.word_count = overlay_word_count
+            elif has_video_text:
+                content.word_count = video_text_word_count
                 content.status = AdStatus.DOWNLOADED
-                logger.debug(
-                    f"Ad {ad.ad_id}: included (video with text overlay, {overlay_word_count} words)"
+                logger.info(
+                    f"Ad {ad.ad_id}: included (video with text overlays, {video_text_word_count} words extracted via OCR)"
                 )
             else:
                 content.status = AdStatus.FILTERED_OUT
                 content.filter_reason = FilterReason.LOW_QUALITY_TRANSCRIPT
                 logger.debug(
-                    f"Ad {ad.ad_id}: filtered (video has neither transcript nor text overlay)"
+                    f"Ad {ad.ad_id}: filtered (video has neither voiceover nor text overlays)"
                 )
                 return content
 

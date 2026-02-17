@@ -147,6 +147,7 @@ class AdContent(BaseModel):
     headline: Optional[str] = None
     transcript: Optional[str] = None
     transcript_confidence: float = 0.0
+    video_text_overlay: Optional[str] = None  # Text extracted from video frames via OCR
     media_path: Optional[Path] = None
     word_count: int = 0
     scrape_position: int = 0  # Inherited from ScrapedAd — Meta Ads Library order

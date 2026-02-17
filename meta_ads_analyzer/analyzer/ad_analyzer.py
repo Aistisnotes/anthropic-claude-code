@@ -113,14 +113,28 @@ class AdAnalyzer:
         prompt = prompt.replace("{{headline}}", ad.headline or "N/A")
 
         # Conditional blocks
-        # Video ads: use transcript only. Static ads: use primary text only.
-        use_transcript = ad.transcript and ad.ad_type == AdType.VIDEO
-        use_primary = ad.primary_text and ad.ad_type != AdType.VIDEO
+        # Combine ALL available content sources for comprehensive analysis
+        # Video ads: transcript (voiceover) + video_text_overlay (OCR) + primary_text (static text)
+        # Static ads: primary_text only
 
-        if use_transcript:
+        # Build combined content for video ads
+        if ad.ad_type == AdType.VIDEO:
+            content_parts = []
+
+            if ad.transcript:
+                content_parts.append(f"VOICEOVER TRANSCRIPT:\n{ad.transcript}")
+
+            if ad.video_text_overlay:
+                content_parts.append(f"ON-SCREEN TEXT (extracted via OCR):\n{ad.video_text_overlay}")
+
+            if ad.primary_text:
+                content_parts.append(f"STATIC TEXT (post copy):\n{ad.primary_text}")
+
+            combined_content = "\n\n".join(content_parts) if content_parts else "N/A"
+
             prompt = re.sub(
                 r"\{\{#if transcript\}\}(.*?)\{\{/if\}\}",
-                lambda m: m.group(1).replace("{{transcript}}", ad.transcript),
+                lambda m: m.group(1).replace("{{transcript}}", combined_content),
                 prompt,
                 flags=re.DOTALL,
             )
@@ -128,6 +142,8 @@ class AdAnalyzer:
             prompt = re.sub(
                 r"\{\{#if transcript\}\}.*?\{\{/if\}\}", "", prompt, flags=re.DOTALL
             )
+
+        use_primary = ad.primary_text and ad.ad_type != AdType.VIDEO
 
         if use_primary:
             prompt = re.sub(

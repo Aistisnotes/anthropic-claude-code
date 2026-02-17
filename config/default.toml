@@ -52,12 +52,21 @@ temperature = 0.3
 # Max retries on API failure
 max_retries = 3
 
+[extractor]
+# Number of frames to extract per video for OCR
+frames_per_video = 8
+# Minimum text length per frame to consider (words)
+min_frame_text_length = 3
+
 [filter]
 # Minimum word count for static ad primary copy to be included
-# NOTE: Video ads with transcripts bypass this check entirely
-min_static_copy_words = 50
+# Only long-form statics (advertorials, listicles) contain strategic intelligence
+# Short static ads lack depth on root causes, mechanisms, and competitive positioning
+min_static_copy_words = 500
 # Minimum transcript confidence to include
 min_transcript_confidence = 0.3
+# Minimum words from video text extraction (OCR) to include
+min_video_text_words = 50
 # Skip duplicate ads by content similarity
 skip_duplicates = true
 
