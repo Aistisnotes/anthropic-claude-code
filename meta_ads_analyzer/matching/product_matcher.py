@@ -74,18 +74,34 @@ Return JSON:
         import json
         text = response.content[0].text.strip()
 
+        logger.debug(f"Claude response for product attributes: {text[:500]}")
+
         # Extract JSON from response
         if "{" in text and "}" in text:
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            data = json.loads(text[start:end])
+            try:
+                start = text.find("{")
+                end = text.rfind("}") + 1
+                json_str = text[start:end]
+                data = json.loads(json_str)
 
-            logger.info(
-                f"Extracted product attributes: {data['product_type']} | "
-                f"Category: {data['category']}"
-            )
-            return data
+                # Validate required fields
+                required = ['product_type', 'category']
+                missing = [f for f in required if f not in data]
+                if missing:
+                    logger.error(f"Missing required fields in response: {missing}")
+                    raise ValueError(f"Missing fields: {missing}")
 
+                logger.info(
+                    f"Extracted product attributes: {data['product_type']} | "
+                    f"Category: {data['category']}"
+                )
+                return data
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error: {e}")
+                logger.error(f"Failed JSON string: {json_str}")
+                raise ValueError(f"Failed to parse JSON: {e}")
+
+        logger.error(f"No JSON found in response: {text}")
         raise ValueError("Failed to extract product attributes from response")
 
     def detect_mismatch(
