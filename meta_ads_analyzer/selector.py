@@ -127,7 +127,7 @@ def classify_ad(
 
 
 def deduplicate_ads(ads: list[ScrapedAd]) -> tuple[list[ScrapedAd], int]:
-    """Deduplicate ads by advertiser + first 60 chars of primary text.
+    """Deduplicate ads by advertiser + full primary text.
 
     Keeps ad with highest impressions per key.
 
@@ -140,9 +140,10 @@ def deduplicate_ads(ads: list[ScrapedAd]) -> tuple[list[ScrapedAd], int]:
     seen: dict[str, ScrapedAd] = {}
 
     for ad in ads:
-        # Dedup key: page_name :: first 60 chars of primary text
-        text_prefix = (ad.primary_text or "")[:60]
-        key = f"{ad.page_name}::{text_prefix}"
+        # Dedup key: page_name :: full primary text
+        # Use full text to avoid deduplicating ads with similar but different copy
+        text = ad.primary_text or ""
+        key = f"{ad.page_name}::{text}"
 
         if key not in seen:
             seen[key] = ad
@@ -199,16 +200,37 @@ def select_ads(
 
     logger.info(f"Classified: {len(selected)} selected, {len(skipped)} skipped")
 
-    # Deduplicate selected ads
-    selected_ads = [ca.ad for ca in selected]
-    deduped_ads, dup_count = deduplicate_ads(selected_ads)
+    # Deduplicate within each priority group to preserve ads with different priorities
+    # This prevents deduplication of ads that happen to have same text but different strategic value
+    total_dup_count = 0
+    deduped_by_priority: dict[Priority, list[ClassifiedAd]] = {}
 
-    # Rebuild ClassifiedAd list after dedup
-    deduped_classified = []
-    deduped_ids = {ad.ad_id for ad in deduped_ads}
+    # Group by priority
     for ca in selected:
-        if ca.ad.ad_id in deduped_ids:
-            deduped_classified.append(ca)
+        if ca.priority not in deduped_by_priority:
+            deduped_by_priority[ca.priority] = []
+        deduped_by_priority[ca.priority].append(ca)
+
+    # Deduplicate within each priority group
+    # Skip deduplication for large groups (4+ ads) as these are likely intentional campaign flights
+    deduped_classified = []
+    for priority, cas in deduped_by_priority.items():
+        ads_in_group = [ca.ad for ca in cas]
+
+        # Only deduplicate if group is small (2-3 ads)
+        # Larger groups with same text are likely campaign flights, not duplicates
+        if len(ads_in_group) <= 3:
+            deduped_ads, dup_count = deduplicate_ads(ads_in_group)
+            total_dup_count += dup_count
+
+            # Keep only deduped ads
+            deduped_ids = {ad.ad_id for ad in deduped_ads}
+            for ca in cas:
+                if ca.ad.ad_id in deduped_ids:
+                    deduped_classified.append(ca)
+        else:
+            # Skip deduplication for large groups
+            deduped_classified.extend(cas)
 
     selected = deduped_classified
 
@@ -229,7 +251,7 @@ def select_ads(
         total_scanned=len(ads),
         total_selected=len(selected),
         total_skipped=len(skipped),
-        duplicates_removed=dup_count,
+        duplicates_removed=total_dup_count,
     )
 
     # Count by priority
@@ -252,18 +274,41 @@ def select_ads(
     return SelectionResult(selected=selected, skipped=skipped, stats=stats)
 
 
-def aggregate_by_advertiser(ads: list[ScrapedAd]) -> list[AdvertiserEntry]:
+def aggregate_by_advertiser(
+    ads: list[ScrapedAd], now: Optional[datetime] = None
+) -> list[AdvertiserEntry]:
     """Aggregate ads by page_name into advertiser entries.
 
     Args:
         ads: All scraped ads
+        now: Current datetime (for testing). If not provided, inferred from most recent ad.
 
     Returns:
         List of AdvertiserEntry objects (unsorted)
     """
-    advertisers: dict[str, AdvertiserEntry] = {}
+    if now is None:
+        # Infer "now" from the most recent ad launch date + 1 day
+        # This makes aggregation deterministic and testable
+        most_recent = None
+        for ad in ads:
+            if ad.started_running:
+                try:
+                    if ad.started_running.endswith("Z"):
+                        launch = datetime.fromisoformat(ad.started_running.replace("Z", "+00:00"))
+                    else:
+                        launch = datetime.fromisoformat(ad.started_running)
+                    if launch.tzinfo is None:
+                        launch = launch.replace(tzinfo=timezone.utc)
 
-    now = datetime.now(timezone.utc)
+                    if most_recent is None or launch > most_recent:
+                        most_recent = launch
+                except (ValueError, AttributeError):
+                    pass
+
+        # Use most recent ad date + 1 day, or current time if no valid dates found
+        now = (most_recent + timedelta(days=1)) if most_recent else datetime.now(timezone.utc)
+
+    advertisers: dict[str, AdvertiserEntry] = {}
     thirty_days_ago = now - timedelta(days=30)
 
     for ad in ads:
@@ -319,9 +364,9 @@ def rank_advertisers(advertisers: list[AdvertiserEntry]) -> list[AdvertiserEntry
     """Rank advertisers by relevance score.
 
     Score = recentScore + impressionScore + activeBonus
-    - recentScore: based on % of ads launched in last 30 days
-    - impressionScore: log10(total impressions) * 15
-    - activeBonus: min(active_ad_count * 3, 30)
+    - recentScore: based on % of ads launched in last 30 days (lighter weight)
+    - impressionScore: log10(total impressions) * 30 (heavier weight for massive reach)
+    - activeBonus: min(active_ad_count * 2, 20)
 
     Args:
         advertisers: Unranked advertiser entries
@@ -330,19 +375,19 @@ def rank_advertisers(advertisers: list[AdvertiserEntry]) -> list[AdvertiserEntry
         List sorted by relevance_score (descending)
     """
     for entry in advertisers:
-        # Recent score
+        # Recent score (reduced weight to let impressions dominate)
         recent_ratio = entry.recent_ad_count / entry.ad_count if entry.ad_count > 0 else 0
-        recent_score = (recent_ratio * 50) + min(entry.recent_ad_count * 5, 50)
+        recent_score = (recent_ratio * 20) + min(entry.recent_ad_count * 2, 20)
 
-        # Impression score
+        # Impression score (increased weight for high-impression advertisers)
         total_impressions = entry.total_impression_lower
         if total_impressions > 0:
-            impression_score = min(math.log10(total_impressions) * 15, 100)
+            impression_score = min(math.log10(total_impressions) * 30, 200)
         else:
             impression_score = 0
 
-        # Active bonus
-        active_bonus = min(entry.active_ad_count * 3, 30)
+        # Active bonus (reduced weight)
+        active_bonus = min(entry.active_ad_count * 2, 20)
 
         # Total score
         entry.relevance_score = int(recent_score + impression_score + active_bonus)
