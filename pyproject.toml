@@ -1,0 +1,45 @@
+[project]
+name = "meta-ads-analyzer"
+version = "0.1.0"
+description = "Extract, transcribe, and analyze Meta Ads Library ads at scale"
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.40",
+    "anthropic>=0.40",
+    "yt-dlp>=2024.1",
+    "aiohttp>=3.9",
+    "aiofiles>=23.2",
+    "pydantic>=2.5",
+    "rich>=13.7",
+    "typer>=0.9",
+    "jinja2>=3.1",
+    "pillow>=10.2",
+    "aiosqlite>=0.19",
+]
+
+[project.optional-dependencies]
+apple-silicon = [
+    "mlx-whisper>=0.1",
+]
+generic = [
+    "openai-whisper>=20231117",
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.1",
+]
+
+[project.scripts]
+meta-ads = "meta_ads_analyzer.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["meta_ads_analyzer*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
