@@ -547,30 +547,50 @@ def _analyze_desire_differences(patterns: list[dict]) -> str:
 def _identify_root_cause_loopholes(
     patterns: list[dict], brand_dimensions: dict, focus_brand: Optional[str]
 ) -> list[str]:
-    """Identify root cause loopholes for focus brand."""
+    """Identify root cause loopholes based on actual pattern data."""
     loopholes = []
 
-    # Check for upstream gaps
-    has_upstream = any(p.get("upstream_gap") for p in patterns)
-    if not has_upstream:
+    if not patterns:
+        loopholes.append("MISSING ROOT CAUSES: No brands explain root causes. First-mover opportunity.")
+        return loopholes
+
+    total_brands = len(brand_dimensions)
+
+    # Analyze pattern distribution
+    if len(patterns) == 1 and patterns[0].get("frequency", 0) >= total_brands * 0.75:
+        # Single dominant root cause
+        dominant = patterns[0]
+        brands_count = len(dominant.get("brands_using", []))
         loopholes.append(
-            "UPSTREAM GAP: No brand explains what CAUSES their stated root cause. Opportunity to go deeper."
+            f"HOMOGENEOUS ROOT CAUSES: {brands_count}/{total_brands} brands use similar root cause ('{dominant.get('text', '')[:60]}...'). Opportunity for differentiation with alternative causation."
+        )
+    elif len(patterns) >= 3:
+        # Multiple fragmented root causes
+        loopholes.append(
+            f"FRAGMENTED ROOT CAUSES: {len(patterns)} different root cause explanations across {total_brands} brands. No consensus creates confusion - opportunity to establish authoritative causation narrative."
         )
 
-    # Check depth levels
+    # Check for generic vs specific
+    generic_terms = ["congestion", "clogging", "stuck", "blocked", "sluggish"]
+    generic_count = sum(1 for p in patterns if any(term in p.get("text", "").lower() for term in generic_terms))
+    if generic_count >= len(patterns) * 0.75:
+        loopholes.append(
+            f"GENERIC ROOT CAUSES: {generic_count}/{len(patterns)} root cause explanations use generic terms. Opportunity for specific, differentiated causation (e.g., hepatic-specific, hormonal, cellular waste)."
+        )
+
+    # Check depth
     depth_levels = [p.get("depth_level", "surface") for p in patterns]
-    if "molecular" not in depth_levels and "cellular" not in depth_levels:
+    if depth_levels.count("surface") >= len(patterns) * 0.6:
         loopholes.append(
-            "DEPTH GAP: No brand reaches cellular/molecular depth. Opportunity for scientific authority."
+            "DEPTH GAP: Most brands explain root causes at surface level. Opportunity for cellular/molecular depth to establish scientific authority."
         )
 
-    # Focus brand specific
-    if focus_brand and focus_brand in brand_dimensions:
-        focus_causes = brand_dimensions[focus_brand].root_causes
-        if not focus_causes:
-            loopholes.append(
-                f"FOCUS BRAND GAP: {focus_brand} lacks clear root cause explanation entirely."
-            )
+    # Check upstream gaps
+    upstream_gaps = [p.get("upstream_gap") for p in patterns if p.get("upstream_gap")]
+    if not upstream_gaps or len(upstream_gaps) < len(patterns) * 0.5:
+        loopholes.append(
+            "UPSTREAM TRIGGER GAP: No brand addresses what CAUSES their stated root cause. Opportunity to go one level deeper (lifestyle, environmental, hormonal triggers)."
+        )
 
     return loopholes
 
@@ -578,25 +598,58 @@ def _identify_root_cause_loopholes(
 def _identify_mechanism_loopholes(
     patterns: list[dict], brand_dimensions: dict, focus_brand: Optional[str]
 ) -> list[str]:
-    """Identify mechanism loopholes for focus brand."""
+    """Identify mechanism loopholes based on actual pattern data."""
     loopholes = []
 
-    # Check mechanism types
-    types = [p.get("mechanism_type") for p in patterns]
-    if "new_mechanism" not in types:
+    if not patterns:
+        loopholes.append("MISSING MECHANISMS: No brands explain mechanisms. First-mover opportunity.")
+        return loopholes
+
+    total_brands = len(brand_dimensions)
+
+    # Analyze pattern distribution
+    if len(patterns) == 1:
+        # Single mechanism dominates
+        dominant = patterns[0]
+        brands_count = len(dominant.get("brands_using", []))
         loopholes.append(
-            "NEW MECHANISM GAP: No brand introduces truly novel delivery/technology. Stage 3 opportunity."
+            f"HOMOGENEOUS MECHANISMS: {brands_count}/{total_brands} brands use similar mechanism explanation. Opportunity for novel mechanism differentiation."
+        )
+    elif len(patterns) >= 4:
+        # Highly fragmented
+        loopholes.append(
+            f"FRAGMENTED MECHANISMS: {len(patterns)} different mechanism explanations. Market lacks consensus - opportunity to establish authoritative mechanism narrative."
+        )
+
+    # Check for generic claims
+    generic_terms = ["support", "helps", "promotes", "aids", "assists", "enhances"]
+    vague_count = sum(1 for p in patterns if any(term in p.get("text", "").lower() for term in generic_terms))
+    if vague_count >= len(patterns) * 0.6:
+        loopholes.append(
+            f"VAGUE MECHANISMS: {vague_count}/{len(patterns)} mechanism explanations use generic support language. Opportunity for specific action verbs and pathways."
+        )
+
+    # Check depth
+    depth_dist = [p.get("depth", "claim-only") for p in patterns]
+    if depth_dist.count("claim-only") >= len(patterns) * 0.5:
+        loopholes.append(
+            "MECHANISM DEPTH GAP: Most brands state mechanisms as claims without explaining HOW. Opportunity for process-level or cellular mechanism detail."
         )
 
     # Check believability
-    avg_believability = (
-        sum(p.get("believability_score", 0) for p in patterns) / len(patterns)
-        if patterns
-        else 0
-    )
-    if avg_believability < 0.7:
+    believability_scores = [p.get("believability_score", 0) for p in patterns if p.get("believability_score")]
+    if believability_scores:
+        avg_believability = sum(believability_scores) / len(believability_scores)
+        if avg_believability < 0.7:
+            loopholes.append(
+                f"CREDIBILITY GAP: Average believability {avg_believability:.2f}. Mechanisms lack proof/specificity. Opportunity for evidence-backed mechanism explanation."
+            )
+
+    # Check mechanism types
+    types = [p.get("mechanism_type") for p in patterns]
+    if types.count("ingredient") >= len(patterns) * 0.75:
         loopholes.append(
-            f"CREDIBILITY GAP: Average believability score {avg_believability:.2f}. Mechanisms feel unproven."
+            "INGREDIENT-ONLY MECHANISMS: Most brands list ingredients without explaining unique delivery/technology. Opportunity for proprietary mechanism positioning."
         )
 
     return loopholes

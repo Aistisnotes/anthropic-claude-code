@@ -368,36 +368,75 @@ Return the narrative as plain text (no JSON, no markdown formatting)."""
 
 
 def _generate_what_not_to_do(market_map: StrategicMarketMap) -> list[str]:
-    """Generate what NOT to do based on market map analysis."""
+    """Generate 5-6 specific warnings based on actual competitive data."""
     what_not_to_do = []
 
-    # Root cause warnings
-    if market_map.root_cause_comparison.pattern_1:
-        pattern1 = market_map.root_cause_comparison.pattern_1
-        if len(pattern1.get("brands_using", [])) >= 2:
-            what_not_to_do.append(
-                f"DON'T use the same root cause as {len(pattern1['brands_using'])} competitors: '{pattern1.get('text', '')[:60]}...'"
-            )
-
-    # Mechanism warnings
-    if market_map.mechanism_comparison.pattern_1:
-        pattern1 = market_map.mechanism_comparison.pattern_1
-        if len(pattern1.get("brands_using", [])) >= 2:
-            what_not_to_do.append(
-                f"DON'T claim the same mechanism as {len(pattern1['brands_using'])} competitors: '{pattern1.get('text', '')[:60]}...'"
-            )
-
-    # Sophistication warnings
-    soph = market_map.sophistication_level
-    if soph.stage >= 4:
+    # Warning 1: Saturated root cause + mechanism combos from matrix
+    saturated_combos = [
+        row for row in market_map.root_cause_mechanism_matrix
+        if row.get("gap") == "SATURATED" or row.get("market_share", 0) >= 50
+    ]
+    if saturated_combos:
+        top_saturated = saturated_combos[0]
         what_not_to_do.append(
-            f"DON'T use simple benefit claims - market is at {soph.stage_name}, customers need {soph.strategic_response.replace('_', ' ')}"
+            f"DON'T use the saturated root cause + mechanism combo that {top_saturated['num_brands']}/{market_map.meta['brands_compared']} brands already use: '{top_saturated['root_cause'][:50]}...' → '{top_saturated['mechanism'][:50]}...'"
         )
 
-    # Generic warning
+    # Warning 2: Avoid dominant root cause pattern
+    if market_map.root_cause_comparison.pattern_1:
+        pattern1 = market_map.root_cause_comparison.pattern_1
+        brands_count = len(pattern1.get("brands_using", []))
+        if brands_count >= 2:
+            what_not_to_do.append(
+                f"DON'T explain the same root cause as {brands_count} competitors - '{pattern1.get('text', '')[:60]}...' is already crowded positioning"
+            )
+
+    # Warning 3: Avoid dominant mechanism pattern
+    if market_map.mechanism_comparison.pattern_1:
+        pattern1 = market_map.mechanism_comparison.pattern_1
+        brands_count = len(pattern1.get("brands_using", []))
+        if brands_count >= 2:
+            what_not_to_do.append(
+                f"DON'T claim the same mechanism as {brands_count} competitors - '{pattern1.get('text', '')[:60]}...' won't differentiate"
+            )
+
+    # Warning 4: Sophistication-appropriate response
+    soph = market_map.sophistication_level
+    if soph.stage >= 3:
+        response = soph.strategic_response.replace('_', ' ')
+        what_not_to_do.append(
+            f"DON'T use Stage 1-2 tactics (simple benefits, ingredient lists) - market is {soph.stage_name}, requires {response} positioning"
+        )
+
+    # Warning 5: Audience fragmentation
+    audience_patterns = [
+        market_map.audience_comparison.pattern_1,
+        market_map.audience_comparison.pattern_2,
+        market_map.audience_comparison.pattern_3,
+    ]
+    defined_audiences = [p for p in audience_patterns if p and p.get("identity")]
+    if len(defined_audiences) >= 3:
+        what_not_to_do.append(
+            f"DON'T use generic 'health-conscious adults' targeting - {len(defined_audiences)} competitors have specific identity positioning. You need clear tribal identity."
+        )
+
+    # Warning 6: Generic differentiation warning
     what_not_to_do.append(
-        "DON'T copy competitor angles without differentiation - in sophisticated markets, being 10% better is invisible"
+        "DON'T compete on price or 'better ingredients' alone - sophisticated markets require mechanism superiority or new identity positioning"
     )
+
+    # Warning 7: Matrix-based strategic warning
+    underexploited = [
+        row for row in market_map.root_cause_mechanism_matrix
+        if row.get("gap") == "Underexploited" and row.get("market_share", 0) < 30
+    ]
+    if len(underexploited) >= 3:
+        what_not_to_do.append(
+            f"DON'T invent entirely new mechanisms without proof - {len(underexploited)} underexploited positioning angles already exist that need better execution, not replacement"
+        )
+
+    # Ensure we have 5-6 items (trim if too many)
+    return what_not_to_do[:6]
 
     return what_not_to_do
 
