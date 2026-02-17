@@ -1,9 +1,9 @@
 """Ad classification and filtering pipeline.
 
 Determines which ads qualify for analysis based on:
-- Video ads: always included if transcript meets quality threshold
-- Static ads with primary copy >= 500 words: included
-- Static ads with primary copy < 500 words: skipped
+- Video ads: included if EITHER (a) transcript meets quality threshold OR (b) has text overlay (10+ words)
+- Static ads with primary copy >= 50 words: included
+- Static ads with primary copy < 50 words: skipped
 - Duplicate detection via content similarity
 """
 
@@ -105,25 +105,41 @@ class AdFilter:
                 logger.debug(f"Ad {ad.ad_id}: filtered (video download failed)")
                 return content
 
-            if not transcript:
-                content.status = AdStatus.FILTERED_OUT
-                content.filter_reason = FilterReason.TRANSCRIPTION_FAILED
-                logger.debug(f"Ad {ad.ad_id}: filtered (transcription failed)")
-                return content
+            # Check for transcript
+            has_transcript = (
+                transcript
+                and transcript.confidence >= self.min_transcript_confidence
+                and transcript.word_count > 0
+            )
 
-            if transcript.confidence < self.min_transcript_confidence:
+            # Check for text overlay (headline or primary text)
+            overlay_text = (ad.primary_text or "") + " " + (ad.headline or "")
+            overlay_word_count = len(overlay_text.split())
+            has_text_overlay = overlay_word_count >= 10
+
+            # Video passes if it has EITHER transcript OR text overlay
+            if has_transcript:
+                content.transcript = transcript.text
+                content.transcript_confidence = transcript.confidence
+                content.word_count = transcript.word_count
+                content.status = AdStatus.TRANSCRIBED
+                logger.debug(
+                    f"Ad {ad.ad_id}: included (video with transcript, "
+                    f"{transcript.word_count} words, confidence={transcript.confidence:.2f})"
+                )
+            elif has_text_overlay:
+                content.word_count = overlay_word_count
+                content.status = AdStatus.DOWNLOADED
+                logger.debug(
+                    f"Ad {ad.ad_id}: included (video with text overlay, {overlay_word_count} words)"
+                )
+            else:
                 content.status = AdStatus.FILTERED_OUT
                 content.filter_reason = FilterReason.LOW_QUALITY_TRANSCRIPT
                 logger.debug(
-                    f"Ad {ad.ad_id}: filtered (low confidence: "
-                    f"{transcript.confidence:.2f} < {self.min_transcript_confidence})"
+                    f"Ad {ad.ad_id}: filtered (video has neither transcript nor text overlay)"
                 )
                 return content
-
-            content.transcript = transcript.text
-            content.transcript_confidence = transcript.confidence
-            content.word_count = transcript.word_count
-            content.status = AdStatus.TRANSCRIBED
 
         # --- STATIC ADS ---
         elif ad_type == AdType.STATIC:

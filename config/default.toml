@@ -4,7 +4,7 @@ max_ads = 100
 # Browser headless mode
 headless = true
 # Scroll pause between loads (seconds)
-scroll_pause = 2.0
+scroll_pause = 3.0
 # Max scroll attempts before giving up
 max_scroll_attempts = 50
 # Request timeout (seconds)
@@ -54,9 +54,10 @@ max_retries = 3
 
 [filter]
 # Minimum word count for static ad primary copy to be included
-min_static_copy_words = 500
+# NOTE: Video ads with transcripts bypass this check entirely
+min_static_copy_words = 50
 # Minimum transcript confidence to include
-min_transcript_confidence = 0.4
+min_transcript_confidence = 0.3
 # Skip duplicate ads by content similarity
 skip_duplicates = true
 

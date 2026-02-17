@@ -172,14 +172,14 @@ class MetaAdsScraper:
                     stale_rounds = 0
                 else:
                     stale_rounds += 1
-                    if stale_rounds >= 3:
+                    if stale_rounds >= 5:
                         logger.info(
                             f"No more ads after {scroll_attempts} scrolls. "
                             f"Got {len(ads)} ads."
                         )
                         break
                     # Sometimes content takes extra time - do a longer wait
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(3)
             else:
                 stale_rounds = 0
 
