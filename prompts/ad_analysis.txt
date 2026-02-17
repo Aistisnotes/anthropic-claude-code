@@ -21,20 +21,22 @@ Your job is NOT to describe what this ad does. Your job is to DISSECT the persua
 
 ## Deep Extraction Instructions
 
+**CRITICAL RULE**: Extract ONLY from actual ad copy. Do NOT infer, invent, or assume. If something is not explicitly stated in the ad, mark it as "none stated in ad" or use empty array []. We need accurate competitive intelligence based on what brands actually say, not what they might mean.
+
 Analyze this ad at the level of a strategist reverse-engineering it to find exploitable weaknesses. For every element, ask: what's stated, what's IMPLIED but never proven, and what's MISSING that should be there.
 
 Respond in the following JSON format exactly:
 
 ```json
 {
-  "target_customer_profile": "Who this ad targets — their specific SITUATION (not just demographics). What stage of their journey are they at? What have they already tried and failed?",
-  "target_demographics": "Age, gender, income, location signals from the copy.",
-  "target_psychographics": "Beliefs they already hold, identity they want to claim, tribe they belong to.",
+  "target_customer_profile": "Who this ad targets — their specific SITUATION (not just demographics). Extract from ACTUAL ad language. If not explicitly stated, write 'not specified in ad'.",
+  "target_demographics": "Age, gender, income, location signals from the copy. Extract only explicit mentions or clear signals. If none, write 'not specified in ad'.",
+  "target_psychographics": "Beliefs they already hold, identity they want to claim, tribe they belong to. Extract from ACTUAL ad language only. If none stated, write 'not specified in ad'.",
 
-  "pain_points": ["Specific pain point extracted from copy — use their EXACT language where possible"],
-  "pain_point_symptoms": ["Observable symptoms — what does the customer SEE/FEEL that tells them something is wrong"],
+  "pain_points": ["Specific pain point extracted from copy — use their EXACT language where possible. If no pain points are mentioned, use empty array []"],
+  "pain_point_symptoms": ["Observable symptoms — what does the customer SEE/FEEL that tells them something is wrong. Extract from ACTUAL ad copy only. If none stated, use empty array []"],
 
-  "root_cause": "The root cause as STATED in the ad — the explanation given for why the problem exists.",
+  "root_cause": "The root cause as STATED in the ad — the explanation given for why the problem exists. CRITICAL: Extract only what the ad explicitly claims as the cause. If no root cause is mentioned, write 'none stated in ad'. Do NOT infer or invent.",
   "root_cause_chain": [
     "Upstream cause (the WHY behind the why — what CAUSES the stated root cause?)",
     "Stated root cause (what the ad claims)",
@@ -43,8 +45,8 @@ Respond in the following JSON format exactly:
   ],
   "root_cause_depth": "One of: surface (just names a cause), moderate (explains a mechanism), deep (traces a causal chain), cellular (goes to molecular/cellular level). Most ads stop at surface or moderate.",
 
-  "mechanism": "The mechanism as presented — HOW does the product solve the problem? What's the unique pathway?",
-  "mechanism_depth": "One of: claim-only (just says it works), process-level (describes steps/phases), cellular-molecular (explains at biological level). Note exactly WHERE the explanation stops short.",
+  "mechanism": "The mechanism as presented — HOW does the product solve the problem? What's the unique pathway? CRITICAL: Extract only what the ad explicitly explains. If no mechanism is explained, write 'none stated in ad'. Do NOT infer or invent.",
+  "mechanism_depth": "One of: claim-only (just says it works), process-level (describes steps/phases), cellular-molecular (explains at biological level). Note exactly WHERE the explanation stops short. If no mechanism stated, use 'none'.",
 
   "proof_elements": ["Every proof element used: authority figures, studies cited, specific numbers/percentages, testimonial claims, before/after data, credentials mentioned, clinical language"],
   "proof_gaps": ["What claims are made WITHOUT proof? Where does the ad assert something as fact without evidence? Where are studies referenced vaguely ('studies show') vs specifically?"],
@@ -61,9 +63,9 @@ Respond in the following JSON format exactly:
   "unfalsifiability_techniques": ["How does the ad make its claims impossible to disprove? e.g. unfalsifiable root cause, catch-all mechanism, subjective success metrics, conspiracy framing that pre-discredits critics"],
   "unfalsifiability_cracks": ["Where does the unfalsifiable armor have CRACKS? What specific, testable claims does it accidentally make? Where could a competitor point and say 'that's not true and here's proof'?"],
 
-  "product_delivery_mechanism": "Format, dosage, timeline, guarantee structure.",
-  "mass_desire": "The deep pre-existing desire being tapped — what does the customer want at identity level, not just symptom level?",
-  "big_idea": "The single paradigm shift this ad presents — the 'aha' that makes everything else click.",
+  "product_delivery_mechanism": "Format, dosage, timeline, guarantee structure. Extract from actual ad. If not stated, write 'not specified in ad'.",
+  "mass_desire": "The transformation/outcome promised in the ad. Extract the EXACT promise from ad copy. If no specific desire/outcome is stated, write 'none stated in ad'. Do NOT infer.",
+  "big_idea": "The single paradigm shift this ad presents — the 'aha' that makes everything else click. If no clear big idea, write 'none identified'.",
 
   "ad_angle": "The specific framing used to enter the conversation. Not just 'doctor story' but WHY a doctor story — what does it accomplish psychologically?",
   "emotional_triggers": ["List of emotions triggered — be specific: not just 'fear' but 'fear of medical dependency and loss of autonomy'"],
