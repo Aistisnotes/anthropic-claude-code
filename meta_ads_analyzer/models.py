@@ -235,6 +235,12 @@ class PatternReport(BaseModel):
     hook_patterns: list[dict] = Field(default_factory=list)
     awareness_level_distribution: dict = Field(default_factory=dict)
 
+    # NEW: Explicit dimension distributions for compare command
+    angle_distribution: dict[str, int] = Field(default_factory=dict)
+    format_distribution: dict[str, int] = Field(default_factory=dict)
+    offer_distribution: dict[str, int] = Field(default_factory=dict)
+    cta_distribution: dict[str, int] = Field(default_factory=dict)
+
     # Deep analysis: gaps and weaknesses
     competitive_verdict: str = ""
     root_cause_gaps: list[dict] = Field(default_factory=list)

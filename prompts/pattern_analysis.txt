@@ -134,6 +134,44 @@ Respond in the following JSON format:
     "Unaware": 0, "Problem Aware": 0, "Solution Aware": 0, "Product Aware": 0, "Most Aware": 0
   },
 
+  "angle_distribution": {
+    "mechanism": 0,
+    "social_proof": 0,
+    "transformation": 0,
+    "problem_agitate": 0,
+    "scarcity": 0,
+    "authority": 0,
+    "educational": 0
+  },
+  "format_distribution": {
+    "listicle": 0,
+    "testimonial": 0,
+    "how_to": 0,
+    "long_form": 0,
+    "minimal": 0,
+    "emoji_heavy": 0,
+    "direct_response": 0
+  },
+  "offer_distribution": {
+    "discount": 0,
+    "free_trial": 0,
+    "guarantee": 0,
+    "bonus": 0,
+    "free_shipping": 0,
+    "bundle": 0,
+    "subscription": 0,
+    "limited_time": 0
+  },
+  "cta_distribution": {
+    "shop_now": 0,
+    "learn_more": 0,
+    "sign_up": 0,
+    "claim_offer": 0,
+    "watch": 0,
+    "download": 0,
+    "contact": 0
+  },
+
   "loopholes": [
     {
       "rank": 1,

@@ -196,6 +196,11 @@ class PatternAnalyzer:
                 emotional_trigger_patterns=data.get("emotional_trigger_patterns", []),
                 hook_patterns=data.get("hook_patterns", []),
                 awareness_level_distribution=data.get("awareness_level_distribution", {}),
+                # NEW: Dimension distributions for compare command
+                angle_distribution=data.get("angle_distribution", {}),
+                format_distribution=data.get("format_distribution", {}),
+                offer_distribution=data.get("offer_distribution", {}),
+                cta_distribution=data.get("cta_distribution", {}),
                 # Deep analysis fields
                 competitive_verdict=data.get("competitive_verdict", ""),
                 root_cause_gaps=data.get("root_cause_gaps", []),
