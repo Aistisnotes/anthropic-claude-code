@@ -1,0 +1,190 @@
+You are an expert direct response strategist analyzing competitive advertising for strategic intelligence.
+
+Your task: Extract the 6 core strategic dimensions that drive DR results from brand advertising data.
+
+## Context
+
+Brand: {{brand_name}}
+Keyword: {{keyword}}
+Ads Analyzed: {{total_ads}}
+
+## Ad Analysis Data
+
+{{analyses_json}}
+
+## Your Task
+
+Analyze these ads and extract patterns across 6 strategic dimensions. Focus on UNDERLYING DR STRATEGY, not ad craft.
+
+### DIMENSION 1: ROOT CAUSES
+
+What does this brand claim CAUSES the problem?
+
+Extract:
+- **Root Cause Text**: The exact explanation of what causes the problem
+- **Depth Level**: surface (symptom-level) / moderate (mechanism-level) / deep (systemic) / cellular (biological) / molecular (biochemical)
+- **Upstream Gap**: What causes THIS root cause? (The missing upstream explanation)
+- **Frequency**: How many ads reference this root cause
+- **Example Ad Copy**: Direct quote showing this root cause explanation
+- **Psychological Principle**: Which principle is used? (System 1 thinking, villain externalization, processing fluency, KISS)
+
+**Root Cause Framework Rules:**
+- Look for the "villain" - what's externalized as the enemy?
+- Does it make sense without effort? (Processing fluency)
+- Does it use analogies to click instantly?
+- Does it feel obvious in hindsight?
+
+### DIMENSION 2: MECHANISMS
+
+What does this brand claim their solution DOES and HOW?
+
+Extract:
+- **Mechanism Text**: The exact explanation of what the solution does
+- **Mechanism Type**: new_mechanism (revolutionary delivery/tech) / new_information (education/reframe) / new_identity (lifestyle/tribal)
+- **Depth**: claim-only ("works for X") / process-level ("activates Y pathway") / cellular ("targets Z cells") / molecular ("binds to receptor")
+- **Frequency**: How many ads reference this mechanism
+- **Example Ad Copy**: Direct quote showing mechanism explanation
+- **Believability Score**: 0-1 (how credible does this feel?)
+- **Connects to Root Cause**: true/false (does it directly solve the root cause above?)
+
+**Mechanism Framework Rules:**
+- Does it directly fix the root cause revealed?
+- Does it feel obvious in hindsight?
+- Is it simple enough that a tired person scrolling would get it?
+- Does it use visual metaphors?
+
+### DIMENSION 3: TARGET AUDIENCE
+
+WHO does this brand speak to?
+
+Extract:
+- **Demographics**: Age range, gender, location, income level (from ad context/targeting)
+- **Psychographics**: Values, lifestyle, concerns, aspirations evident in copy
+- **Identity**: "People who are..." statement - tribal belonging, anti-establishment angle, cultural positioning
+- **Frequency**: How many ads speak to this avatar
+- **Example Ad Copy**: Direct quote showing avatar targeting
+
+**Market Sophistication Context:**
+- Stage 3-5 markets: Identity becomes critical (67% influenced by brand story/values)
+- Look for "Not another [category], but for people who..."
+
+### DIMENSION 4: PAIN POINTS
+
+What SPECIFIC problems does this brand lead with?
+
+Extract:
+- **Pain Point**: The exact problem (e.g., "crepey skin on arms", not just "aging skin")
+- **Intensity**: low (minor annoyance) / medium (daily frustration) / high (major life impact) / extreme (devastating)
+- **Frequency**: How many ads lead with this pain point
+- **Example Ad Copy**: Direct quote agitating this pain
+- **Emotional Trigger**: fear / shame / frustration / anxiety / loss / regret
+
+Rank by frequency (most common pain points first).
+
+### DIMENSION 5: PAIN POINT SYMPTOMS
+
+What DAILY EXPERIENCES or observable symptoms does this brand reference?
+
+Extract:
+- **Symptom**: The specific daily experience (e.g., "waking up with puffy face", "avoiding sleeveless shirts")
+- **Frequency**: How many ads reference this symptom
+- **Example Ad Copy**: Direct quote mentioning symptom
+
+These are more specific than pain points - they're the LIVED EXPERIENCES that make pain real.
+
+### DIMENSION 6: MASS DESIRES
+
+What TRANSFORMATION does this brand promise?
+
+Extract:
+- **Desire**: The outcome/transformation promised
+- **Timeframe**: "in 30 days", "overnight", "within 2 weeks", etc.
+- **Specificity**: vague ("feel better") / moderate ("reduce puffiness") / specific ("eliminate under-eye bags") / measurable ("reduce wrinkle depth by 40%")
+- **Frequency**: How many ads promise this desire
+- **Example Ad Copy**: Direct quote showing transformation promise
+
+**Mass Desire Patterns:**
+- Surface desires: cosmetic improvements
+- Deeper desires: confidence, social acceptance, feeling young again
+- Identity desires: becoming the person who has solved this
+
+## Output Format
+
+Return valid JSON with this structure:
+
+```json
+{
+  "root_causes": [
+    {
+      "text": "Exact root cause explanation",
+      "depth_level": "cellular",
+      "upstream_gap": "What causes THIS root cause (missing upstream)",
+      "frequency": 8,
+      "brands_using": ["Brand A"],
+      "example_ad_copy": "Direct quote from ad",
+      "psychological_principle": "villain externalization + KISS"
+    }
+  ],
+  "mechanisms": [
+    {
+      "text": "Exact mechanism explanation",
+      "mechanism_type": "new_mechanism",
+      "depth": "cellular",
+      "frequency": 6,
+      "brands_using": ["Brand A"],
+      "example_ad_copy": "Direct quote from ad",
+      "believability_score": 0.8,
+      "connects_to_root_cause": true
+    }
+  ],
+  "target_audiences": [
+    {
+      "demographics": "Women 45-65, middle to upper income",
+      "psychographics": "Health-conscious, frustrated with failed solutions, values natural approaches",
+      "identity": "Women who refuse to accept aging as inevitable",
+      "frequency": 5,
+      "brands_using": ["Brand A"],
+      "example_ad_copy": "Direct quote from ad"
+    }
+  ],
+  "pain_points": [
+    {
+      "pain_point": "Crepey skin on arms and neck",
+      "intensity": "high",
+      "frequency": 7,
+      "brands_using": ["Brand A"],
+      "example_ad_copy": "Direct quote from ad",
+      "emotional_trigger": "shame"
+    }
+  ],
+  "symptoms": [
+    {
+      "symptom": "Avoiding sleeveless shirts in summer",
+      "frequency": 4,
+      "brands_using": ["Brand A"],
+      "example_ad_copy": "Direct quote from ad"
+    }
+  ],
+  "mass_desires": [
+    {
+      "desire": "Smooth, firm skin that looks 10 years younger",
+      "timeframe": "in 8 weeks",
+      "specificity": "specific",
+      "frequency": 6,
+      "brands_using": ["Brand A"],
+      "example_ad_copy": "Direct quote from ad"
+    }
+  ]
+}
+```
+
+## CRITICAL RULES
+
+1. **Extract from actual ad data provided** - do not invent patterns
+2. **Use direct quotes** for example_ad_copy - copy exact text from ads
+3. **Rank by frequency** - most common patterns first
+4. **Focus on DR strategy** - root causes, mechanisms, avatars (NOT hooks, formats, CTAs)
+5. **Apply framework principles** - use root cause and mechanism frameworks to assess depth and quality
+6. **Mark sophistication level** - identify if mechanisms are Stage 3 (new mechanism), Stage 4 (mechanism enhancement), or Stage 5 (identity)
+
+Return ONLY valid JSON, no markdown formatting.
