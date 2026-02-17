@@ -276,6 +276,7 @@ def market(
     query: str = typer.Argument(..., help="Search keyword"),
     top_brands: int = typer.Option(5, "--top-brands", help="Top N brands to analyze"),
     ads_per_brand: int = typer.Option(10, "--ads-per-brand", help="Max ads per brand"),
+    brand: Optional[str] = typer.Option(None, "--brand", "-b", help="Focus brand for product matching"),
     from_scan: Optional[Path] = typer.Option(None, "--from-scan", help="Load from saved scan JSON"),
     config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
     country: str = typer.Option("US", "--country"),
@@ -294,6 +295,8 @@ def market(
         config.setdefault("reporting", {})["output_dir"] = str(output)
 
     console.print(f"\n[bold]Market Research: {query}[/]")
+    if brand:
+        console.print(f"Focus brand: [cyan]{brand}[/]")
     console.print(
         f"Top brands: [cyan]{top_brands}[/]  |  Ads per brand: [cyan]{ads_per_brand}[/]"
     )
@@ -307,6 +310,7 @@ def market(
             top_brands=top_brands,
             ads_per_brand=ads_per_brand,
             from_scan=from_scan,
+            focus_brand=brand,
         )
     )
 
