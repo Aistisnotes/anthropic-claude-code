@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import anthropic
-from pystache import Renderer
+from jinja2 import Template
 
 from meta_ads_analyzer.compare.strategic_dimensions import (
     MassDesirePattern,
@@ -91,18 +91,15 @@ async def extract_strategic_dimensions(
     # Load prompt template
     prompt_path = Path("prompts/strategic_dimension_extraction.txt")
     with open(prompt_path) as f:
-        template = f.read()
+        template_text = f.read()
 
-    # Render prompt
-    renderer = Renderer()
-    prompt = renderer.render(
-        template,
-        {
-            "brand_name": brand_report.advertiser.page_name,
-            "keyword": brand_report.keyword,
-            "total_ads": pr.total_ads_analyzed,
-            "analyses_json": json.dumps(analyses, indent=2),
-        },
+    # Render prompt using jinja2
+    template = Template(template_text)
+    prompt = template.render(
+        brand_name=brand_report.advertiser.page_name,
+        keyword=brand_report.keyword,
+        total_ads=pr.total_ads_analyzed,
+        analyses_json=json.dumps(analyses, indent=2),
     )
 
     # Call Claude
