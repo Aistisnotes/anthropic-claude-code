@@ -36,13 +36,16 @@ class ProductMatcher:
         # Get pattern analysis
         pattern = brand_report.pattern_report
 
+        # Get summary if available
+        summary_text = getattr(pattern, 'summary', None) or 'N/A'
+
         prompt = f"""Analyze this brand's advertising to extract their core product attributes.
 
 Brand: {brand_report.advertiser.page_name}
 Total Ads Analyzed: {pattern.total_ads_analyzed}
 
 Pattern Analysis Summary:
-{pattern.summary if pattern.summary else 'N/A'}
+{summary_text}
 
 Top Patterns:
 {self._format_patterns(pattern)}
