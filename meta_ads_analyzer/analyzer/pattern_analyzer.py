@@ -130,6 +130,8 @@ class PatternAnalyzer:
                 )
 
                 if report:
+                    # Add Root Cause x Mechanism matrix
+                    report = self._add_root_cause_mechanism_matrix(report, analyses)
                     logger.info("Pattern analysis complete")
                     return report
 
@@ -571,5 +573,119 @@ class PatternAnalyzer:
             for i, rec in enumerate(report.recommendations, 1):
                 lines.append(f"{i}. {rec}")
             lines.append("")
+
+        return "\n".join(lines)
+
+    def _add_root_cause_mechanism_matrix(
+        self, report: PatternReport, analyses: list[AdAnalysis]
+    ) -> PatternReport:
+        """Add Root Cause x Mechanism matrix to pattern report.
+
+        This matrix shows which root cause + mechanism combinations are used,
+        making it easy to spot saturated, underexploited, and missing combos.
+        """
+        from collections import defaultdict
+
+        # Build matrix from actual ad data
+        matrix_data = defaultdict(lambda: {"ads": [], "count": 0})
+
+        for ad in analyses:
+            root = ad.root_cause or "none stated in ad"
+            mech = ad.mechanism or "none stated in ad"
+
+            # Clean up the text for grouping
+            root_clean = root[:80].strip()
+            mech_clean = mech[:80].strip()
+
+            key = (root_clean, mech_clean)
+            matrix_data[key]["ads"].append(ad.ad_id)
+            matrix_data[key]["count"] += 1
+            matrix_data[key]["root_cause"] = root_clean
+            matrix_data[key]["mechanism"] = mech_clean
+
+        # Sort by frequency descending
+        sorted_combos = sorted(
+            matrix_data.values(), key=lambda x: x["count"], reverse=True
+        )
+
+        # Calculate percentages
+        total_ads = len(analyses)
+        matrix_rows = []
+        for combo in sorted_combos:
+            pct = round((combo["count"] / total_ads) * 100) if total_ads > 0 else 0
+            matrix_rows.append({
+                "root_cause": combo["root_cause"],
+                "mechanism": combo["mechanism"],
+                "num_ads": combo["count"],
+                "percent": pct,
+                "example_ads": combo["ads"][:3],  # First 3 ad IDs as examples
+            })
+
+        # Add matrix to report as a new field
+        # Store in executive_summary since we can't modify PatternReport structure easily
+        matrix_text = self._format_matrix_text(matrix_rows, total_ads)
+
+        # Prepend matrix to executive summary
+        if report.executive_summary:
+            report.executive_summary = (
+                f"{matrix_text}\n\n---\n\n{report.executive_summary}"
+            )
+        else:
+            report.executive_summary = matrix_text
+
+        return report
+
+    def _format_matrix_text(self, matrix_rows: list[dict], total_ads: int) -> str:
+        """Format Root Cause x Mechanism matrix as text table."""
+        lines = []
+        lines.append("## ROOT CAUSE × MECHANISM MATRIX")
+        lines.append("")
+        lines.append(
+            "This matrix shows which root cause + mechanism combinations are used in actual ads."
+        )
+        lines.append(
+            "Use this to identify saturated combos (avoid), underexploited combos (opportunity), and missing combos (wide open)."
+        )
+        lines.append("")
+        lines.append(
+            f"| Root Cause | Mechanism | # Ads | % of Total | Status |"
+        )
+        lines.append("|---|---|---|---|---|")
+
+        for row in matrix_rows:
+            pct = row["percent"]
+            # Classify status
+            if pct >= 60:
+                status = "🔴 SATURATED"
+            elif pct >= 30:
+                status = "🟡 MODERATE"
+            elif pct > 0:
+                status = "🟢 UNDEREXPLOITED"
+            else:
+                status = "⚪ NONE"
+
+            root_short = row["root_cause"][:40] + (
+                "..." if len(row["root_cause"]) > 40 else ""
+            )
+            mech_short = row["mechanism"][:40] + (
+                "..." if len(row["mechanism"]) > 40 else ""
+            )
+
+            lines.append(
+                f"| {root_short} | {mech_short} | {row['num_ads']} | {pct}% | {status} |"
+            )
+
+        lines.append("")
+        lines.append(
+            f"**Total ads analyzed**: {total_ads}"
+        )
+        lines.append("")
+        lines.append(
+            "**Key**: 🔴 Saturated (60%+) = Avoid or differentiate | "
+            "🟡 Moderate (30-59%) = Competitive | "
+            "🟢 Underexploited (<30% but exists) = Opportunity | "
+            "⚪ None (0%) = Wide open loophole"
+        )
+        lines.append("")
 
         return "\n".join(lines)

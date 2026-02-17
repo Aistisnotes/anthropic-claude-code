@@ -171,6 +171,9 @@ class StrategicMarketMap(BaseModel):
     # Brand-level summaries
     brand_summaries: list[dict] = Field(default_factory=list)
 
+    # Root Cause x Mechanism matrix
+    root_cause_mechanism_matrix: list[dict] = Field(default_factory=list)
+
 
 class StrategicLoopholeDocument(BaseModel):
     """Complete loophole document with 5-7 execution-ready strategies."""

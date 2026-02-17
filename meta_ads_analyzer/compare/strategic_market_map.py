@@ -77,6 +77,9 @@ async def generate_strategic_market_map(
     # Build brand summaries
     brand_summaries = _build_brand_summaries(brand_reports, brand_dimensions)
 
+    # Build Root Cause x Mechanism matrix
+    rc_mech_matrix = _build_root_cause_mechanism_matrix(brand_reports, brand_dimensions)
+
     # Update meta
     meta["brands_compared"] = len(brand_reports)
     meta["generated_at"] = datetime.utcnow().isoformat()
@@ -92,6 +95,7 @@ async def generate_strategic_market_map(
         symptom_comparison=symptom_comp,
         desire_comparison=desire_comp,
         brand_summaries=brand_summaries,
+        root_cause_mechanism_matrix=rc_mech_matrix,
     )
 
 
@@ -749,6 +753,87 @@ def _build_brand_summaries(
     return summaries
 
 
+def _build_root_cause_mechanism_matrix(
+    brand_reports: list[BrandReport], brand_dimensions: dict
+) -> list[dict]:
+    """Build market-wide Root Cause x Mechanism matrix.
+
+    Shows which root cause + mechanism combinations are used by which brands.
+    Makes it easy to spot saturated, underexploited, and missing combos.
+    """
+    from collections import defaultdict
+
+    # Collect all root cause + mechanism pairs from all brands' ads
+    matrix_data = defaultdict(lambda: {"brands": set(), "total_ads": 0})
+
+    for report in brand_reports:
+        brand_name = report.advertiser.page_name
+
+        # Get root causes and mechanisms from the brand's pattern report
+        pr = report.pattern_report
+
+        # Extract from root_cause_patterns and mechanism_patterns
+        root_causes = [
+            rc.get("pattern", "none stated") for rc in pr.root_cause_patterns
+        ]
+        mechanisms = [m.get("pattern", "none stated") for m in pr.mechanism_patterns]
+
+        # Create combinations
+        if not root_causes:
+            root_causes = ["none stated"]
+        if not mechanisms:
+            mechanisms = ["none stated"]
+
+        for root in root_causes:
+            for mech in mechanisms:
+                # Clean and truncate
+                root_clean = root[:60].strip()
+                mech_clean = mech[:60].strip()
+
+                key = (root_clean, mech_clean)
+                matrix_data[key]["brands"].add(brand_name)
+                matrix_data[key]["total_ads"] += 1
+                matrix_data[key]["root_cause"] = root_clean
+                matrix_data[key]["mechanism"] = mech_clean
+
+    # Convert to list and calculate market share
+    total_brands = len(brand_reports)
+    total_ads = sum(r.pattern_report.total_ads_analyzed for r in brand_reports)
+
+    matrix_rows = []
+    for combo_data in matrix_data.values():
+        brands_using = list(combo_data["brands"])
+        num_brands = len(brands_using)
+        market_share = round((num_brands / total_brands) * 100) if total_brands > 0 else 0
+
+        # Classify as gap
+        if market_share >= 60:
+            gap = "SATURATED"
+        elif market_share >= 30:
+            gap = "MODERATE"
+        elif market_share > 0:
+            gap = "Underexploited"
+        else:
+            gap = "WIDE OPEN"
+
+        matrix_rows.append(
+            {
+                "root_cause": combo_data["root_cause"],
+                "mechanism": combo_data["mechanism"],
+                "brands_using": brands_using,
+                "num_brands": num_brands,
+                "total_ads": combo_data["total_ads"],
+                "market_share": market_share,
+                "gap": gap,
+            }
+        )
+
+    # Sort by market share descending (saturated first)
+    matrix_rows.sort(key=lambda x: x["market_share"], reverse=True)
+
+    return matrix_rows
+
+
 def save_strategic_market_map(market_map: StrategicMarketMap, output_dir: Path) -> Path:
     """Save strategic market map to JSON file.
 
@@ -811,6 +896,39 @@ def format_strategic_market_map_text(market_map: StrategicMarketMap) -> str:
             )
 
         console.print(table)
+        lines.append("")
+
+    # Root Cause x Mechanism Matrix
+    if market_map.root_cause_mechanism_matrix:
+        lines.append("[bold]Root Cause × Mechanism Matrix:[/bold]")
+        lines.append("(Shows which combos are saturated, underexploited, or wide open)")
+        lines.append("")
+
+        matrix_table = Table(show_header=True, header_style="bold magenta")
+        matrix_table.add_column("Root Cause", width=28)
+        matrix_table.add_column("Mechanism", width=28)
+        matrix_table.add_column("Brands", justify="center", width=8)
+        matrix_table.add_column("Share", justify="right", width=7)
+        matrix_table.add_column("Status", width=15)
+
+        # Show top 10 rows
+        for row in market_map.root_cause_mechanism_matrix[:10]:
+            status_color = {
+                "SATURATED": "red",
+                "MODERATE": "yellow",
+                "Underexploited": "green",
+                "WIDE OPEN": "cyan",
+            }.get(row["gap"], "white")
+
+            matrix_table.add_row(
+                row["root_cause"][:26],
+                row["mechanism"][:26],
+                f"{row['num_brands']}/{len(market_map.brand_summaries)}",
+                f"{row['market_share']}%",
+                f"[{status_color}]{row['gap']}[/{status_color}]",
+            )
+
+        console.print(matrix_table)
         lines.append("")
 
     return "\n".join(lines)
