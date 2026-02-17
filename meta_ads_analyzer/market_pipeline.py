@@ -515,18 +515,17 @@ class MarketPipeline:
         """
         output_dir = Path(self.config.get("reporting", {}).get("output_dir", "output/reports"))
 
-        # Search for brand_report files containing this brand
-        brand_slug = "".join(c if c.isalnum() else "_" for c in focus_brand.lower())[:30]
+        # Look in all brand_report JSON files (case-insensitive search)
+        focus_brand_lower = focus_brand.lower()
 
-        # Look in all report directories
-        for report_file in output_dir.glob(f"*/brand_report_{brand_slug}_*.json"):
+        for report_file in output_dir.glob("*/brand_report_*.json"):
             try:
                 with open(report_file) as f:
                     data = json.load(f)
                 report = BrandReport(**data)
 
                 # Verify it's the right brand (case insensitive)
-                if report.advertiser.page_name.lower() == focus_brand.lower():
+                if report.advertiser.page_name.lower() == focus_brand_lower:
                     logger.info(f"Loaded focus brand report from: {report_file}")
                     return report
             except Exception as e:
