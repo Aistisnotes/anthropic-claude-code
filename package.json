@@ -1,19 +1,30 @@
 {
-  "name": "anthropic-claude-code",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "meta-ads-research",
+  "version": "0.1.0",
+  "description": "Market research layer for Meta Ad Library — surgical ad intelligence pipeline",
+  "type": "module",
+  "bin": {
+    "meta-ads": "./bin/meta-ads.js"
+  },
   "scripts": {
-    "test": "jest"
+    "scan": "node bin/meta-ads.js scan",
+    "market": "node bin/meta-ads.js market",
+    "compare": "node bin/meta-ads.js compare",
+    "test": "node --test src/**/*.test.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "http://local_proxy@127.0.0.1:27640/git/Aistisnotes/anthropic-claude-code"
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
+    "axios": "^1.7.0",
+    "chalk": "^5.3.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^12.1.0",
+    "ora": "^8.0.1",
+    "playwright": "^1.58.2"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "jest": "^30.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
