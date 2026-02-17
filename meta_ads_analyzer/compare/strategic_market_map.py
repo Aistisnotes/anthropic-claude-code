@@ -806,6 +806,19 @@ def _build_brand_summaries(
     return summaries
 
 
+def _cluster_root_cause(text: str) -> str:
+    """Cluster similar root causes into categories."""
+    text_lower = text.lower()
+    if 'lymphatic' in text_lower and any(term in text_lower for term in ['congestion', 'backup', 'clog']):
+        return "lymphatic_congestion"
+    elif 'none stated' in text_lower:
+        return "none_stated"
+    elif 'liver' in text_lower or 'hepatic' in text_lower:
+        return "hepatic_lymphatic"
+    else:
+        return "other"
+
+
 def _build_root_cause_mechanism_matrix(
     brand_reports: list[BrandReport], brand_dimensions: dict
 ) -> list[dict]:
@@ -869,10 +882,14 @@ def _build_root_cause_mechanism_matrix(
         else:
             gap = "WIDE OPEN"
 
+        # Add root cause cluster
+        cluster = _cluster_root_cause(combo_data["root_cause"])
+
         matrix_rows.append(
             {
                 "root_cause": combo_data["root_cause"],
                 "mechanism": combo_data["mechanism"],
+                "root_cause_cluster": cluster,
                 "brands_using": brands_using,
                 "num_brands": num_brands,
                 "total_ads": combo_data["total_ads"],

@@ -176,6 +176,16 @@ class ComparePipeline:
             brand_reports.append(BrandReport(**data))
 
         logger.info(f"Loaded {len(brand_reports)} brand reports")
+
+        # Filter out brands with 0 ads analyzed
+        original_count = len(brand_reports)
+        brand_reports = [
+            r for r in brand_reports
+            if r.pattern_report.total_ads_analyzed > 0
+        ]
+        if len(brand_reports) < original_count:
+            logger.info(f"Filtered to {len(brand_reports)} brands with ads analyzed (removed {original_count - len(brand_reports)} brands with 0 ads)")
+
         return brand_reports
 
     async def _run_fresh_analysis(
