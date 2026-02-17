@@ -26,7 +26,7 @@ from meta_ads_analyzer.analyzer.filter import AdFilter
 from meta_ads_analyzer.analyzer.pattern_analyzer import PatternAnalyzer
 from meta_ads_analyzer.db.store import AdStore
 from meta_ads_analyzer.downloader.media import MediaDownloader
-from meta_ads_analyzer.models import AdContent, AdStatus, PatternReport
+from meta_ads_analyzer.models import AdContent, AdStatus, PatternReport, ScrapedAd
 from meta_ads_analyzer.quality.gates import QualityGates, CopyQualityChecker
 from meta_ads_analyzer.reporter.output import ReportWriter
 from meta_ads_analyzer.scraper.meta_library import MetaAdsScraper
@@ -89,11 +89,67 @@ class Pipeline:
                 await self.store.complete_run(run_id, f"failed: {e}")
                 raise
 
-    async def _execute_pipeline(
-        self, run_id: str, query: str, brand: str
+    async def run_from_scraped_ads(
+        self,
+        scraped_ads: list[ScrapedAd],
+        query: str,
+        brand: str,
     ) -> PatternReport:
-        """Execute all pipeline stages."""
+        """Run pipeline stages 2-8 on pre-scraped ads (bypass Stage 1).
 
+        This is used by MarketPipeline to analyze pre-selected ads.
+
+        Args:
+            scraped_ads: Pre-selected ads to analyze
+            query: Search keyword (for report context)
+            brand: Brand name (for report)
+
+        Returns:
+            PatternReport with full analysis results
+        """
+        brand = brand or query
+        run_id = f"{brand.replace(' ', '_')[:20]}_{uuid.uuid4().hex[:8]}"
+
+        async with self.store:
+            await self.store.create_run(run_id, query, brand, self.config)
+
+            # Save scraped ads to DB
+            for ad in scraped_ads:
+                await self.store.save_scraped_ad(run_id, ad)
+
+            try:
+                report = await self._execute_stages_2_to_8(
+                    run_id=run_id,
+                    scraped_ads=scraped_ads,
+                    query=query,
+                    brand=brand
+                )
+                await self.store.complete_run(run_id, "completed")
+                return report
+            except Exception as e:
+                await self.store.complete_run(run_id, f"failed: {e}")
+                raise
+
+    async def _execute_stages_2_to_8(
+        self,
+        run_id: str,
+        scraped_ads: list[ScrapedAd],
+        query: str,
+        brand: str,
+    ) -> PatternReport:
+        """Execute stages 2-8 of the pipeline (download through report).
+
+        This is the core analysis pipeline extracted for reuse by MarketPipeline.
+
+        Args:
+            run_id: Unique run identifier
+            scraped_ads: Ads to analyze
+            query: Search keyword
+            brand: Brand name
+
+        Returns:
+            PatternReport with analysis results
+        """
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -102,20 +158,12 @@ class Pipeline:
             console=console,
         ) as progress:
 
-            # ── Stage 1: Scrape ──
-            task = progress.add_task("[cyan]Scraping Meta Ads Library...", total=None)
-            scraped_ads = await self.scraper.scrape(query)
-            progress.update(task, completed=len(scraped_ads), total=len(scraped_ads))
-            console.print(f"  [green]✓[/] Scraped {len(scraped_ads)} ads")
-
-            for ad in scraped_ads:
-                await self.store.save_scraped_ad(run_id, ad)
-
             if not scraped_ads:
-                console.print("[red]No ads found. Aborting.[/]")
+                console.print("[red]No ads provided. Aborting.[/]")
                 return PatternReport(
-                    search_query=query, brand=brand,
-                    executive_summary="No ads found for this search query.",
+                    search_query=query,
+                    brand=brand,
+                    executive_summary="No ads provided for analysis.",
                 )
 
             # ── Stage 2: Download media ──
@@ -179,7 +227,8 @@ class Pipeline:
             if not analyzable:
                 console.print("[red]No ads passed filtering. Aborting analysis.[/]")
                 return PatternReport(
-                    search_query=query, brand=brand,
+                    search_query=query,
+                    brand=brand,
                     executive_summary="All ads were filtered out. No analysis possible.",
                 )
 
@@ -246,6 +295,35 @@ class Pipeline:
             console.print(f"  Analyzed: {stats['ad_analyses']}")
 
             return report
+
+    async def _execute_pipeline(
+        self, run_id: str, query: str, brand: str
+    ) -> PatternReport:
+        """Execute all pipeline stages."""
+
+        # ── Stage 1: Scrape ──
+        console.print("[cyan]Scraping Meta Ads Library...[/]")
+        scraped_ads = await self.scraper.scrape(query)
+        console.print(f"  [green]✓[/] Scraped {len(scraped_ads)} ads")
+
+        for ad in scraped_ads:
+            await self.store.save_scraped_ad(run_id, ad)
+
+        if not scraped_ads:
+            console.print("[red]No ads found. Aborting.[/]")
+            return PatternReport(
+                search_query=query,
+                brand=brand,
+                executive_summary="No ads found for this search query.",
+            )
+
+        # ── Stages 2-8: Download, Transcribe, Filter, Analyze, Quality, Pattern, Report ──
+        return await self._execute_stages_2_to_8(
+            run_id=run_id,
+            scraped_ads=scraped_ads,
+            query=query,
+            brand=brand
+        )
 
 
 class BatchPipeline:
