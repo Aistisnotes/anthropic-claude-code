@@ -419,17 +419,20 @@ def compare(
             console.print("\n" + format_strategic_loophole_doc_text(result.loophole_doc))
 
         # Summary
-        p1_count = sum(
-            1 for p in result.loophole_doc.priority_matrix if p.tier == "P1_HIGH"
-        )
-        p2_count = sum(
-            1 for p in result.loophole_doc.priority_matrix if p.tier == "P2_MEDIUM"
-        )
+        if result.loophole_doc:
+            high_priority = sum(
+                1 for loop in result.loophole_doc.loopholes if loop.priority_score >= 80
+            )
+            medium_priority = sum(
+                1 for loop in result.loophole_doc.loopholes if 50 <= loop.priority_score < 80
+            )
+            total_loopholes = len(result.loophole_doc.loopholes)
 
-        console.print(f"\n[bold green]✓[/] Comparison complete")
-        console.print(
-            f"Opportunities: [red]{p1_count} high priority[/], [yellow]{p2_count} medium priority[/]"
-        )
+            console.print(f"\n[bold green]✓[/] Strategic comparison complete")
+            console.print(f"Generated {total_loopholes} execution-ready loopholes")
+            console.print(f"High priority (80+): {high_priority}, Medium priority (50-79): {medium_priority}")
+        else:
+            console.print(f"\n[bold green]✓[/] Strategic market map complete")
 
         if brand and result.loophole_doc.brand_gaps:
             console.print(
