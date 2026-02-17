@@ -368,6 +368,75 @@ def _display_market_summary(result: MarketResult):
 
 
 @app.command()
+def compare(
+    query: str = typer.Argument(..., help="Search keyword"),
+    brand: Optional[str] = typer.Option(None, "--brand", "-b", help="Focus brand for gap analysis"),
+    from_reports: Optional[Path] = typer.Option(None, "--from-reports", help="Load from custom reports directory"),
+    from_scan: Optional[Path] = typer.Option(None, "--from-scan", help="Run fresh analysis from saved scan"),
+    top_brands: int = typer.Option(5, "--top-brands", help="Top brands (when using --from-scan)"),
+    ads_per_brand: int = typer.Option(10, "--ads-per-brand", help="Ads per brand (when using --from-scan)"),
+    enhance: bool = typer.Option(False, "--enhance", help="Add Claude strategic layer"),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON to stdout"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+):
+    """Compare brands - generate Market Map and Loophole Document."""
+    setup_logging(log_level)
+    config = load_config(config_path)
+
+    if output:
+        config.setdefault("reporting", {})["output_dir"] = str(output)
+
+    console.print(f"\n[bold]Market Comparison: {query}[/]")
+    if brand:
+        console.print(f"Focus brand: [cyan]{brand}[/]")
+
+    from meta_ads_analyzer.compare_pipeline import ComparePipeline
+
+    pipeline = ComparePipeline(config)
+    result = asyncio.run(
+        pipeline.run(
+            keyword=query,
+            focus_brand=brand,
+            from_reports=from_reports,
+            from_scan=from_scan,
+            enhance=enhance,
+            top_brands=top_brands,
+            ads_per_brand=ads_per_brand,
+        )
+    )
+
+    # Display results
+    if json_output:
+        console.print_json(data=result.model_dump(mode="json"))
+    else:
+        from meta_ads_analyzer.compare.market_map import format_market_map_text
+        from meta_ads_analyzer.compare.loophole_doc import format_loophole_doc_text
+
+        console.print("\n" + format_market_map_text(result.market_map))
+        console.print("\n" + format_loophole_doc_text(result.loophole_doc))
+
+        # Summary
+        p1_count = sum(
+            1 for p in result.loophole_doc.priority_matrix if p.tier == "P1_HIGH"
+        )
+        p2_count = sum(
+            1 for p in result.loophole_doc.priority_matrix if p.tier == "P2_MEDIUM"
+        )
+
+        console.print(f"\n[bold green]✓[/] Comparison complete")
+        console.print(
+            f"Opportunities: [red]{p1_count} high priority[/], [yellow]{p2_count} medium priority[/]"
+        )
+
+        if brand and result.loophole_doc.brand_gaps:
+            console.print(
+                f"Brand gaps for '{brand}': [yellow]{len(result.loophole_doc.brand_gaps)} blind spots[/]"
+            )
+
+
+@app.command()
 def install_browser():
     """Install Playwright browsers (required first-time setup)."""
     import subprocess
