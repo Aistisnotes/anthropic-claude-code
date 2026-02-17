@@ -92,6 +92,69 @@ Ads are automatically filtered to skip:
 - Failed tests (low impressions + old)
 - Duplicates (same advertiser + text prefix)
 
+### Competitive Comparison (NEW - Session 3)
+
+Compare brands to identify market gaps and competitive opportunities:
+
+```bash
+# Compare existing brand reports
+meta-ads compare "weight loss supplement"
+
+# Fresh analysis from saved scan
+meta-ads compare "weight loss supplement" --from-scan scan.json --top-brands 5
+
+# Focus on specific brand (shows blind spots)
+meta-ads compare "weight loss supplement" --brand "Noom"
+
+# Add Claude strategic recommendations
+meta-ads compare "weight loss supplement" --enhance
+
+# JSON output (for piping to other tools)
+meta-ads compare "weight loss supplement" --json
+```
+
+**Comparison workflow:**
+1. **Load Reports** - Loads existing brand reports from `market_keyword_*` directories
+2. **Market Map** - Generates brand × dimension comparison matrices for 6 dimensions:
+   - Hooks (9 types), Angles (7 types), Emotions (10 types)
+   - Formats (7 types), Offers (8 types), CTAs (7 types)
+3. **Saturation Analysis** - Classifies each dimension:
+   - **Saturated** (60%+ brands): Avoid or differentiate
+   - **Moderate** (30-59% brands): Competitive zone
+   - **Whitespace** (<30% brands): Opportunity zone
+4. **Loophole Document** - Identifies competitive gaps:
+   - **Market-wide gaps** (0% coverage): Wide open opportunities
+   - **Underexploited** (1-2 brands): Proven but uncrowded
+   - **Priority matrix** (P1/P2/P3/P4): Ranked opportunities with scoring
+   - **Brand-specific gaps**: Competitor strategies you're missing
+5. **Strategic Recommendations** (with `--enhance`):
+   - Market narrative and executive summary
+   - Top 3-5 opportunities with execution strategies
+   - Contrarian plays (opposite of market consensus)
+   - Immediate actions (30-day timeline)
+
+**Output:**
+- `market_map.json` - Complete dimension matrices and saturation zones
+- `loophole_doc.json` - Gap analysis and priority matrix
+- Rich-formatted tables in console
+
+**Priority Scoring Formula:**
+```
+score = (gap_score + validation_bonus + low_comp_bonus) × (weight / 3)
+
+where:
+  gap_score = 100 - coverage_percent
+  validation_bonus = 20 if anyone uses it (proven)
+  low_comp_bonus = 15 if exactly 1 brand uses it (validated but uncrowded)
+  weight = angles:4, hooks:3, emotions:3, formats:2, offers:2, ctas:1
+```
+
+**Tier Classification:**
+- **P1_HIGH** (score ≥80): Must-do opportunities, high impact
+- **P2_MEDIUM** (score ≥50): Strong opportunities, good ROI
+- **P3_LOW** (score ≥25): Nice-to-have, lower priority
+- **P4_MONITOR** (score <25): Watch and evaluate
+
 ## Configuration
 
 Edit `config/default.toml` or pass `--config`. Environment variables override with `META_ADS_` prefix:
