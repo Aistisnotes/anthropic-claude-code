@@ -353,3 +353,33 @@ def rank_advertisers(advertisers: list[AdvertiserEntry]) -> list[AdvertiserEntry
     logger.info(f"Ranked {len(advertisers)} advertisers")
 
     return advertisers
+
+
+def select_ads_for_brand(
+    all_ads: list[ScrapedAd],
+    brand_name: str,
+    limit: int,
+    config: dict,
+    now: Optional[datetime] = None,
+) -> SelectionResult:
+    """Select best ads for a specific brand.
+
+    Filters all_ads to only this brand, then runs selection pipeline.
+
+    Args:
+        all_ads: All ads from scan
+        brand_name: Brand/advertiser name to filter by
+        limit: Max ads to select for this brand
+        config: Config dict with [selection] section
+        now: Current datetime (for testing)
+
+    Returns:
+        SelectionResult with selected/skipped ads for this brand only
+    """
+    # Filter to only this brand's ads
+    brand_ads = [ad for ad in all_ads if ad.page_name == brand_name]
+
+    logger.info(f"Selecting ads for brand '{brand_name}': {len(brand_ads)} total ads")
+
+    # Run standard selection pipeline on brand's ads
+    return select_ads(brand_ads, config, limit, now)

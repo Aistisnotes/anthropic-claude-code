@@ -320,3 +320,32 @@ class ScanResult(BaseModel):
 
     # Optional: selection results if --select flag used
     selection: Optional[SelectionResult] = None
+
+
+class BrandSelection(BaseModel):
+    """Selected brand with chosen ads for analysis."""
+
+    advertiser: AdvertiserEntry
+    selected_ads: list[ClassifiedAd]
+    selection_stats: SelectionStats
+
+
+class BrandReport(BaseModel):
+    """Per-brand analysis report for market research."""
+
+    advertiser: AdvertiserEntry
+    keyword: str
+    selection_stats: SelectionStats
+    pattern_report: PatternReport
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MarketResult(BaseModel):
+    """Complete market research result."""
+
+    keyword: str
+    country: str
+    scan_date: datetime
+    total_advertisers: int
+    brands_analyzed: int
+    brand_reports: list[BrandReport] = Field(default_factory=list)
