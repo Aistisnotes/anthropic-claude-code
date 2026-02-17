@@ -17,6 +17,22 @@ class AdType(str, enum.Enum):
     UNKNOWN = "unknown"
 
 
+class ProductType(str, enum.Enum):
+    """Product/service type classification for market filtering."""
+
+    SUPPLEMENT = "supplement"
+    DEVICE = "device"
+    SERVICE = "service"
+    SKINCARE = "skincare"
+    TOOL = "tool"
+    APPAREL = "apparel"
+    SOFTWARE = "software"
+    INFO_PRODUCT = "info_product"
+    FOOD_BEVERAGE = "food_beverage"
+    OTHER = "other"
+    UNKNOWN = "unknown"
+
+
 class AdStatus(str, enum.Enum):
     SCRAPED = "scraped"
     DOWNLOADED = "downloaded"
@@ -61,6 +77,7 @@ class ScrapedAd(BaseModel):
     page_name: str
     page_id: Optional[str] = None
     ad_type: AdType = AdType.UNKNOWN
+    product_type: ProductType = ProductType.UNKNOWN
     primary_text: Optional[str] = None
     headline: Optional[str] = None
     description: Optional[str] = None

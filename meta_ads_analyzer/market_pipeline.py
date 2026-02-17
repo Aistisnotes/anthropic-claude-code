@@ -17,8 +17,13 @@ from pathlib import Path
 from typing import Any, Optional
 
 from rich.console import Console
+from rich.table import Table
 
-from meta_ads_analyzer.models import BrandReport, BrandSelection, MarketResult, ScanResult
+from meta_ads_analyzer.classifier.product_type import (
+    filter_ads_by_product_type,
+    get_dominant_product_type,
+)
+from meta_ads_analyzer.models import BrandReport, BrandSelection, MarketResult, ProductType, ScanResult
 from meta_ads_analyzer.pipeline import Pipeline
 from meta_ads_analyzer.selector import select_ads_for_brand
 from meta_ads_analyzer.utils.logging import get_logger
@@ -62,6 +67,33 @@ class MarketPipeline:
             f"\n[bold]Found {len(scan_result.advertisers)} advertisers "
             f"({scan_result.total_fetched} total ads)[/]"
         )
+
+        # 1b. Detect dominant product type and filter
+        dominant_type, distribution = get_dominant_product_type(scan_result.ads)
+
+        # Show product type distribution
+        self._show_product_type_distribution(distribution)
+
+        # Filter to dominant product type (unless it's UNKNOWN)
+        if dominant_type != ProductType.UNKNOWN:
+            console.print(
+                f"[cyan]Filtering to {dominant_type.value} ads only "
+                f"(dominant product type)[/]"
+            )
+            filtered_ads = filter_ads_by_product_type(
+                scan_result.ads, dominant_type, allow_unknown=True
+            )
+            logger.info(
+                f"Filtered {len(scan_result.ads)} ads down to {len(filtered_ads)} "
+                f"matching {dominant_type.value}"
+            )
+            # Update scan_result with filtered ads
+            scan_result.ads = filtered_ads
+        else:
+            console.print(
+                "[yellow]Could not determine dominant product type, "
+                "using all ads[/]"
+            )
 
         # 2. Select top brands and their best ads
         brand_selections = await self._select_brands_and_ads(
@@ -202,6 +234,32 @@ class MarketPipeline:
                 )
 
         return selections
+
+    def _show_product_type_distribution(
+        self, distribution: dict[ProductType, int]
+    ) -> None:
+        """Display product type distribution table.
+
+        Args:
+            distribution: Dict mapping ProductType to count
+        """
+        table = Table(title="Product Type Distribution")
+        table.add_column("Product Type", style="cyan")
+        table.add_column("Count", justify="right", style="green")
+        table.add_column("%", justify="right", style="yellow")
+
+        total = sum(distribution.values())
+        sorted_items = sorted(
+            distribution.items(), key=lambda x: x[1], reverse=True
+        )
+
+        for product_type, count in sorted_items:
+            pct = (count / total * 100) if total > 0 else 0
+            table.add_row(
+                product_type.value, str(count), f"{pct:.1f}%"
+            )
+
+        console.print(table)
 
     async def _analyze_brand(
         self, selection: BrandSelection, keyword: str
