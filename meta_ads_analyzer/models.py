@@ -301,6 +301,46 @@ class AdvertiserEntry(BaseModel):
     relevance_score: int = 0  # composite ranking score
 
 
+class PageType(str, enum.Enum):
+    """Page type classification for brand networks."""
+
+    BRANDED = "branded"  # Official brand page
+    DOCTOR_AUTHORITY = "doctor_authority"  # Dr./MD credentialed page
+    LIFESTYLE = "lifestyle"  # Lifestyle/wellness topic page
+    NICHE_TOPIC = "niche_topic"  # Specific health topic page
+    GENERIC = "generic"  # Generic product page
+    UNKNOWN = "unknown"
+
+
+class NetworkPage(BaseModel):
+    """Single page within a brand network."""
+
+    page_name: str
+    page_id: Optional[str] = None
+    page_type: PageType = PageType.UNKNOWN
+    ad_count: int = 0
+    primary_domain: Optional[str] = None
+    signals: list[str] = Field(default_factory=list)  # Why grouped here
+
+
+class PageNetwork(BaseModel):
+    """Detected brand network spanning multiple pages."""
+
+    network_name: str  # Derived brand name
+    primary_page: str  # Main branded page
+    pages: list[NetworkPage] = Field(default_factory=list)
+    total_ads: int = 0
+    unique_domains: list[str] = Field(default_factory=list)
+    network_confidence: float = 0.0  # 0-1 confidence in grouping
+
+
+class NetworkedAdvertiser(AdvertiserEntry):
+    """Advertiser with network information."""
+
+    network: Optional[PageNetwork] = None
+    is_network: bool = False
+
+
 class ClassifiedAd(BaseModel):
     """An ad with priority classification applied."""
 

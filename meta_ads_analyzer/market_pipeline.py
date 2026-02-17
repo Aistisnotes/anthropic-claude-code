@@ -110,6 +110,19 @@ class MarketPipeline:
                 keyword, scan_result
             )
 
+        # 1c. Detect page networks (optional - for future network analysis)
+        from meta_ads_analyzer.network.page_network_detector import detect_page_networks
+
+        logger.info("Detecting page networks...")
+        page_to_network = await detect_page_networks(scan_result.ads, self.config)
+
+        if page_to_network:
+            unique_networks = len(set(page_to_network.values()))
+            logger.info(f"Detected {unique_networks} brand networks across {len(page_to_network)} pages")
+            # TODO: Update advertiser aggregation to use networks in future version
+        else:
+            logger.info("No multi-page brand networks detected")
+
         # 2. Select top brands and their best ads
         brand_selections = await self._select_brands_and_ads(
             scan_result, top_brands, ads_per_brand
