@@ -19,13 +19,17 @@ from typing import Any, Optional
 from rich.console import Console
 from rich.table import Table
 
+from meta_ads_analyzer.classifier.keyword_expander import (
+    deduplicate_ads_across_keywords,
+    generate_related_keywords,
+)
 from meta_ads_analyzer.classifier.product_type import (
     filter_ads_by_product_type,
     get_dominant_product_type,
 )
 from meta_ads_analyzer.models import BrandReport, BrandSelection, MarketResult, ProductType, ScanResult
 from meta_ads_analyzer.pipeline import Pipeline
-from meta_ads_analyzer.selector import select_ads_for_brand
+from meta_ads_analyzer.selector import aggregate_by_advertiser, rank_advertisers, select_ads_for_brand
 from meta_ads_analyzer.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -67,6 +71,13 @@ class MarketPipeline:
             f"\n[bold]Found {len(scan_result.advertisers)} advertisers "
             f"({scan_result.total_fetched} total ads)[/]"
         )
+
+        # 1a. Keyword expansion if results are sparse
+        keyword_contributions = {keyword: len(scan_result.ads)}
+        if not from_scan:  # Only expand if we did a fresh scan
+            scan_result, keyword_contributions = await self._maybe_expand_keywords(
+                keyword, scan_result
+            )
 
         # 1b. Detect dominant product type and filter
         dominant_type, distribution = get_dominant_product_type(scan_result.ads)
@@ -234,6 +245,117 @@ class MarketPipeline:
                 )
 
         return selections
+
+    async def _maybe_expand_keywords(
+        self, primary_keyword: str, scan_result: ScanResult
+    ) -> tuple[ScanResult, dict[str, int]]:
+        """Expand keywords if primary returned sparse results.
+
+        Args:
+            primary_keyword: Original keyword
+            scan_result: Initial scan result
+
+        Returns:
+            Tuple of (updated_scan_result, keyword_contributions)
+        """
+        # Check if expansion needed
+        num_ads = len(scan_result.ads)
+        num_brands = len(scan_result.advertisers)
+
+        # Determine product type first
+        dominant_type, _ = get_dominant_product_type(scan_result.ads)
+
+        # Filter to matching product type for brand count
+        if dominant_type != ProductType.UNKNOWN:
+            matching_ads = filter_ads_by_product_type(
+                scan_result.ads, dominant_type, allow_unknown=True
+            )
+            # Count unique brands in matching ads
+            matching_brands = len(set(ad.page_name for ad in matching_ads))
+        else:
+            matching_brands = num_brands
+
+        if num_ads >= 20 and matching_brands >= 5:
+            logger.info(
+                f"Sufficient results ({num_ads} ads, {matching_brands} brands), "
+                "skipping keyword expansion"
+            )
+            return scan_result, {primary_keyword: num_ads}
+
+        # Expansion needed
+        console.print(
+            f"[yellow]Sparse results ({num_ads} ads, {matching_brands} brands "
+            f"of type {dominant_type.value}). Expanding keywords...[/]"
+        )
+
+        # Generate related keywords
+        related = await generate_related_keywords(
+            primary_keyword, dominant_type, self.config, count=4
+        )
+
+        if not related:
+            logger.warning("No related keywords generated, using primary only")
+            return scan_result, {primary_keyword: num_ads}
+
+        console.print(f"[cyan]Scanning {len(related)} related keywords:[/] {', '.join(related)}")
+
+        # Scan each related keyword
+        all_ads_by_keyword = {primary_keyword: scan_result.ads}
+        for kw in related:
+            logger.info(f"Scanning related keyword: {kw}")
+            try:
+                related_scan = await self._run_scan_stage(kw, from_scan=None)
+                all_ads_by_keyword[kw] = related_scan.ads
+                console.print(f"  [dim]• {kw}: {len(related_scan.ads)} ads[/]")
+            except Exception as e:
+                logger.error(f"Failed to scan '{kw}': {e}")
+                all_ads_by_keyword[kw] = []
+
+        # Deduplicate across keywords
+        deduplicated_ads, contributions = deduplicate_ads_across_keywords(
+            all_ads_by_keyword
+        )
+
+        console.print(
+            f"\n[green]Combined results: {len(deduplicated_ads)} unique ads "
+            f"(from {sum(len(ads) for ads in all_ads_by_keyword.values())} total)[/]"
+        )
+
+        # Show keyword contributions
+        self._show_keyword_contributions(contributions)
+
+        # Re-aggregate and rank advertisers with combined ads
+        advertisers = aggregate_by_advertiser(deduplicated_ads)
+        ranked = rank_advertisers(advertisers)
+
+        # Update scan result
+        scan_result.ads = deduplicated_ads
+        scan_result.advertisers = ranked
+        scan_result.total_fetched = len(deduplicated_ads)
+
+        return scan_result, contributions
+
+    def _show_keyword_contributions(self, contributions: dict[str, int]) -> None:
+        """Display keyword contribution table.
+
+        Args:
+            contributions: Dict mapping keyword to unique ad count
+        """
+        table = Table(title="Keyword Contributions")
+        table.add_column("Keyword", style="cyan")
+        table.add_column("Unique Ads", justify="right", style="green")
+        table.add_column("%", justify="right", style="yellow")
+
+        total = sum(contributions.values())
+        sorted_items = sorted(
+            contributions.items(), key=lambda x: x[1], reverse=True
+        )
+
+        for keyword, count in sorted_items:
+            pct = (count / total * 100) if total > 0 else 0
+            table.add_row(keyword, str(count), f"{pct:.1f}%")
+
+        console.print(table)
 
     def _show_product_type_distribution(
         self, distribution: dict[ProductType, int]
