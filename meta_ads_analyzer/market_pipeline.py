@@ -72,14 +72,7 @@ class MarketPipeline:
             f"({scan_result.total_fetched} total ads)[/]"
         )
 
-        # 1a. Keyword expansion if results are sparse
-        keyword_contributions = {keyword: len(scan_result.ads)}
-        if not from_scan:  # Only expand if we did a fresh scan
-            scan_result, keyword_contributions = await self._maybe_expand_keywords(
-                keyword, scan_result
-            )
-
-        # 1b. Detect dominant product type and filter
+        # 1a. Detect dominant product type and filter (BEFORE expansion check)
         dominant_type, distribution = get_dominant_product_type(scan_result.ads)
 
         # Show product type distribution
@@ -100,10 +93,21 @@ class MarketPipeline:
             )
             # Update scan_result with filtered ads
             scan_result.ads = filtered_ads
+            # Re-aggregate advertisers after filtering
+            from meta_ads_analyzer.selector import aggregate_by_advertiser, rank_advertisers
+            advertisers = aggregate_by_advertiser(filtered_ads)
+            scan_result.advertisers = rank_advertisers(advertisers)
         else:
             console.print(
                 "[yellow]Could not determine dominant product type, "
                 "using all ads[/]"
+            )
+
+        # 1b. Keyword expansion if results are sparse (AFTER filtering)
+        keyword_contributions = {keyword: len(scan_result.ads)}
+        if not from_scan:  # Only expand if we did a fresh scan
+            scan_result, keyword_contributions = await self._maybe_expand_keywords(
+                keyword, scan_result
             )
 
         # 2. Select top brands and their best ads
@@ -258,35 +262,25 @@ class MarketPipeline:
         Returns:
             Tuple of (updated_scan_result, keyword_contributions)
         """
-        # Check if expansion needed
+        # Check if expansion needed (ads are already filtered by product type)
         num_ads = len(scan_result.ads)
         num_brands = len(scan_result.advertisers)
 
-        # Determine product type first
-        dominant_type, _ = get_dominant_product_type(scan_result.ads)
-
-        # Filter to matching product type for brand count
-        if dominant_type != ProductType.UNKNOWN:
-            matching_ads = filter_ads_by_product_type(
-                scan_result.ads, dominant_type, allow_unknown=True
-            )
-            # Count unique brands in matching ads
-            matching_brands = len(set(ad.page_name for ad in matching_ads))
-        else:
-            matching_brands = num_brands
-
-        if num_ads >= 20 and matching_brands >= 5:
+        if num_ads >= 20 and num_brands >= 5:
             logger.info(
-                f"Sufficient results ({num_ads} ads, {matching_brands} brands), "
+                f"Sufficient results ({num_ads} ads, {num_brands} brands), "
                 "skipping keyword expansion"
             )
             return scan_result, {primary_keyword: num_ads}
 
         # Expansion needed
         console.print(
-            f"[yellow]Sparse results ({num_ads} ads, {matching_brands} brands "
-            f"of type {dominant_type.value}). Expanding keywords...[/]"
+            f"[yellow]Sparse results ({num_ads} ads, {num_brands} brands). "
+            "Expanding keywords...[/]"
         )
+
+        # Determine product type for expansion
+        dominant_type, _ = get_dominant_product_type(scan_result.ads)
 
         # Generate related keywords
         related = await generate_related_keywords(
