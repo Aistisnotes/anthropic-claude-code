@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
+from meta_ads_analyzer.models import ScanResult, SelectionResult
 from meta_ads_analyzer.utils.config import load_config
 from meta_ads_analyzer.utils.logging import setup_logging
 
@@ -25,6 +28,80 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+
+
+def _display_advertiser_table(advertisers: list, top: int = 25) -> None:
+    """Display top N advertisers in a Rich table."""
+    table = Table(title=f"Top {min(top, len(advertisers))} Advertisers")
+    table.add_column("Rank", style="cyan", width=6)
+    table.add_column("Advertiser", style="green")
+    table.add_column("Total Ads", justify="right", style="yellow")
+    table.add_column("Active", justify="right", style="blue")
+    table.add_column("Recent (30d)", justify="right", style="magenta")
+    table.add_column("Impressions", justify="right", style="red")
+    table.add_column("Score", justify="right", style="bright_white")
+
+    for i, adv in enumerate(advertisers[:top], 1):
+        impressions_text = (
+            f"{adv.total_impression_lower:,}"
+            if adv.total_impression_lower > 0
+            else "—"
+        )
+        table.add_row(
+            str(i),
+            adv.page_name[:40],
+            str(adv.ad_count),
+            str(adv.active_ad_count),
+            str(adv.recent_ad_count),
+            impressions_text,
+            str(adv.relevance_score),
+        )
+
+    console.print(table)
+
+
+def _display_selection_stats(selection: SelectionResult) -> None:
+    """Display selection statistics."""
+    console.print("\n[bold]═══ Selection Results ═══[/]")
+    console.print(f"Total scanned: [cyan]{selection.stats.total_scanned}[/]")
+    console.print(f"Selected: [green]{selection.stats.total_selected}[/]")
+    console.print(f"Skipped: [red]{selection.stats.total_skipped}[/]")
+    console.print(f"Duplicates removed: [yellow]{selection.stats.duplicates_removed}[/]")
+
+    if selection.stats.by_priority:
+        console.print("\n[bold]By Priority:[/]")
+        for priority, count in sorted(selection.stats.by_priority.items()):
+            console.print(f"  {priority}: {count}")
+
+    if selection.stats.skip_reasons:
+        console.print("\n[bold]Skip Reasons:[/]")
+        for reason, count in sorted(
+            selection.stats.skip_reasons.items(), key=lambda x: x[1], reverse=True
+        ):
+            console.print(f"  {reason}: {count}")
+
+
+def _save_scan_results(
+    scan_result: ScanResult, output_path: Optional[Path], query: str
+) -> Path:
+    """Save scan results to JSON file."""
+    if output_path:
+        save_path = output_path
+    else:
+        # Auto-generate filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_query = "".join(c if c.isalnum() else "_" for c in query)[:50]
+        filename = f"scan_{safe_query}_{timestamp}.json"
+        save_path = Path("output/scans") / filename
+
+    # Ensure directory exists
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Save JSON
+    with open(save_path, "w") as f:
+        json.dump(scan_result.model_dump(mode="json"), f, indent=2, default=str)
+
+    return save_path
 
 
 @app.command()
@@ -127,6 +204,70 @@ def batch(
         console.print(
             f"  {status}[/] {q.get('brand', q['query'])}: "
             f"{r.total_ads_analyzed} ads analyzed"
+        )
+
+
+@app.command()
+def scan(
+    query: str = typer.Argument(..., help="Search keyword or advertiser name"),
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config TOML file"
+    ),
+    max_ads: Optional[int] = typer.Option(
+        None, "--max-ads", "-n", help="Override max ads to scrape"
+    ),
+    country: str = typer.Option("US", "--country", help="ISO country code"),
+    headless: bool = typer.Option(True, "--headless/--no-headless", help="Run browser headless"),
+    select: bool = typer.Option(False, "--select", help="Run ad selection and show priority breakdown"),
+    top: int = typer.Option(25, "--top", help="Show top N advertisers in table"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save scan results to JSON file"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l", help="Log level"),
+):
+    """Scan Meta Ads Library for metadata only (no downloads or analysis)."""
+    setup_logging(log_level)
+    config = load_config(config_path)
+
+    # Apply CLI overrides
+    if max_ads is not None:
+        config.setdefault("scraper", {})["max_ads"] = max_ads
+    config.setdefault("scraper", {})["headless"] = headless
+    config.setdefault("scraper", {}).setdefault("filters", {})["country"] = country
+
+    console.print(f"\n[bold]Meta Ads Library Scan[/]")
+    console.print(f"Query: [cyan]{query}[/]")
+    console.print(f"Country: [cyan]{country}[/]")
+    console.print()
+
+    # Run scan
+    from meta_ads_analyzer.scanner import run_scan
+
+    scan_result = asyncio.run(run_scan(query, config))
+
+    # Display advertiser table
+    if scan_result.advertisers:
+        _display_advertiser_table(scan_result.advertisers, top)
+    else:
+        console.print("[yellow]No advertisers found[/]")
+
+    # Optional: run selection
+    if select and scan_result.ads:
+        from meta_ads_analyzer.selector import select_ads
+
+        selection_result = select_ads(scan_result.ads, config)
+        scan_result.selection = selection_result
+        _display_selection_stats(selection_result)
+
+    # Save results
+    output_path = _save_scan_results(scan_result, output, query)
+    console.print(f"\n[bold green]✓[/] Scan saved: {output_path}")
+
+    # Summary
+    console.print(f"\n[bold]Summary:[/]")
+    console.print(f"  Total ads: {scan_result.total_fetched}")
+    console.print(f"  Advertisers: {len(scan_result.advertisers)}")
+    if scan_result.selection:
+        console.print(
+            f"  Selected for analysis: {scan_result.selection.stats.total_selected}"
         )
 
 
