@@ -117,7 +117,9 @@ class MarketPipeline:
         page_to_network = await detect_page_networks(scan_result.ads, self.config)
 
         if page_to_network:
-            unique_networks = len(set(page_to_network.values()))
+            # Count unique networks by network_name (PageNetwork isn't hashable)
+            unique_network_names = set(network.network_name for network in page_to_network.values())
+            unique_networks = len(unique_network_names)
             logger.info(f"Detected {unique_networks} brand networks across {len(page_to_network)} pages")
             # TODO: Update advertiser aggregation to use networks in future version
         else:
