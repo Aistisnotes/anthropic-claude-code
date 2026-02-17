@@ -434,11 +434,6 @@ def compare(
         else:
             console.print(f"\n[bold green]✓[/] Strategic market map complete")
 
-        if brand and result.loophole_doc.brand_gaps:
-            console.print(
-                f"Brand gaps for '{brand}': [yellow]{len(result.loophole_doc.brand_gaps)} blind spots[/]"
-            )
-
 
 @app.command()
 def install_browser():
