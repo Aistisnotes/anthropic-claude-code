@@ -30,8 +30,8 @@ class MechanismPattern(BaseModel):
     """Unique mechanism pattern across brands."""
 
     text: str  # The mechanism explanation
-    mechanism_type: str  # new_mechanism/new_information/new_identity
-    depth: str  # claim-only/process-level/cellular/molecular
+    mechanism_type: str = "new_mechanism"  # new_mechanism/new_information/new_identity
+    depth: str = "process-level"  # claim-only/process-level/cellular/molecular
     frequency: int = 0
     brands_using: list[str] = Field(default_factory=list)
     example_ad_copy: str = ""
