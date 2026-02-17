@@ -355,3 +355,119 @@ class MarketResult(BaseModel):
     total_advertisers: int
     brands_analyzed: int
     brand_reports: list[BrandReport] = Field(default_factory=list)
+
+
+# ============================================================================
+# Comparison Analysis Models (Session 3: Compare Command)
+# ============================================================================
+
+
+class DimensionCoverage(BaseModel):
+    """Coverage data for one dimension value across brands."""
+
+    dimension: str
+    brands: dict[str, int]  # brand_name -> count
+    coverage: int  # number of brands using this dimension
+    coverage_percent: int
+    total: int  # total ads across all brands using this dimension
+
+
+class SaturationZone(BaseModel):
+    """Saturation classification for a dimension type."""
+
+    saturated: list[DimensionCoverage] = Field(default_factory=list)  # 60%+ coverage
+    moderate: list[DimensionCoverage] = Field(default_factory=list)  # 30-59% coverage
+    whitespace: list[DimensionCoverage] = Field(default_factory=list)  # <30% coverage
+
+
+class BrandProfile(BaseModel):
+    """Compact brand strategy profile for market map."""
+
+    name: str
+    activity: str
+    primary_hook: str
+    primary_angle: str
+    primary_emotion: str
+    primary_format: str
+    primary_cta: str
+    content_depth: str
+    hook_diversity: int
+    angle_diversity: int
+    ads_analyzed: int
+
+
+class MarketMap(BaseModel):
+    """Cross-brand comparison map with dimension matrices."""
+
+    meta: dict[str, Any]
+    matrices: dict[str, list[DimensionCoverage]]  # 6 dimension types
+    saturation: dict[str, SaturationZone]
+    profiles: list[BrandProfile] = Field(default_factory=list)
+
+
+class MarketGap(BaseModel):
+    """Market-wide gap (dimension with 0% coverage)."""
+
+    dimension: str
+    opportunity: str = "wide_open"
+
+
+class UnderexploitedOpportunity(BaseModel):
+    """Proven but uncrowded strategy (1-2 brands, <30% coverage)."""
+
+    category: str
+    dimension: str
+    used_by: list[str]
+    coverage_percent: int
+    total_ads: int
+
+
+class PriorityEntry(BaseModel):
+    """Ranked opportunity with P1/P2/P3/P4 tier."""
+
+    category: str
+    dimension: str
+    gap_score: int
+    coverage_percent: int
+    brands_using: int
+    priority_score: int
+    tier: str  # P1_HIGH, P2_MEDIUM, P3_LOW, P4_MONITOR
+
+
+class BrandGap(BaseModel):
+    """Competitor strategy missing from focus brand."""
+
+    category: str
+    dimension: str
+    competitors_using: list[str]
+    competitor_count: int
+
+
+class StrategicRecommendations(BaseModel):
+    """Claude-enhanced strategic layer (optional)."""
+
+    market_narrative: Optional[str] = None
+    top_opportunities: list[dict] = Field(default_factory=list)
+    contrarian_plays: list[dict] = Field(default_factory=list)
+    immediate_actions: list[dict] = Field(default_factory=list)
+
+
+class LoopholeDocument(BaseModel):
+    """Complete competitive gap analysis with priority matrix."""
+
+    meta: dict[str, Any]
+    market_gaps: dict[str, list[MarketGap]]
+    saturation_zones: dict[str, list[dict]]
+    underexploited: list[UnderexploitedOpportunity] = Field(default_factory=list)
+    priority_matrix: list[PriorityEntry] = Field(default_factory=list)
+    brand_gaps: Optional[list[BrandGap]] = None
+    strategic_recommendations: Optional[StrategicRecommendations] = None
+
+
+class CompareResult(BaseModel):
+    """Complete comparison analysis result."""
+
+    keyword: str
+    market_map: MarketMap
+    loophole_doc: LoopholeDocument
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
