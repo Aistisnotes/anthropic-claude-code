@@ -44,43 +44,45 @@ def classify_ad(
         now = datetime.now(timezone.utc)
 
     selection_cfg = config.get("selection", {})
+    impressions = ad.impression_lower
 
-    # Check skip rules first
-    if not ad.started_running:
-        return None, "SKIP", SkipReason.NO_LAUNCH_DATE, None
+    # Try to parse launch date first (to have it available for skip reasons)
+    days_since_launch = None
+    has_date = False
+    if ad.started_running:
+        try:
+            if ad.started_running.endswith("Z"):
+                launch = datetime.fromisoformat(ad.started_running.replace("Z", "+00:00"))
+            else:
+                launch = datetime.fromisoformat(ad.started_running)
+            if launch.tzinfo is None:
+                launch = launch.replace(tzinfo=timezone.utc)
+            days_since_launch = (now - launch).days
+            has_date = True
+        except (ValueError, AttributeError):
+            logger.debug(f"Invalid launch date for ad {ad.ad_id}, using impression-based classification")
+            has_date = False
 
-    # Parse launch date
-    try:
-        if ad.started_running.endswith("Z"):
-            launch = datetime.fromisoformat(ad.started_running.replace("Z", "+00:00"))
-        else:
-            launch = datetime.fromisoformat(ad.started_running)
-        if launch.tzinfo is None:
-            launch = launch.replace(tzinfo=timezone.utc)
-    except (ValueError, AttributeError):
-        logger.warning(f"Invalid launch date for ad {ad.ad_id}: {ad.started_running}")
-        return None, "SKIP", SkipReason.NO_LAUNCH_DATE, None
-
-    days_since_launch = (now - launch).days
-
-    # Skip rule: legacy autopilot (>=180 days old)
-    if days_since_launch >= selection_cfg.get("skip_older_than_days", 180):
-        return None, "SKIP", SkipReason.LEGACY_AUTOPILOT, days_since_launch
-
-    # Skip rule: thin text (<50 words)
+    # Skip rule: thin text (<50 words) - applies regardless of date
     if ad.max_primary_text_words < selection_cfg.get("min_primary_text_words", 50):
         return None, "SKIP", SkipReason.THIN_TEXT, days_since_launch
 
-    # Skip rule: failed test (low impressions + old)
-    impressions = ad.impression_lower
-    if impressions > 0:
-        failed_test_max_impressions = selection_cfg.get("failed_test_max_impressions", 1000)
-        failed_test_min_days = selection_cfg.get("failed_test_min_days", 30)
-        if impressions < failed_test_max_impressions and days_since_launch > failed_test_min_days:
-            return None, "SKIP", SkipReason.FAILED_TEST, days_since_launch
+    # If we have a valid date, apply date-based skip rules
+    if has_date:
+        # Skip rule: legacy autopilot (>=180 days old)
+        if days_since_launch >= selection_cfg.get("skip_older_than_days", 180):
+            return None, "SKIP", SkipReason.LEGACY_AUTOPILOT, days_since_launch
 
-    # Priority classification (when impressions available)
-    if impressions > 0:
+        # Skip rule: failed test (low impressions + old)
+        if impressions > 0:
+            failed_test_max_impressions = selection_cfg.get("failed_test_max_impressions", 1000)
+            failed_test_min_days = selection_cfg.get("failed_test_min_days", 30)
+            if impressions < failed_test_max_impressions and days_since_launch > failed_test_min_days:
+                return None, "SKIP", SkipReason.FAILED_TEST, days_since_launch
+
+    # Priority classification
+    if has_date and impressions > 0:
+        # Date-based classification (preferred when dates available)
         # P1: Active winner (<=14 days + >=50K impressions)
         if (
             days_since_launch <= selection_cfg.get("active_winner_max_days", 14)
@@ -111,8 +113,8 @@ def classify_ad(
         ):
             return Priority.P4_RECENT_MODERATE, "RECENT_MODERATE", None, days_since_launch
 
-    else:
-        # Fallback classification when impressions = 0 (Meta removed public impression data)
+    elif has_date and impressions == 0:
+        # Fallback when date available but impressions hidden
         if days_since_launch <= selection_cfg.get("active_winner_max_days", 14):
             return Priority.P1_ACTIVE_WINNER, "ACTIVE_WINNER", None, days_since_launch
 
@@ -122,7 +124,27 @@ def classify_ad(
         if days_since_launch <= selection_cfg.get("recent_moderate_max_days", 60):
             return Priority.P4_RECENT_MODERATE, "RECENT_MODERATE", None, days_since_launch
 
-    # Below threshold
+    else:
+        # No date available - use impression-based classification as fallback
+        # This handles real-world Meta ads that don't expose launch dates
+        if impressions >= selection_cfg.get("active_winner_min_impressions", 50000):
+            # High impressions = likely active winner
+            return Priority.P1_ACTIVE_WINNER, "ACTIVE_WINNER", None, None
+
+        elif impressions >= selection_cfg.get("proven_recent_min_impressions", 10000):
+            # Medium-high impressions = likely proven
+            return Priority.P2_PROVEN_RECENT, "PROVEN_RECENT", None, None
+
+        elif impressions > 0:
+            # Some impressions = classify as P4 (moderate)
+            return Priority.P4_RECENT_MODERATE, "RECENT_MODERATE", None, None
+
+        else:
+            # No impressions, no date = default to P4
+            # Still include for analysis rather than skip
+            return Priority.P4_RECENT_MODERATE, "RECENT_MODERATE", None, None
+
+    # Below threshold (only for ads with dates that don't meet any criteria)
     return None, "SKIP", SkipReason.BELOW_THRESHOLD, days_since_launch
 
 

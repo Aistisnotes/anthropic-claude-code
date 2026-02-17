@@ -113,7 +113,7 @@ def test_classify_recent_moderate(config, now):
 
 
 def test_skip_no_launch_date(config, now):
-    """Test skip rule: no launch date."""
+    """Test fallback classification when no launch date (impression-based)."""
     ad = ScrapedAd(
         ad_id="5",
         page_name="TestBrand",
@@ -124,9 +124,11 @@ def test_skip_no_launch_date(config, now):
 
     priority, label, skip_reason, days = classify_ad(ad, config, now)
 
-    assert priority is None
-    assert label == "SKIP"
-    assert skip_reason == SkipReason.NO_LAUNCH_DATE
+    # Changed behavior: no longer skip ads without dates
+    # Instead, classify based on impressions (50K = P1)
+    assert priority == Priority.P1_ACTIVE_WINNER
+    assert label == "ACTIVE_WINNER"
+    assert skip_reason is None
     assert days is None
 
 
