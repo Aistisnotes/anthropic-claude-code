@@ -89,3 +89,34 @@ brand_pause = 10
 save_checkpoints = true
 # Checkpoint directory
 checkpoint_dir = "output/checkpoints"
+
+[selection]
+# Priority 1: Active winners (ads being scaled NOW)
+active_winner_max_days = 14
+active_winner_min_impressions = 50000
+
+# Priority 2: Proven recent (survived initial testing)
+proven_recent_max_days = 30
+proven_recent_min_impressions = 10000
+
+# Priority 3: Strategic direction (brand new tests)
+strategic_direction_max_days = 7
+# No impression minimum for P3
+
+# Priority 4: Recent moderate (still relevant)
+recent_moderate_max_days = 60
+recent_moderate_min_impressions = 50000
+
+# Skip rules
+skip_older_than_days = 180
+min_primary_text_words = 50
+failed_test_max_impressions = 1000
+failed_test_min_days = 30
+
+[scan]
+# Output directory for scan results
+output_dir = "output/scans"
+# Auto-save scans by default
+auto_save = true
+# Default top N advertisers to display
+default_top_advertisers = 25
