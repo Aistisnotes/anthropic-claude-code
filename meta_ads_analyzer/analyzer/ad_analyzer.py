@@ -159,6 +159,7 @@ class AdAnalyzer:
             return AdAnalysis(
                 ad_id=ad.ad_id,
                 brand=ad.brand,
+                brand_name=data.get("brand_name"),
                 target_customer_profile=data.get("target_customer_profile", ""),
                 target_demographics=data.get("target_demographics", ""),
                 target_psychographics=data.get("target_psychographics", ""),

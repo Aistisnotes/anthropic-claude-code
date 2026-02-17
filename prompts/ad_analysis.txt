@@ -29,6 +29,8 @@ Respond in the following JSON format exactly:
 
 ```json
 {
+  "brand_name": "The actual product or brand name mentioned in the ad copy, website URL, or landing page. Look for product names, brand names in the copy, domain names in URLs. If the ad mentions a specific product (e.g., 'LymphaFlow', 'Dr. Miller's Liver Support'), use that. If multiple clues exist, prioritize: 1) explicit product name in copy, 2) brand name in copy, 3) domain name from URL. If no brand/product name is stated, write 'not stated in ad'.",
+
   "target_customer_profile": "Who this ad targets — their specific SITUATION (not just demographics). Extract from ACTUAL ad language. If not explicitly stated, write 'not specified in ad'.",
   "target_demographics": "Age, gender, income, location signals from the copy. Extract only explicit mentions or clear signals. If none, write 'not specified in ad'.",
   "target_psychographics": "Beliefs they already hold, identity they want to claim, tribe they belong to. Extract from ACTUAL ad language only. If none stated, write 'not specified in ad'.",

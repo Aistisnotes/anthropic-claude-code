@@ -76,6 +76,7 @@ class ScrapedAd(BaseModel):
     ad_id: str
     page_name: str
     page_id: Optional[str] = None
+    brand_name: Optional[str] = None  # Actual product/brand name extracted from ad copy
     ad_type: AdType = AdType.UNKNOWN
     product_type: ProductType = ProductType.UNKNOWN
     primary_text: Optional[str] = None
@@ -158,6 +159,7 @@ class AdAnalysis(BaseModel):
 
     ad_id: str
     brand: str
+    brand_name: Optional[str] = None  # Actual product/brand name from ad copy
 
     # Target customer
     target_customer_profile: str = ""
@@ -290,6 +292,7 @@ class AdvertiserEntry(BaseModel):
 
     page_id: Optional[str] = None
     page_name: str
+    brand_name: Optional[str] = None  # Actual product/brand name (may differ from page_name)
     ad_count: int = 0
     active_ad_count: int = 0
     recent_ad_count: int = 0  # ads launched in last 30 days

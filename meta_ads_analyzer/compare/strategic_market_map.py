@@ -743,10 +743,10 @@ def _build_brand_summaries(
             {
                 "brand": name,
                 "ads_analyzed": report.pattern_report.total_ads_analyzed,
-                "primary_root_cause": primary_root_cause[:60],
-                "primary_mechanism": primary_mechanism[:60],
-                "primary_pain_point": primary_pain_point[:40],
-                "primary_desire": primary_desire[:50],
+                "primary_root_cause": primary_root_cause,
+                "primary_mechanism": primary_mechanism,
+                "primary_pain_point": primary_pain_point,
+                "primary_desire": primary_desire,
             }
         )
 
@@ -774,9 +774,9 @@ def _build_root_cause_mechanism_matrix(
 
         # Extract from root_cause_patterns and mechanism_patterns
         root_causes = [
-            rc.get("pattern", "none stated") for rc in pr.root_cause_patterns
+            rc.get("root_cause", "none stated") for rc in pr.root_cause_patterns
         ]
-        mechanisms = [m.get("pattern", "none stated") for m in pr.mechanism_patterns]
+        mechanisms = [m.get("mechanism", "none stated") for m in pr.mechanism_patterns]
 
         # Create combinations
         if not root_causes:
@@ -786,9 +786,9 @@ def _build_root_cause_mechanism_matrix(
 
         for root in root_causes:
             for mech in mechanisms:
-                # Clean and truncate
-                root_clean = root[:60].strip()
-                mech_clean = mech[:60].strip()
+                # Clean without truncation
+                root_clean = root.strip()
+                mech_clean = mech.strip()
 
                 key = (root_clean, mech_clean)
                 matrix_data[key]["brands"].add(brand_name)

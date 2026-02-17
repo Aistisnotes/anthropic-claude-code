@@ -89,10 +89,10 @@ def _build_competitive_landscape(market_map: StrategicMarketMap) -> list[dict]:
         landscape.append(
             {
                 "brand": summary["brand"],
-                "root_cause": summary["primary_root_cause"][:50],
-                "mechanism": summary["primary_mechanism"][:50],
-                "pain_point": summary["primary_pain_point"][:40],
-                "desire": summary["primary_desire"][:50],
+                "root_cause": summary["primary_root_cause"],
+                "mechanism": summary["primary_mechanism"],
+                "pain_point": summary["primary_pain_point"],
+                "desire": summary["primary_desire"],
             }
         )
 
