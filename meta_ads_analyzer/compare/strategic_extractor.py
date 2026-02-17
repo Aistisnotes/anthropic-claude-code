@@ -47,7 +47,7 @@ async def extract_strategic_dimensions(
         analyses.append(
             {
                 "id": f"pain_{i}",
-                "pain_point": pain_point.get("pattern", ""),
+                "pain_point": pain_point.get("pain_point", ""),
                 "frequency": pain_point.get("frequency", 0),
             }
         )
@@ -56,7 +56,7 @@ async def extract_strategic_dimensions(
         analyses.append(
             {
                 "id": f"symptom_{i}",
-                "symptom": symptom.get("pattern", ""),
+                "symptom": symptom.get("symptom", ""),
                 "frequency": symptom.get("frequency", 0),
             }
         )
@@ -65,7 +65,7 @@ async def extract_strategic_dimensions(
         analyses.append(
             {
                 "id": f"root_{i}",
-                "root_cause": root_cause.get("pattern", ""),
+                "root_cause": root_cause.get("root_cause", ""),
                 "frequency": root_cause.get("frequency", 0),
             }
         )
@@ -74,7 +74,7 @@ async def extract_strategic_dimensions(
         analyses.append(
             {
                 "id": f"mech_{i}",
-                "mechanism": mechanism.get("pattern", ""),
+                "mechanism": mechanism.get("mechanism", ""),
                 "frequency": mechanism.get("frequency", 0),
             }
         )
@@ -83,7 +83,7 @@ async def extract_strategic_dimensions(
         analyses.append(
             {
                 "id": f"desire_{i}",
-                "desire": desire.get("pattern", ""),
+                "desire": desire.get("desire", ""),
                 "frequency": desire.get("frequency", 0),
             }
         )

@@ -177,16 +177,30 @@ def _build_loophole_generation_prompt(
 ### MASS DESIRES
 {json.dumps(desires, indent=2)}
 
-## Your Task: Generate 5-7 Validated Loopholes
+## ROOT CAUSE × MECHANISM MATRIX (CRITICAL - USE THIS!)
+
+This matrix shows which root cause + mechanism combinations are actually used by brands:
+
+{json.dumps(market_map.root_cause_mechanism_matrix, indent=2)}
+
+**Matrix Key**:
+- **SATURATED** (60%+ market share): Avoid - too crowded
+- **MODERATE** (30-59% market share): Competitive but viable
+- **Underexploited** (<30% market share): Good opportunity
+- **WIDE OPEN** (0% market share): Best opportunity if believable
+
+## Your Task: Generate 5-7 Validated Loopholes FROM THE MATRIX
+
+**CRITICAL RULE**: Loopholes MUST be derived from actual competitive gaps in the matrix above. DO NOT invent new mechanisms that aren't based on what competitors are (or aren't) doing.
 
 A loophole is NOT "use question hooks" but an ARBITRAGE OPPORTUNITY where:
 - **High TAM** (large addressable audience)
-- **Low Meta Competition** (few/no brands running this angle)
+- **Low Meta Competition** (few/no brands running this angle per matrix)
 - **Believable Mechanism** (credible root cause + mechanism combo)
 
 Each loophole must be a COMPLETE AD STRATEGY combining:
-- Specific root cause to lead with
-- Specific mechanism to position
+- Specific root cause to lead with (from or missing from matrix)
+- Specific mechanism to position (from or missing from matrix)
 - Specific avatar (demographics + psychographics)
 - Pain point and symptoms to reference
 - Mass desire/transformation promise
@@ -195,13 +209,19 @@ Each loophole must be a COMPLETE AD STRATEGY combining:
 - Proof strategy
 - Objection handling
 
-## Loophole Identification Rules
+## Loophole Identification Rules (USE MATRIX DATA ONLY!)
 
-1. **Look for GAPS in the market map**:
-   - Root causes: Is there an upstream trigger no brand explains?
-   - Mechanisms: Is there a molecular/cellular pathway not covered?
-   - Audiences: Is there an identity/tribe being ignored?
-   - Pain points: Are there high-intensity pains being underserved?
+1. **PRIMARY: Analyze the Root Cause × Mechanism matrix**:
+   - If matrix shows "none stated" is SATURATED: Opportunity is "be the first to clearly explain root cause + mechanism"
+   - If matrix shows multiple combos at MODERATE: Find underexploited variations or go deeper on depth
+   - If matrix shows specific combo at 0%: Assess if it's believable (not just theoretically possible)
+   - DO NOT invent new mechanisms - identify what's MISSING from actual competitive landscape
+
+2. **SECONDARY: Look for depth/specificity gaps**:
+   - Root causes: Do brands explain at surface level when molecular/cellular depth is missing?
+   - Mechanisms: Do brands claim "supports X" when specific pathways aren't explained?
+   - Audiences: Are there identity/tribe variations within the same pain point?
+   - Pain points: Are there intensity levels or contexts not covered?
    - Symptoms: Are there specific daily experiences not referenced?
    - Desires: Are there specific timeframes/measurable outcomes missing?
 
@@ -282,12 +302,14 @@ Return valid JSON with this structure:
 
 ## CRITICAL RULES
 
-1. **Reference actual dimension data** - cite specific patterns, frequencies, gaps from the analysis
-2. **NO generic advice** - every loophole must be execution-ready THIS WEEK
-3. **Specific hook language** - write actual hooks, not "use emotional triggers"
-4. **Score rigorously** - TAM + Competition + Believability formula must match output
-5. **Apply sophistication framework** - match loopholes to market stage
-6. **Prioritize focus brand** - if focus brand specified, tailor loopholes to their gaps
+1. **USE THE MATRIX** - ALL loopholes must be derived from Root Cause × Mechanism matrix gaps. If matrix shows "none stated" is SATURATED, the loophole is "be first to explain clearly" NOT "try fascia/glymphatic/estrogen" unless those appear in competitor data
+2. **Reference actual dimension data** - cite specific patterns, frequencies, gaps from the analysis with exact percentages from matrix
+3. **NO inventing mechanisms** - if competitors don't mention fascia/glymphatic/estrogen/inflammation/circadian, don't create loopholes around them. Use what IS or ISN'T in the data
+4. **NO generic advice** - every loophole must be execution-ready THIS WEEK based on real competitive gaps
+5. **Specific hook language** - write actual hooks, not "use emotional triggers"
+6. **Score rigorously** - TAM + Competition + Believability formula must match output
+7. **Apply sophistication framework** - match loopholes to market stage
+8. **Prioritize focus brand** - if focus brand specified, tailor loopholes to their gaps
 
 Generate 5-7 loopholes, ranked by priority_score descending.
 
