@@ -80,7 +80,7 @@ class ComparePipeline:
         if from_scan:
             logger.info("Running fresh market analysis from scan")
             brand_reports = await self._run_fresh_analysis(
-                keyword, from_scan, top_brands, ads_per_brand
+                keyword, from_scan, top_brands, ads_per_brand, focus_brand
             )
         else:
             logger.info("Loading existing brand reports")
@@ -189,7 +189,12 @@ class ComparePipeline:
         return brand_reports
 
     async def _run_fresh_analysis(
-        self, keyword: str, scan_path: Path, top_brands: int, ads_per_brand: int
+        self,
+        keyword: str,
+        scan_path: Path,
+        top_brands: int,
+        ads_per_brand: int,
+        focus_brand: Optional[str] = None,
     ) -> list[BrandReport]:
         """Run market pipeline from saved scan to generate fresh brand reports.
 
@@ -198,6 +203,7 @@ class ComparePipeline:
             scan_path: Path to saved scan JSON
             top_brands: Number of brands to analyze
             ads_per_brand: Max ads per brand
+            focus_brand: Optional focus brand for product matching
 
         Returns:
             List of BrandReport objects
@@ -212,6 +218,7 @@ class ComparePipeline:
             top_brands=top_brands,
             ads_per_brand=ads_per_brand,
             from_scan=scan_path,
+            focus_brand=focus_brand,
         )
 
         return result.brand_reports

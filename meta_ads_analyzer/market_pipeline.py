@@ -50,6 +50,7 @@ class MarketPipeline:
         top_brands: int = 5,
         ads_per_brand: int = 10,
         from_scan: Optional[Path] = None,
+        focus_brand: Optional[str] = None,
     ) -> MarketResult:
         """Run market research pipeline.
 
@@ -58,12 +59,15 @@ class MarketPipeline:
             top_brands: Number of top brands to analyze
             ads_per_brand: Max ads per brand to analyze
             from_scan: Optional path to saved scan JSON
+            focus_brand: Optional focus brand name to check for product match
 
         Returns:
             MarketResult with all brand reports
         """
         logger.info(f"Starting market research for '{keyword}'")
         logger.info(f"Analyzing top {top_brands} brands, {ads_per_brand} ads each")
+        if focus_brand:
+            logger.info(f"Focus brand: {focus_brand} (will check for product match)")
 
         # 1. Scan (or load from file)
         scan_result = await self._run_scan_stage(keyword, from_scan)
@@ -103,14 +107,20 @@ class MarketPipeline:
                 "using all ads[/]"
             )
 
-        # 1b. Keyword expansion if results are sparse (AFTER filtering)
+        # 1b. Product matcher: check if focus brand matches market results
         keyword_contributions = {keyword: len(scan_result.ads)}
+        if focus_brand and not from_scan:
+            scan_result, keyword_contributions = await self._maybe_expand_for_focus_brand(
+                focus_brand, keyword, scan_result, keyword_contributions
+            )
+
+        # 1c. Keyword expansion if results are sparse (AFTER filtering and product match check)
         if not from_scan:  # Only expand if we did a fresh scan
             scan_result, keyword_contributions = await self._maybe_expand_keywords(
                 keyword, scan_result
             )
 
-        # 1c. Detect page networks (optional - for future network analysis)
+        # 1d. Detect page networks (optional - for future network analysis)
         from meta_ads_analyzer.network.page_network_detector import detect_page_networks
 
         logger.info("Detecting page networks...")
@@ -343,6 +353,188 @@ class MarketPipeline:
         scan_result.total_fetched = len(deduplicated_ads)
 
         return scan_result, contributions
+
+    async def _maybe_expand_for_focus_brand(
+        self,
+        focus_brand: str,
+        primary_keyword: str,
+        scan_result: ScanResult,
+        keyword_contributions: dict[str, int],
+    ) -> tuple[ScanResult, dict[str, int]]:
+        """Check if market results match focus brand's product, expand if needed.
+
+        Args:
+            focus_brand: Name of focus brand to match against
+            primary_keyword: Original keyword used for scan
+            scan_result: Initial scan result
+            keyword_contributions: Initial keyword contributions
+
+        Returns:
+            Tuple of (updated_scan_result, updated_keyword_contributions)
+        """
+        from meta_ads_analyzer.matching.product_matcher import ProductMatcher
+
+        logger.info(f"Checking if market results match focus brand '{focus_brand}' product type")
+
+        # Step 1: Try to load focus brand report
+        focus_brand_report = await self._load_focus_brand_report(focus_brand)
+        if not focus_brand_report:
+            console.print(
+                f"[yellow]⚠ Could not find brand report for '{focus_brand}'. "
+                "Run 'meta-ads run' for this brand first.[/]"
+            )
+            return scan_result, keyword_contributions
+
+        # Step 2: Extract product attributes from focus brand
+        matcher = ProductMatcher(self.config)
+        try:
+            focus_attrs = await matcher.extract_product_attributes(focus_brand_report)
+            console.print(
+                f"[cyan]Focus brand product:[/] {focus_attrs['product_type']} "
+                f"({focus_attrs['category']})"
+            )
+        except Exception as e:
+            logger.error(f"Failed to extract product attributes: {e}")
+            return scan_result, keyword_contributions
+
+        # Step 3: Build temporary brand reports from market scan for mismatch detection
+        # We don't have full analysis yet, but we can use advertiser info
+        temp_market_reports = []
+        for advertiser in scan_result.advertisers[:5]:  # Check top 5 brands
+            # Create minimal BrandReport for mismatch detection
+            from meta_ads_analyzer.models import PatternReport
+            temp_report = BrandReport(
+                advertiser=advertiser,
+                keyword=primary_keyword,
+                pattern_report=PatternReport(
+                    total_ads_analyzed=advertiser.ad_count,
+                    patterns=[],
+                    summary="",
+                ),
+                generated_at=scan_result.scan_date,
+            )
+            temp_market_reports.append(temp_report)
+
+        # Step 4: Detect mismatch
+        is_mismatch, mismatch_details = matcher.detect_mismatch(
+            focus_attrs, temp_market_reports
+        )
+
+        if not is_mismatch:
+            console.print(
+                f"[green]✓ Market results match focus brand product type "
+                f"({focus_attrs['product_type']})[/]"
+            )
+            return scan_result, keyword_contributions
+
+        # Step 5: Mismatch detected - show user and expand keywords
+        console.print(f"\n[yellow]⚠ PRODUCT MISMATCH DETECTED[/]")
+        console.print(f"[dim]{mismatch_details['reason']}[/]")
+        console.print(f"\n[cyan]Expanding keywords to find actual competitors...[/]")
+
+        # Generate expansion keywords based on focus brand's actual product
+        try:
+            expansion_keywords = await matcher.generate_expansion_keywords(
+                focus_attrs, primary_keyword
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate expansion keywords: {e}")
+            return scan_result, keyword_contributions
+
+        console.print(
+            f"[cyan]Generated {len(expansion_keywords)} product-specific keywords:[/] "
+            f"{', '.join(expansion_keywords)}"
+        )
+
+        # Step 6: Scan each expansion keyword
+        all_ads_by_keyword = {primary_keyword: scan_result.ads}
+        for kw in expansion_keywords:
+            logger.info(f"Scanning expansion keyword: {kw}")
+            try:
+                expanded_scan = await self._run_scan_stage(kw, from_scan=None)
+
+                # Filter to same product type as focus brand
+                dominant_type, _ = get_dominant_product_type(expanded_scan.ads)
+                if dominant_type != ProductType.UNKNOWN:
+                    expanded_scan.ads = filter_ads_by_product_type(
+                        expanded_scan.ads, dominant_type, allow_unknown=True
+                    )
+
+                all_ads_by_keyword[kw] = expanded_scan.ads
+                console.print(f"  [dim]• {kw}: {len(expanded_scan.ads)} ads[/]")
+            except Exception as e:
+                logger.error(f"Failed to scan '{kw}': {e}")
+                all_ads_by_keyword[kw] = []
+
+        # Step 7: Deduplicate and combine
+        deduplicated_ads, contributions = deduplicate_ads_across_keywords(
+            all_ads_by_keyword
+        )
+
+        console.print(
+            f"\n[green]✓ Combined results: {len(deduplicated_ads)} unique ads "
+            f"(from {sum(len(ads) for ads in all_ads_by_keyword.values())} total)[/]"
+        )
+
+        # Show keyword contributions
+        self._show_keyword_contributions(contributions)
+
+        # Check if we found better matches
+        new_brands = len(aggregate_by_advertiser(deduplicated_ads))
+        old_brands = len(scan_result.advertisers)
+
+        if new_brands > old_brands:
+            console.print(
+                f"[green]✓ Found {new_brands} brands (up from {old_brands})[/]"
+            )
+        else:
+            console.print(
+                f"[yellow]⚠ Still only {new_brands} brands found. "
+                "Market may be sparse for this product.[/]"
+            )
+
+        # Re-aggregate and rank advertisers with combined ads
+        advertisers = aggregate_by_advertiser(deduplicated_ads)
+        ranked = rank_advertisers(advertisers)
+
+        # Update scan result
+        scan_result.ads = deduplicated_ads
+        scan_result.advertisers = ranked
+        scan_result.total_fetched = len(deduplicated_ads)
+
+        return scan_result, contributions
+
+    async def _load_focus_brand_report(self, focus_brand: str) -> Optional[BrandReport]:
+        """Try to load focus brand's report from most recent run.
+
+        Args:
+            focus_brand: Brand name to search for
+
+        Returns:
+            BrandReport if found, None otherwise
+        """
+        output_dir = Path(self.config.get("reporting", {}).get("output_dir", "output/reports"))
+
+        # Search for brand_report files containing this brand
+        brand_slug = "".join(c if c.isalnum() else "_" for c in focus_brand.lower())[:30]
+
+        # Look in all report directories
+        for report_file in output_dir.glob(f"*/brand_report_{brand_slug}_*.json"):
+            try:
+                with open(report_file) as f:
+                    data = json.load(f)
+                report = BrandReport(**data)
+
+                # Verify it's the right brand (case insensitive)
+                if report.advertiser.page_name.lower() == focus_brand.lower():
+                    logger.info(f"Loaded focus brand report from: {report_file}")
+                    return report
+            except Exception as e:
+                logger.warning(f"Failed to load {report_file}: {e}")
+                continue
+
+        logger.warning(f"No brand report found for '{focus_brand}'")
+        return None
 
     def _show_keyword_contributions(self, contributions: dict[str, int]) -> None:
         """Display keyword contribution table.
