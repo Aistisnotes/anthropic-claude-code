@@ -411,11 +411,12 @@ def compare(
     if json_output:
         console.print_json(data=result.model_dump(mode="json"))
     else:
-        from meta_ads_analyzer.compare.market_map import format_market_map_text
-        from meta_ads_analyzer.compare.loophole_doc import format_loophole_doc_text
+        from meta_ads_analyzer.compare.strategic_market_map import format_strategic_market_map_text
+        from meta_ads_analyzer.compare.strategic_loophole_doc import format_strategic_loophole_doc_text
 
-        console.print("\n" + format_market_map_text(result.market_map))
-        console.print("\n" + format_loophole_doc_text(result.loophole_doc))
+        console.print("\n" + format_strategic_market_map_text(result.market_map))
+        if result.loophole_doc:
+            console.print("\n" + format_strategic_loophole_doc_text(result.loophole_doc))
 
         # Summary
         p1_count = sum(
