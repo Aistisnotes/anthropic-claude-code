@@ -34,6 +34,26 @@ class FilterReason(str, enum.Enum):
     DUPLICATE = "duplicate"
 
 
+class Priority(str, enum.Enum):
+    """Ad priority classification for selection engine."""
+
+    P1_ACTIVE_WINNER = "p1_active_winner"
+    P2_PROVEN_RECENT = "p2_proven_recent"
+    P3_STRATEGIC_DIRECTION = "p3_strategic_direction"
+    P4_RECENT_MODERATE = "p4_recent_moderate"
+
+
+class SkipReason(str, enum.Enum):
+    """Reasons an ad is skipped during selection."""
+
+    NO_LAUNCH_DATE = "no_launch_date"
+    LEGACY_AUTOPILOT = "legacy_autopilot"
+    FAILED_TEST = "failed_test"
+    THIN_TEXT = "thin_text"
+    BELOW_THRESHOLD = "below_threshold"
+    DUPLICATE = "duplicate"
+
+
 class ScrapedAd(BaseModel):
     """Raw ad data as scraped from Meta Ads Library."""
 
@@ -52,6 +72,20 @@ class ScrapedAd(BaseModel):
     platforms: list[str] = Field(default_factory=list)
     scrape_position: int = 0  # Order on Meta Ads Library page (0-indexed, sorted by impressions)
     scraped_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Impression and spend data (Meta returns these as ranges like "10K-50K")
+    impression_lower: int = 0
+    impression_upper: Optional[int] = None
+    spend_lower: float = 0.0
+    spend_upper: Optional[float] = None
+    spend_currency: str = "USD"
+
+    @property
+    def max_primary_text_words(self) -> int:
+        """Word count for selection filtering."""
+        if not self.primary_text:
+            return 0
+        return len(self.primary_text.strip().split())
 
 
 class DownloadedMedia(BaseModel):
@@ -226,3 +260,63 @@ class PatternReport(BaseModel):
     # Quality
     quality_report: Optional[QualityReport] = None
     full_report_markdown: str = ""
+
+
+class AdvertiserEntry(BaseModel):
+    """Aggregated advertiser data from scan."""
+
+    page_id: Optional[str] = None
+    page_name: str
+    ad_count: int = 0
+    active_ad_count: int = 0
+    recent_ad_count: int = 0  # ads launched in last 30 days
+    total_impression_lower: int = 0
+    max_impression_upper: int = 0
+    earliest_launch: Optional[datetime] = None
+    latest_launch: Optional[datetime] = None
+    headlines: list[str] = Field(default_factory=list)
+    relevance_score: int = 0  # composite ranking score
+
+
+class ClassifiedAd(BaseModel):
+    """An ad with priority classification applied."""
+
+    ad: ScrapedAd
+    priority: Optional[Priority] = None
+    priority_label: str = "SKIP"
+    skip_reason: Optional[SkipReason] = None
+    days_since_launch: Optional[int] = None
+
+
+class SelectionStats(BaseModel):
+    """Statistics from ad selection process."""
+
+    total_scanned: int = 0
+    total_selected: int = 0
+    total_skipped: int = 0
+    duplicates_removed: int = 0
+    by_priority: dict[str, int] = Field(default_factory=dict)
+    skip_reasons: dict[str, int] = Field(default_factory=dict)
+
+
+class SelectionResult(BaseModel):
+    """Result from selectAds() function."""
+
+    selected: list[ClassifiedAd] = Field(default_factory=list)
+    skipped: list[ClassifiedAd] = Field(default_factory=list)
+    stats: SelectionStats = Field(default_factory=SelectionStats)
+
+
+class ScanResult(BaseModel):
+    """Complete scan result with advertiser rankings."""
+
+    keyword: str
+    country: str = "US"
+    scan_date: datetime = Field(default_factory=datetime.utcnow)
+    ads: list[ScrapedAd] = Field(default_factory=list)
+    advertisers: list[AdvertiserEntry] = Field(default_factory=list)
+    total_fetched: int = 0
+    pages_scanned: int = 0
+
+    # Optional: selection results if --select flag used
+    selection: Optional[SelectionResult] = None
