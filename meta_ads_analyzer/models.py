@@ -444,12 +444,17 @@ class BrandGap(BaseModel):
 
 
 class StrategicRecommendations(BaseModel):
-    """Claude-enhanced strategic layer (optional)."""
+    """Claude-enhanced strategic layer with deep competitive analysis."""
 
     market_narrative: Optional[str] = None
+    root_cause_comparison: dict = Field(default_factory=dict)
+    mechanism_comparison: dict = Field(default_factory=dict)
+    proof_architecture_comparison: dict = Field(default_factory=dict)
+    belief_installation_analysis: dict = Field(default_factory=dict)
     top_opportunities: list[dict] = Field(default_factory=list)
     contrarian_plays: list[dict] = Field(default_factory=list)
-    immediate_actions: list[dict] = Field(default_factory=list)
+    what_not_to_do: list[str] = Field(default_factory=list)
+    immediate_actions: list[dict] = Field(default_factory=list)  # Optional, may be removed
 
 
 class LoopholeDocument(BaseModel):
