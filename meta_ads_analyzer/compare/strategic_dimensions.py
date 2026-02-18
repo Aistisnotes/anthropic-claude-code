@@ -11,6 +11,8 @@ This module defines the 6 core dimensions that drive direct response results:
 
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -194,9 +196,64 @@ class StrategicLoopholeDocument(BaseModel):
     what_not_to_do: list[str] = Field(default_factory=list)
 
 
+class BlueOceanAdConcept(BaseModel):
+    """A single ad concept for blue ocean execution."""
+
+    title: str
+    hook: str
+    angle: str
+    root_cause: str
+    mechanism: str
+    why_it_works: str
+
+
+class BlueOceanWeekPlan(BaseModel):
+    """Week in the blue ocean testing roadmap."""
+
+    week: str  # "Week 1", "Weeks 2-3", etc.
+    focus: str
+    actions: list[str] = Field(default_factory=list)
+
+
+class BlueOceanResult(BaseModel):
+    """Report when no brands have 50+ qualifying ads in the market."""
+
+    keyword: str
+    focus_brand: Optional[str] = None
+    generated_at: str = ""  # ISO datetime string
+
+    # Finding
+    brands_scanned: int = 0
+    max_qualifying_ads: int = 0
+    brand_ad_counts: list[dict] = Field(default_factory=list)  # [{brand, qualifying_ads}]
+
+    # Market summary (Claude-generated)
+    blue_ocean_summary: str = ""
+
+    # Focus brand analysis (populated if focus_brand specified)
+    focus_brand_ads_analyzed: int = 0
+    focus_brand_root_causes: list[str] = Field(default_factory=list)
+    focus_brand_mechanisms: list[str] = Field(default_factory=list)
+    focus_brand_avatar: str = ""
+    focus_brand_top_pain_points: list[str] = Field(default_factory=list)
+    focus_brand_strengths: list[str] = Field(default_factory=list)
+    focus_brand_gaps: list[str] = Field(default_factory=list)
+
+    # Strategy (Claude-generated)
+    execution_recommendations: list[str] = Field(default_factory=list)
+    first_5_ad_concepts: list[BlueOceanAdConcept] = Field(default_factory=list)
+    testing_roadmap: list[BlueOceanWeekPlan] = Field(default_factory=list)
+
+    # Adjacent market insights
+    adjacent_keywords: list[dict] = Field(default_factory=list)  # [{keyword, brands_with_50_plus, max_ads, has_competition}]
+    adjacent_insights: str = ""
+
+
 class StrategicCompareResult(BaseModel):
     """Complete strategic comparison result."""
 
     keyword: str
-    market_map: StrategicMarketMap
-    loophole_doc: StrategicLoopholeDocument
+    market_map: Optional[StrategicMarketMap] = None
+    loophole_doc: Optional[StrategicLoopholeDocument] = None
+    blue_ocean_result: Optional[BlueOceanResult] = None
+    competition_level: str = "normal"  # normal / thin / blue_ocean

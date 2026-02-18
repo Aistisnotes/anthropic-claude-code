@@ -193,6 +193,95 @@ def generate_pdf_sync(
     )
 
 
+async def generate_blue_ocean_pdf(
+    blue_ocean_doc,  # BlueOceanResult
+    output_dir: Optional[Path] = None,
+    output_filename: Optional[str] = None,
+) -> Path:
+    """Generate a PDF report from a BlueOceanResult.
+
+    Args:
+        blue_ocean_doc: BlueOceanResult instance
+        output_dir: Directory to save the PDF (defaults to ~/Desktop/reports/)
+        output_filename: Override the output filename (without extension)
+
+    Returns:
+        Path to the generated PDF file
+    """
+    from playwright.async_api import async_playwright
+
+    if output_dir is None:
+        output_dir = _DEFAULT_OUTPUT_DIR
+    output_dir = Path(output_dir).expanduser()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if output_filename is None:
+        keyword = blue_ocean_doc.keyword
+        date_str = datetime.now().strftime("%Y%m%d")
+        output_filename = f"{_slugify(keyword)}_{date_str}_blue_ocean"
+
+    pdf_path = output_dir / f"{output_filename}.pdf"
+
+    # Render HTML
+    logger.info("Rendering blue ocean HTML template...")
+    env = Environment(
+        loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+        autoescape=select_autoescape(["html"]),
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+    template = env.get_template("blue_ocean_report.html")
+    html_content = template.render(
+        report=blue_ocean_doc,
+        generated_date=datetime.now().strftime("%B %d, %Y"),
+    )
+
+    # Write to temp file
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".html", delete=False, encoding="utf-8"
+    ) as tmp:
+        tmp.write(html_content)
+        tmp_path = Path(tmp.name)
+
+    logger.info("Generating blue ocean PDF with Playwright...")
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+            await page.pdf(
+                path=str(pdf_path),
+                format="A4",
+                print_background=True,
+                margin={"top": "14mm", "bottom": "14mm", "left": "15mm", "right": "15mm"},
+            )
+            await browser.close()
+    except Exception as e:
+        raise RuntimeError(f"Blue ocean PDF generation failed: {e}") from e
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    logger.info(f"Blue ocean PDF saved: {pdf_path}")
+    return pdf_path
+
+
+def generate_blue_ocean_pdf_sync(
+    blue_ocean_doc,
+    output_dir: Optional[Path] = None,
+    output_filename: Optional[str] = None,
+) -> Path:
+    """Synchronous wrapper around generate_blue_ocean_pdf."""
+    import asyncio
+
+    return asyncio.run(
+        generate_blue_ocean_pdf(
+            blue_ocean_doc=blue_ocean_doc,
+            output_dir=output_dir,
+            output_filename=output_filename,
+        )
+    )
+
+
 def auto_generate_pdf_for_compare(
     compare_output_dir: Path,
     output_dir: Optional[Path] = None,

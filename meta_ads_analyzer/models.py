@@ -416,6 +416,8 @@ class MarketResult(BaseModel):
     total_advertisers: int
     brands_analyzed: int
     brand_reports: list[BrandReport] = Field(default_factory=list)
+    competition_level: str = "normal"  # normal / thin / blue_ocean
+    blue_ocean_result: Optional[Any] = None  # BlueOceanResult (dict-serialized)
 
 
 # ============================================================================

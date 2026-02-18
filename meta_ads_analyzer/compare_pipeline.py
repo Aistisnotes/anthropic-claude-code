@@ -87,6 +87,17 @@ class ComparePipeline:
             brand_reports = self._load_brand_reports(keyword, from_reports)
 
         if len(brand_reports) < 2:
+            # Check if this was actually a blue ocean market (blue_ocean_report.json present)
+            blue_ocean = self._try_load_blue_ocean(keyword, from_reports)
+            if blue_ocean:
+                logger.info("Blue ocean report found — returning blue ocean result")
+                from meta_ads_analyzer.compare.strategic_dimensions import BlueOceanResult, StrategicCompareResult
+                bo = BlueOceanResult(**blue_ocean) if isinstance(blue_ocean, dict) else blue_ocean
+                return StrategicCompareResult(
+                    keyword=keyword,
+                    blue_ocean_result=bo,
+                    competition_level="blue_ocean",
+                )
             raise ValueError(
                 f"Need at least 2 brand reports for comparison, found {len(brand_reports)}"
             )
@@ -130,10 +141,14 @@ class ComparePipeline:
 
         logger.info(f"Strategic compare complete, results saved to: {output_subdir}")
 
+        # Determine competition level from brand report count
+        competition_level = "normal" if len(brand_reports) >= 3 else "thin"
+
         return StrategicCompareResult(
             keyword=keyword,
             market_map=market_map,
             loophole_doc=loophole_doc,
+            competition_level=competition_level,
         )
 
     def _load_brand_reports(
@@ -222,6 +237,23 @@ class ComparePipeline:
         )
 
         return result.brand_reports
+
+    def _try_load_blue_ocean(
+        self, keyword: str, reports_dir: Optional[Path]
+    ) -> Optional[dict]:
+        """Look for a blue_ocean_report.json in the most recent market directory."""
+        if reports_dir is None:
+            reports_dir = self.output_dir
+        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword)[:50]
+        matching_dirs = list(reports_dir.glob(f"market_{keyword_slug}_*"))
+        if not matching_dirs:
+            return None
+        latest_dir = max(matching_dirs, key=lambda p: p.stat().st_mtime)
+        bo_path = latest_dir / "blue_ocean_report.json"
+        if bo_path.exists():
+            with open(bo_path) as f:
+                return json.load(f)
+        return None
 
     def _create_output_dir(self, keyword: str) -> Path:
         """Create output subdirectory for compare results.

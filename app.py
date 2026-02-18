@@ -227,6 +227,31 @@ def _find_pdf_for_compare(compare_dir: Path) -> Optional[Path]:
     return None
 
 
+def _find_pdf_for_market(market_dir: Path) -> Optional[Path]:
+    """Find a blue ocean PDF for a market directory."""
+    if not PDF_OUTPUT_DIR.exists():
+        return None
+    name = market_dir.name  # market_ESOPHAGUS_20260218_120000
+    parts = name.split("_")
+    if len(parts) >= 2:
+        keyword_slug = "_".join(parts[1:-2])[:20]
+        for pdf in PDF_OUTPUT_DIR.glob("*.pdf"):
+            if "blue_ocean" in pdf.stem and keyword_slug[:10].lower() in pdf.stem.lower():
+                return pdf
+    return None
+
+
+def _load_blue_ocean_result(market_dir: Path) -> Optional[dict]:
+    """Load blue_ocean_report.json from a market directory."""
+    bo_path = market_dir / "blue_ocean_report.json"
+    if bo_path.exists():
+        try:
+            return json.loads(bo_path.read_text())
+        except Exception:
+            return None
+    return None
+
+
 # ── Run pipeline ───────────────────────────────────────────────────────────────
 def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
                   top_brands: int, ads_per_brand: int, run_compare: bool):
@@ -509,6 +534,93 @@ def _render_loopholes(loopholes: list):
                 st.markdown(f"*{lp['defensibility']}*")
 
 
+def _render_blue_ocean_result(bo: dict):
+    """Render blue ocean report inline in the Results page."""
+    st.markdown("""
+    <div style="background:#e1f5fe;border-left:5px solid #0277bd;border-radius:8px;
+                padding:14px 18px;margin-bottom:16px;">
+      <strong style="color:#0277bd;font-size:16px;">🌊 Blue Ocean Market</strong><br>
+      <span style="font-size:13px;color:#333;">No brand has 50+ qualifying ads in this market.
+      This is a first-mover opportunity.</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Brands Scanned", bo.get("brands_scanned", 0))
+    col2.metric("Max Qualifying Ads", bo.get("max_qualifying_ads", 0))
+    col3.metric("Focus Brand", bo.get("focus_brand") or "—")
+
+    if bo.get("blue_ocean_summary"):
+        st.markdown("### Market Opportunity")
+        st.markdown(bo["blue_ocean_summary"])
+
+    # Brand counts
+    if bo.get("brand_ad_counts"):
+        st.markdown("### Brands Found")
+        import pandas as pd
+        df = pd.DataFrame(bo["brand_ad_counts"])
+        df.columns = ["Brand", "Qualifying Ads"]
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # Execution recommendations
+    if bo.get("execution_recommendations"):
+        st.markdown("### Execution Recommendations")
+        for i, rec in enumerate(bo["execution_recommendations"], 1):
+            st.markdown(f"**{i}.** {rec}")
+
+    # Ad concepts
+    if bo.get("first_5_ad_concepts"):
+        st.markdown("### First 5 Ad Concepts")
+        for i, concept in enumerate(bo["first_5_ad_concepts"], 1):
+            with st.expander(f"Concept {i}: {concept.get('title', '')}"):
+                st.markdown(f"**Hook:** *\"{concept.get('hook', '')}\"*")
+                cols = st.columns(2)
+                with cols[0]:
+                    st.markdown(f"**Angle:** {concept.get('angle', '')}")
+                    st.markdown(f"**Root Cause:** {concept.get('root_cause', '')}")
+                with cols[1]:
+                    st.markdown(f"**Mechanism:** {concept.get('mechanism', '')}")
+                st.success(concept.get('why_it_works', ''))
+
+    # Testing roadmap
+    if bo.get("testing_roadmap"):
+        st.markdown("### Testing Roadmap")
+        for week in bo["testing_roadmap"]:
+            st.markdown(f"**{week.get('week', '')}** — {week.get('focus', '')}")
+            for action in week.get("actions", []):
+                st.markdown(f"  - {action}")
+
+    # Focus brand deep dive
+    if bo.get("focus_brand") and bo.get("focus_brand_ads_analyzed", 0) > 0:
+        st.markdown(f"### Focus Brand Deep Dive — {bo['focus_brand']}")
+        cols = st.columns(2)
+        with cols[0]:
+            if bo.get("focus_brand_strengths"):
+                st.markdown("**Strengths**")
+                for s in bo["focus_brand_strengths"]:
+                    st.markdown(f"✓ {s}")
+        with cols[1]:
+            if bo.get("focus_brand_gaps"):
+                st.markdown("**Messaging Gaps**")
+                for g in bo["focus_brand_gaps"]:
+                    st.markdown(f"✗ {g}")
+
+    # Adjacent keywords
+    if bo.get("adjacent_keywords"):
+        st.markdown("### Adjacent Markets")
+        import pandas as pd
+        rows = []
+        for kw in bo["adjacent_keywords"]:
+            rows.append({
+                "Keyword": kw.get("keyword", ""),
+                "Total Brands": kw.get("total_brands", 0),
+                "Brands 50+ Ads": kw.get("brands_with_50_plus", 0),
+                "Max Ads": kw.get("max_ads", 0),
+                "Competition": "Yes" if kw.get("has_competition") else "Blue Ocean Too",
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
 def page_results():
     st.markdown('<div class="section-header">📊 Results</div>', unsafe_allow_html=True)
 
@@ -544,6 +656,47 @@ def page_results():
     col4.metric("Focus Brand", info["focus_brand"] or "—")
 
     st.markdown("---")
+
+    # Check for blue ocean in adjacent market dir
+    blue_ocean_data = None
+    if not info["has_loopholes"]:
+        # Try to find blue ocean from corresponding market run
+        market_dirs = _get_market_dirs()
+        kw_slug = "".join(c if c.isalnum() else "_" for c in info["keyword"])[:30]
+        for md in market_dirs[:20]:
+            if kw_slug[:15].lower() in md.name.lower():
+                blue_ocean_data = _load_blue_ocean_result(md)
+                if blue_ocean_data:
+                    break
+
+    if blue_ocean_data:
+        st.markdown("---")
+        _render_blue_ocean_result(blue_ocean_data)
+        # Check for PDF
+        bo_pdf = None
+        market_dirs = _get_market_dirs()
+        for md in market_dirs[:10]:
+            bo_pdf = _find_pdf_for_market(md)
+            if bo_pdf:
+                break
+        if bo_pdf and bo_pdf.exists():
+            st.markdown("### 📄 Blue Ocean PDF Report")
+            with open(bo_pdf, "rb") as f:
+                pdf_bytes = f.read()
+            st.download_button(
+                f"⬇ Download Blue Ocean PDF ({bo_pdf.stat().st_size // 1024}KB)",
+                data=pdf_bytes,
+                file_name=bo_pdf.name,
+                mime="application/pdf",
+            )
+            import base64
+            b64 = base64.b64encode(pdf_bytes).decode()
+            st.markdown(
+                f'<iframe src="data:application/pdf;base64,{b64}" '
+                f'width="100%" height="900px" style="border:1px solid #e0e0e0;border-radius:8px;"></iframe>',
+                unsafe_allow_html=True,
+            )
+        return
 
     # PDF Section
     st.markdown("### 📄 PDF Report")
@@ -700,10 +853,12 @@ def page_history():
                     except ValueError:
                         pass
 
+                bo_data = _load_blue_ocean_result(d)
+                bo_badge = '&nbsp;·&nbsp; <span class="badge badge-pink">🌊 Blue Ocean</span>' if bo_data else ""
                 st.markdown(f"""
                 <div class="run-card">
                   <div class="run-card-title">{keyword}</div>
-                  <div class="run-card-meta">{date_str} &nbsp;·&nbsp; {len(brand_reports)} brand reports</div>
+                  <div class="run-card-meta">{date_str} &nbsp;·&nbsp; {len(brand_reports)} brand reports{bo_badge}</div>
                 </div>
                 """, unsafe_allow_html=True)
 

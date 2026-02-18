@@ -27,10 +27,13 @@ from meta_ads_analyzer.classifier.product_type import (
     filter_ads_by_product_type,
     get_dominant_product_type,
 )
-from meta_ads_analyzer.models import BrandReport, BrandSelection, MarketResult, ProductType, ScanResult
+from meta_ads_analyzer.models import BrandReport, BrandSelection, MarketResult, ProductType, ScanResult, ScrapedAd
 from meta_ads_analyzer.pipeline import Pipeline
 from meta_ads_analyzer.selector import aggregate_by_advertiser, rank_advertisers, select_ads_for_brand
 from meta_ads_analyzer.utils.logging import get_logger
+
+# Minimum qualifying ads a brand must have to be included in competitive analysis
+BLUE_OCEAN_THRESHOLD = 50
 
 logger = get_logger(__name__)
 console = Console()
@@ -135,9 +138,67 @@ class MarketPipeline:
         else:
             logger.info("No multi-page brand networks detected")
 
-        # 2. Select top brands and their best ads
-        brand_selections = await self._select_brands_and_ads(
-            scan_result, top_brands, ads_per_brand
+        # 2. Deep brand search + competition check
+        top_advertisers = scan_result.advertisers[:top_brands]
+        console.print(f"\n[cyan]Deep brand search for top {len(top_advertisers)} brands...[/]")
+
+        brand_deep_ads: dict[str, list[ScrapedAd]] = {}
+        brand_ad_counts: dict[str, int] = {}
+
+        for advertiser in top_advertisers:
+            brand_name = advertiser.page_name
+
+            # Keyword scan ads for this brand
+            keyword_ads = [ad for ad in scan_result.ads if ad.page_name == brand_name]
+
+            # Deep brand-specific search
+            deep_ads = await self._deep_search_brand(brand_name, dominant_type)
+
+            # Combine + deduplicate by ad_id
+            seen_ids: set[str] = set()
+            combined: list[ScrapedAd] = []
+            for ad in keyword_ads + deep_ads:
+                if ad.ad_id not in seen_ids:
+                    seen_ids.add(ad.ad_id)
+                    combined.append(ad)
+
+            # Apply product type filter to combined set
+            if dominant_type != ProductType.UNKNOWN:
+                filtered = filter_ads_by_product_type(combined, dominant_type, allow_unknown=True)
+            else:
+                filtered = combined
+
+            brand_deep_ads[brand_name] = filtered
+            brand_ad_counts[brand_name] = len(filtered)
+
+            console.print(
+                f"  [dim]{brand_name[:35]:35s}  "
+                f"keyword={len(keyword_ads):3d}  deep={len(deep_ads):3d}  "
+                f"qualifying={len(filtered):3d}[/]"
+            )
+
+        # Determine competition level
+        competition_level, qualifying_brands = self._check_competition_level(brand_ad_counts)
+
+        if competition_level == "blue_ocean":
+            return await self._handle_blue_ocean(
+                keyword, scan_result, brand_ad_counts, focus_brand, dominant_type
+            )
+
+        if competition_level == "thin":
+            console.print(
+                f"\n[yellow]⚠ THIN COMPETITION: Only {len(qualifying_brands)} brand(s) "
+                f"have 50+ qualifying ads. Results may have low statistical confidence.[/]"
+            )
+        else:
+            console.print(
+                f"\n[green]✓ {len(qualifying_brands)} brands with 50+ qualifying ads — "
+                "proceeding with full analysis[/]"
+            )
+
+        # 3. Build brand selections from deep ads (skip brands below threshold)
+        brand_selections = await self._select_brands_from_deep_ads(
+            top_advertisers, brand_deep_ads, brand_ad_counts, ads_per_brand
         )
 
         if not brand_selections:
@@ -149,6 +210,7 @@ class MarketPipeline:
                 total_advertisers=len(scan_result.advertisers),
                 brands_analyzed=0,
                 brand_reports=[],
+                competition_level=competition_level,
             )
 
         console.print(f"[cyan]Selected {len(brand_selections)} brands for analysis[/]")
@@ -161,7 +223,7 @@ class MarketPipeline:
         self.market_subdir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Market reports will be saved to: {self.market_subdir}")
 
-        # 3. Analyze each brand
+        # 4. Analyze each brand
         brand_reports = []
         for i, selection in enumerate(brand_selections, 1):
             console.print(
@@ -187,9 +249,8 @@ class MarketPipeline:
                 console.print(
                     f"[red]✗ Failed: {selection.advertiser.page_name} - {str(e)}[/]"
                 )
-                # Continue with other brands
 
-        # 4. Return result
+        # 5. Return result
         return MarketResult(
             keyword=keyword,
             country=scan_result.country,
@@ -197,6 +258,7 @@ class MarketPipeline:
             total_advertisers=len(scan_result.advertisers),
             brands_analyzed=len(brand_reports),
             brand_reports=brand_reports,
+            competition_level=competition_level,
         )
 
     async def _run_scan_stage(
@@ -224,35 +286,74 @@ class MarketPipeline:
 
             return await run_scan(keyword, self.config)
 
-    async def _select_brands_and_ads(
-        self,
-        scan_result: ScanResult,
-        top_brands: int,
-        ads_per_brand: int,
-    ) -> list[BrandSelection]:
-        """Stage 2: Select top brands and their best ads.
+    async def _deep_search_brand(
+        self, brand_name: str, dominant_type: ProductType
+    ) -> list[ScrapedAd]:
+        """Do a targeted brand-name search to get the brand's full ad library.
 
         Args:
-            scan_result: Scan result with all ads and ranked advertisers
-            top_brands: Number of top brands to select
-            ads_per_brand: Max ads per brand
+            brand_name: Brand name to search for
+            dominant_type: Product type for filtering
 
         Returns:
-            List of BrandSelection objects
+            List of ads matching this brand's product type
         """
-        # Pick top N brands from ranked advertisers
-        top_advertisers = scan_result.advertisers[:top_brands]
-        logger.info(
-            f"Selected top {len(top_advertisers)} advertisers "
-            f"(requested {top_brands})"
-        )
+        try:
+            logger.info(f"Deep brand search: '{brand_name}'")
+            brand_scan = await self._run_scan_stage(brand_name, from_scan=None)
+            if dominant_type != ProductType.UNKNOWN:
+                return filter_ads_by_product_type(brand_scan.ads, dominant_type, allow_unknown=True)
+            return brand_scan.ads
+        except Exception as e:
+            logger.warning(f"Deep brand search failed for '{brand_name}': {e}")
+            return []
 
-        # For each brand, select best ads using P1-P4 priority
+    def _check_competition_level(
+        self, brand_ad_counts: dict[str, int]
+    ) -> tuple[str, list[str]]:
+        """Determine competition level based on qualifying ad counts.
+
+        Returns:
+            (level, qualifying_brand_names) where level is "normal", "thin", or "blue_ocean"
+        """
+        qualifying = [
+            brand for brand, count in brand_ad_counts.items()
+            if count >= BLUE_OCEAN_THRESHOLD
+        ]
+        if len(qualifying) == 0:
+            return "blue_ocean", []
+        elif len(qualifying) <= 2:
+            return "thin", qualifying
+        else:
+            return "normal", qualifying
+
+    async def _select_brands_from_deep_ads(
+        self,
+        top_advertisers: list,
+        brand_deep_ads: dict[str, list[ScrapedAd]],
+        brand_ad_counts: dict[str, int],
+        ads_per_brand: int,
+    ) -> list[BrandSelection]:
+        """Select best ads per brand from the deep-search combined ad pool.
+
+        Only includes brands meeting the BLUE_OCEAN_THRESHOLD.
+        """
         selections = []
         for advertiser in top_advertisers:
+            brand_name = advertiser.page_name
+            qualifying_count = brand_ad_counts.get(brand_name, 0)
+
+            if qualifying_count < BLUE_OCEAN_THRESHOLD:
+                logger.info(
+                    f"Skipping {brand_name}: {qualifying_count} qualifying ads "
+                    f"(below {BLUE_OCEAN_THRESHOLD} threshold)"
+                )
+                continue
+
+            deep_ads = brand_deep_ads.get(brand_name, [])
             selection_result = select_ads_for_brand(
-                all_ads=scan_result.ads,
-                brand_name=advertiser.page_name,
+                all_ads=deep_ads,
+                brand_name=brand_name,
                 limit=ads_per_brand,
                 config=self.config,
             )
@@ -265,15 +366,114 @@ class MarketPipeline:
                         selection_stats=selection_result.stats,
                     )
                 )
-                logger.info(
-                    f"{advertiser.page_name}: selected {len(selection_result.selected)} ads"
-                )
+                logger.info(f"{brand_name}: selected {len(selection_result.selected)} ads from {qualifying_count} qualifying")
             else:
-                logger.warning(
-                    f"{advertiser.page_name}: no ads passed selection (skipping)"
-                )
+                logger.warning(f"{brand_name}: no ads passed P1-P4 selection (skipping)")
 
         return selections
+
+    async def _handle_blue_ocean(
+        self,
+        keyword: str,
+        scan_result: ScanResult,
+        brand_ad_counts: dict[str, int],
+        focus_brand: Optional[str],
+        dominant_type: ProductType,
+    ) -> MarketResult:
+        """Handle blue ocean case: no brands have 50+ qualifying ads.
+
+        Runs focus brand analysis (if provided) and generates blue ocean report.
+        """
+        from meta_ads_analyzer.compare.blue_ocean_doc import generate_blue_ocean_doc, save_blue_ocean_doc
+        from meta_ads_analyzer.reporter.pdf_generator import generate_blue_ocean_pdf
+
+        console.print("\n[bold yellow]🌊  BLUE OCEAN DETECTED[/]")
+        console.print(
+            f"[yellow]No brand has {BLUE_OCEAN_THRESHOLD}+ qualifying ads "
+            f"in '{keyword}' on Meta.[/]"
+        )
+        console.print(
+            "[yellow]This is a first-mover opportunity — "
+            "you can own this category.[/]\n"
+        )
+
+        # Show brand counts table
+        self._show_brand_ad_counts_table(brand_ad_counts)
+
+        # Run full pipeline on focus brand if specified
+        focus_pattern_report = None
+        if focus_brand:
+            console.print(f"\n[cyan]Running deep brand analysis: {focus_brand}[/]")
+            try:
+                focus_pattern_report = await self.pipeline.run(
+                    query=focus_brand,
+                    brand=focus_brand,
+                )
+                console.print(
+                    f"[green]✓ Focus brand analysis complete "
+                    f"({focus_pattern_report.total_ads_analyzed} ads)[/]"
+                )
+            except Exception as e:
+                logger.error(f"Focus brand analysis failed: {e}")
+                console.print(f"[yellow]⚠ Focus brand analysis failed: {e}[/]")
+
+        # Generate blue ocean document
+        console.print("\n[cyan]Generating blue ocean strategy...[/]")
+        blue_ocean_doc = await generate_blue_ocean_doc(
+            keyword=keyword,
+            focus_brand=focus_brand,
+            brand_ad_counts=brand_ad_counts,
+            focus_brand_pattern_report=focus_pattern_report,
+            config=self.config,
+        )
+
+        # Create output directory and save
+        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword)[:50]
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        output_dir = Path(self.config.get("reporting", {}).get("output_dir", "output/reports"))
+        self.market_subdir = output_dir / f"market_{keyword_slug}_{timestamp}"
+        self.market_subdir.mkdir(parents=True, exist_ok=True)
+
+        save_blue_ocean_doc(blue_ocean_doc, self.market_subdir)
+        console.print(f"[green]✓ Blue ocean report saved: {self.market_subdir}[/]")
+
+        # Generate PDF
+        pdf_out_dir = Path.home() / "Desktop" / "reports"
+        try:
+            pdf_path = await generate_blue_ocean_pdf(
+                blue_ocean_doc=blue_ocean_doc,
+                output_dir=pdf_out_dir,
+            )
+            console.print(f"[bold green]✓ PDF saved: {pdf_path}[/]")
+        except Exception as e:
+            logger.error(f"Blue ocean PDF generation failed: {e}")
+            console.print(f"[yellow]⚠ PDF generation failed: {e}[/]")
+
+        return MarketResult(
+            keyword=keyword,
+            country=scan_result.country,
+            scan_date=scan_result.scan_date,
+            total_advertisers=len(scan_result.advertisers),
+            brands_analyzed=0,
+            brand_reports=[],
+            competition_level="blue_ocean",
+            blue_ocean_result=blue_ocean_doc.model_dump(mode="json"),
+        )
+
+    def _show_brand_ad_counts_table(self, brand_ad_counts: dict[str, int]) -> None:
+        """Display a table of brand ad counts."""
+        table = Table(title=f"Brand Ad Counts (threshold: {BLUE_OCEAN_THRESHOLD})")
+        table.add_column("Brand", style="cyan")
+        table.add_column("Qualifying Ads", justify="right", style="yellow")
+        table.add_column("Status", style="red")
+
+        sorted_counts = sorted(brand_ad_counts.items(), key=lambda x: x[1], reverse=True)
+        for brand, count in sorted_counts:
+            status = "✓ Qualifies" if count >= BLUE_OCEAN_THRESHOLD else f"✗ Below {BLUE_OCEAN_THRESHOLD}"
+            status_style = "green" if count >= BLUE_OCEAN_THRESHOLD else "red"
+            table.add_row(brand[:40], str(count), f"[{status_style}]{status}[/{status_style}]")
+
+        console.print(table)
 
     async def _maybe_expand_keywords(
         self, primary_keyword: str, scan_result: ScanResult
