@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ loophole.meta.keyword | title }} — Strategic Analysis</title>
+<style>
+  /* ── Reset & Base ─────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1a1a1a;
+    background: #ffffff;
+    line-height: 1.6;
+  }
+
+  /* ── Color System ─────────────────────────────────────────────── */
+  :root {
+    --pink:      #e91e8c;
+    --pink-light: #fce4ec;
+    --pink-mid:  #f48fb1;
+    --yellow:    #fff8e1;
+    --yellow-border: #ffc107;
+    --green:     #e8f5e9;
+    --green-border: #4caf50;
+    --red:       #ffebee;
+    --red-border: #ef5350;
+    --gray-bg:   #f8f8f8;
+    --gray-line: #e0e0e0;
+    --text-muted: #666;
+    --text-light: #888;
+  }
+
+  /* ── Page Setup ───────────────────────────────────────────────── */
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+  }
+  @page :first {
+    margin: 0;
+  }
+
+  /* ── Cover Page ───────────────────────────────────────────────── */
+  .cover {
+    page-break-after: always;
+    height: 297mm;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    padding: 48px 56px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover-top-bar {
+    width: 100%;
+    height: 6px;
+    background: linear-gradient(90deg, var(--pink) 0%, #f06292 100%);
+    border-radius: 3px;
+    margin-bottom: 48px;
+  }
+  .cover-emoji { font-size: 52px; margin-bottom: 16px; line-height: 1; }
+  .cover-title {
+    font-size: 36px;
+    font-weight: 800;
+    color: #111;
+    line-height: 1.15;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
+  }
+  .cover-title span { color: var(--pink); }
+  .cover-subtitle {
+    font-size: 15px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .cover-meta {
+    margin-top: 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cover-meta-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 13px;
+  }
+  .cover-meta-label { font-weight: 700; color: #444; min-width: 120px; }
+  .cover-meta-value { color: #222; }
+  .cover-stage-badge {
+    display: inline-block;
+    margin-top: 40px;
+    padding: 10px 20px;
+    background: var(--pink);
+    color: white;
+    border-radius: 24px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .cover-verdict-box {
+    margin-top: 40px;
+    background: var(--pink-light);
+    border-left: 5px solid var(--pink);
+    border-radius: 6px;
+    padding: 20px 24px;
+    max-width: 480px;
+  }
+  .cover-verdict-box p {
+    font-size: 13.5px;
+    color: #222;
+    line-height: 1.6;
+  }
+  .cover-verdict-box strong { color: var(--pink); }
+  .cover-bottom {
+    margin-top: auto;
+    border-top: 1px solid var(--gray-line);
+    padding-top: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-light);
+  }
+  .cover-brand-pill {
+    background: var(--gray-bg);
+    border: 1px solid var(--gray-line);
+    border-radius: 16px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+  }
+
+  /* ── Body sections ────────────────────────────────────────────── */
+  .section {
+    margin-bottom: 40px;
+  }
+  .page-break { page-break-before: always; }
+
+  /* ── Section Headers ──────────────────────────────────────────── */
+  .section-header {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--pink);
+    border-bottom: 3px solid var(--pink);
+    padding-bottom: 8px;
+    margin-bottom: 20px;
+    letter-spacing: -0.3px;
+  }
+  .section-header-num {
+    color: var(--pink);
+    margin-right: 4px;
+  }
+  .subsection-header {
+    font-size: 15px;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 12px;
+    margin-top: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* ── Callout Boxes ────────────────────────────────────────────── */
+  .callout {
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+  }
+  .callout-title {
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .callout p, .callout li { font-size: 13.5px; line-height: 1.65; }
+  .callout ul { padding-left: 20px; }
+  .callout li { margin-bottom: 4px; }
+  .callout-pink {
+    background: var(--pink-light);
+    border-left: 5px solid var(--pink);
+  }
+  .callout-pink .callout-title { color: var(--pink); }
+  .callout-yellow {
+    background: var(--yellow);
+    border-left: 5px solid var(--yellow-border);
+  }
+  .callout-yellow .callout-title { color: #b7840a; }
+  .callout-green {
+    background: var(--green);
+    border-left: 5px solid var(--green-border);
+  }
+  .callout-green .callout-title { color: #2e7d32; }
+  .callout-gray {
+    background: var(--gray-bg);
+    border: 1px solid var(--gray-line);
+    border-radius: 8px;
+  }
+
+  /* ── Tables ───────────────────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    margin-bottom: 20px;
+  }
+  thead th {
+    background: var(--gray-bg);
+    border: 1px solid var(--gray-line);
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: #444;
+  }
+  tbody td {
+    border: 1px solid var(--gray-line);
+    padding: 10px 12px;
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  tbody tr { page-break-inside: avoid; }
+  tbody tr:nth-child(even) td { background: #fafafa; }
+  .focus-brand-row td {
+    background: var(--pink-light) !important;
+    font-weight: 600;
+  }
+
+  /* ── Matrix ───────────────────────────────────────────────────── */
+  .matrix-row { margin-bottom: 10px; }
+  .matrix-cell {
+    border-radius: 6px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    border: 1px solid transparent;
+  }
+  .matrix-cell-content { flex: 1; }
+  .matrix-cell-content .rc {
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+  }
+  .matrix-cell-content .mech {
+    font-size: 13px;
+    font-weight: 600;
+    color: #222;
+    margin-bottom: 4px;
+  }
+  .matrix-cell-content .brands {
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  .gap-saturated { background: var(--red); border-color: var(--red-border); }
+  .gap-underexploited { background: var(--yellow); border-color: var(--yellow-border); }
+  .gap-wide-open { background: var(--green); border-color: var(--green-border); }
+  .gap-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .gap-badge-saturated { background: var(--red-border); color: white; }
+  .gap-badge-underexploited { background: var(--yellow-border); color: #333; }
+  .gap-badge-wide-open { background: var(--green-border); color: white; }
+  .matrix-legend {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+  }
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+  }
+
+  /* ── Market Share Bar ─────────────────────────────────────────── */
+  .share-bar-wrap { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .share-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--pink);
+    flex-shrink: 0;
+  }
+  .share-pct { color: var(--text-muted); min-width: 36px; }
+
+  /* ── Loophole Cards ───────────────────────────────────────────── */
+  .loophole-card {
+    border: 1px solid var(--gray-line);
+    border-left: 5px solid var(--pink);
+    border-radius: 8px;
+    padding: 24px 28px;
+    margin-bottom: 28px;
+    background: #fff;
+    page-break-inside: avoid;
+  }
+  .loophole-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    gap: 16px;
+  }
+  .loophole-title-block { flex: 1; }
+  .loophole-rank {
+    font-size: 20px;
+    margin-right: 8px;
+  }
+  .loophole-title {
+    font-size: 17px;
+    font-weight: 800;
+    color: #111;
+    line-height: 1.3;
+  }
+  .loophole-id {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+  }
+  .score-badge {
+    background: var(--pink);
+    color: white;
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 15px;
+    font-weight: 800;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .loophole-section-label {
+    font-size: 10.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    margin-top: 14px;
+  }
+  .loophole-gap-text {
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: #222;
+  }
+  .loophole-strategy-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 10px;
+  }
+  .strategy-cell {
+    background: var(--gray-bg);
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .strategy-cell-label {
+    font-size: 10.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .strategy-cell-value {
+    font-size: 12.5px;
+    color: #222;
+    line-height: 1.5;
+  }
+  .hooks-list {
+    padding-left: 0;
+    list-style: none;
+    margin: 0;
+  }
+  .hooks-list li {
+    font-size: 12.5px;
+    padding: 6px 10px;
+    border-left: 3px solid var(--pink-mid);
+    margin-bottom: 6px;
+    background: #fafafa;
+    border-radius: 0 4px 4px 0;
+    line-height: 1.5;
+    color: #333;
+  }
+  .tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+  }
+  .tag {
+    display: inline-block;
+    border-radius: 12px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    border: 1px solid;
+  }
+  .tag-pink { background: var(--pink-light); color: var(--pink); border-color: var(--pink-mid); }
+  .tag-green { background: var(--green); color: #2e7d32; border-color: var(--green-border); }
+  .tag-yellow { background: var(--yellow); color: #b7840a; border-color: var(--yellow-border); }
+  .tag-red { background: var(--red); color: #c62828; border-color: var(--red-border); }
+  .tag-gray { background: var(--gray-bg); color: #555; border-color: var(--gray-line); }
+
+  /* ── Sophistication Block ─────────────────────────────────────── */
+  .sophistication-block {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    background: var(--gray-bg);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .sophistication-stage-pill {
+    background: var(--pink);
+    color: white;
+    border-radius: 8px;
+    padding: 10px 18px;
+    text-align: center;
+    flex-shrink: 0;
+    min-width: 80px;
+  }
+  .sophistication-stage-num {
+    font-size: 28px;
+    font-weight: 900;
+    line-height: 1;
+  }
+  .sophistication-stage-label { font-size: 11px; font-weight: 700; opacity: 0.9; margin-top: 2px; }
+  .sophistication-content { flex: 1; }
+  .sophistication-name { font-size: 16px; font-weight: 800; color: #111; margin-bottom: 6px; }
+  .sophistication-evidence { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+  .sophistication-response {
+    display: inline-block;
+    background: var(--pink-light);
+    color: var(--pink);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  /* ── Dimension Cards ──────────────────────────────────────────── */
+  .dimension-card {
+    background: var(--gray-bg);
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    border-left: 4px solid var(--pink-mid);
+  }
+  .dimension-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .dimension-name {
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #333;
+  }
+  .dimension-brand-pill {
+    font-size: 11px;
+    background: white;
+    border: 1px solid var(--gray-line);
+    border-radius: 10px;
+    padding: 2px 8px;
+    color: var(--text-muted);
+  }
+  .dimension-text { font-size: 13px; color: #222; line-height: 1.55; }
+  .dimension-gap {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  /* ── What Not To Do ───────────────────────────────────────────── */
+  .dont-list { list-style: none; padding: 0; }
+  .dont-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    background: var(--red);
+    border-left: 4px solid var(--red-border);
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: #333;
+    line-height: 1.5;
+  }
+  .dont-x { color: var(--red-border); font-size: 16px; font-weight: 900; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── Narrative Text ───────────────────────────────────────────── */
+  .narrative-text {
+    font-size: 13.5px;
+    line-height: 1.75;
+    color: #333;
+    margin-bottom: 16px;
+  }
+  .narrative-text p { margin-bottom: 12px; }
+
+  /* ── TOC ──────────────────────────────────────────────────────── */
+  .toc {
+    background: var(--gray-bg);
+    border: 1px solid var(--gray-line);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 28px;
+  }
+  .toc-title {
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #444;
+    margin-bottom: 12px;
+  }
+  .toc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 24px;
+  }
+  .toc-item {
+    font-size: 13px;
+    color: #333;
+    display: flex;
+    gap: 8px;
+  }
+  .toc-num { font-weight: 700; color: var(--pink); min-width: 20px; }
+
+  /* ── Misc ─────────────────────────────────────────────────────── */
+  .text-pink { color: var(--pink); }
+  .text-muted { color: var(--text-muted); }
+  .font-bold { font-weight: 700; }
+  .mt-4 { margin-top: 16px; }
+  .mb-2 { margin-bottom: 8px; }
+  hr { border: none; border-top: 1px solid var(--gray-line); margin: 24px 0; }
+  .page-footer {
+    margin-top: 48px;
+    border-top: 1px solid var(--gray-line);
+    padding-top: 12px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-light);
+  }
+
+  /* ── Priority Roadmap Table ───────────────────────────────────── */
+  .priority-row-high td { background: #fff3e0 !important; }
+  .priority-row-med td { background: #fff9e1 !important; }
+
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  COVER PAGE                                                    -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-top-bar"></div>
+
+  <div class="cover-emoji">📊</div>
+  <div class="cover-title">
+    {{ loophole.meta.keyword | title }}<br>
+    <span>Strategic Analysis</span>
+  </div>
+  <div class="cover-subtitle"><strong>Market:</strong> {{ loophole.meta.keyword | title }}</div>
+  <div class="cover-subtitle"><strong>Research Date:</strong> {{ generated_date }}
+    {% if loophole.meta.focus_brand %}
+    &nbsp;·&nbsp; <strong>Focus Brand:</strong> {{ loophole.meta.focus_brand }}
+    {% endif %}
+  </div>
+
+  <div class="cover-meta">
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Brands Compared</span>
+      <span class="cover-meta-value">{{ loophole.meta.brands_compared }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Market Stage</span>
+      <span class="cover-meta-value">{{ loophole.sophistication_assessment.stage_name }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Loopholes Found</span>
+      <span class="cover-meta-value">{{ loophole.loopholes | length }}</span>
+    </div>
+    {% if loophole.meta.focus_brand %}
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Focus Brand</span>
+      <span class="cover-meta-value">{{ loophole.meta.focus_brand }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="cover-stage-badge">
+    Strategic Response: {{ loophole.sophistication_assessment.strategic_response | replace('_', ' ') | upper }}
+  </div>
+
+  {% if loophole.loopholes %}
+  <div class="cover-verdict-box">
+    <p>
+      <strong>Top Opportunity (L1 · Score {{ loophole.loopholes[0].priority_score }}/100):</strong><br>
+      {{ loophole.loopholes[0].title }}
+    </p>
+  </div>
+  {% endif %}
+
+  <div class="cover-bottom">
+    <span>{{ loophole.meta.keyword | title }} · Strategic Loophole Report · {{ generated_date }}</span>
+    {% if loophole.meta.focus_brand %}
+    <span class="cover-brand-pill">{{ loophole.meta.focus_brand }}</span>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  CONTENTS                                                      -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="toc">
+    <div class="toc-title">📋 Contents</div>
+    <div class="toc-grid">
+      <div class="toc-item"><span class="toc-num">1.</span> Market Narrative</div>
+      <div class="toc-item"><span class="toc-num">4.</span> Root Cause × Mechanism Matrix</div>
+      <div class="toc-item"><span class="toc-num">2.</span> Sophistication Assessment</div>
+      <div class="toc-item"><span class="toc-num">5.</span> Validated Loopholes ({{ loophole.loopholes | length }})</div>
+      <div class="toc-item"><span class="toc-num">3.</span> Competitive Landscape</div>
+      <div class="toc-item"><span class="toc-num">6.</span> What Not To Do</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  1. MARKET NARRATIVE                                           -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-header-num">1.</span> Market Narrative
+  </div>
+
+  {% if loophole.loopholes %}
+  <div class="callout callout-pink" style="margin-bottom:20px;">
+    <div class="callout-title">⚡ KEY INSIGHT</div>
+    <p>{{ loophole.loopholes[0].the_gap | truncate(280) }}</p>
+  </div>
+  {% endif %}
+
+  <div class="narrative-text">
+    {% set paragraphs = loophole.market_narrative.split('\n\n') %}
+    {% for para in paragraphs %}
+      {% if para.strip() %}
+        <p>{{ para.strip() }}</p>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  2. MARKET SOPHISTICATION                                      -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-header-num">2.</span> Market Sophistication Assessment
+  </div>
+
+  <div class="sophistication-block">
+    <div class="sophistication-stage-pill">
+      <div class="sophistication-stage-num">{{ loophole.sophistication_assessment.stage }}</div>
+      <div class="sophistication-stage-label">STAGE</div>
+    </div>
+    <div class="sophistication-content">
+      <div class="sophistication-name">{{ loophole.sophistication_assessment.stage_name }}</div>
+      <div class="sophistication-evidence">{{ loophole.sophistication_assessment.evidence }}</div>
+      <span class="sophistication-response">
+        Strategic Response: {{ loophole.sophistication_assessment.strategic_response | replace('_', ' ') | upper }}
+      </span>
+    </div>
+  </div>
+
+  <div class="callout callout-yellow">
+    <div class="callout-title">⚙️ Why This Matters</div>
+    <p>{{ loophole.sophistication_assessment.response_rationale }}</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  3. COMPETITIVE LANDSCAPE                                      -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="section page-break">
+  <div class="section-header">
+    <span class="section-header-num">3.</span> Competitive Landscape
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:18%">Brand</th>
+        <th style="width:22%">Root Cause</th>
+        <th style="width:22%">Mechanism</th>
+        <th style="width:22%">Pain Point</th>
+        <th style="width:16%">Desire</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for brand in loophole.competitive_landscape %}
+      <tr {% if loophole.meta.focus_brand and brand.brand == loophole.meta.focus_brand %}class="focus-brand-row"{% endif %}>
+        <td><strong>{{ brand.brand }}</strong>
+          {% if loophole.meta.focus_brand and brand.brand == loophole.meta.focus_brand %}
+          <br><span style="font-size:10px;color:var(--pink);font-weight:700;">▶ FOCUS</span>
+          {% endif %}
+        </td>
+        <td>{{ brand.root_cause or '—' }}</td>
+        <td>{{ brand.mechanism or '—' }}</td>
+        <td>{{ brand.pain_point or '—' }}</td>
+        <td>{{ brand.desire or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="callout callout-gray" style="padding:14px 18px;">
+    <div class="callout-title" style="font-size:11px;color:#555;">WHAT NOBODY DOES WELL</div>
+    <ul style="padding-left:18px;margin-top:4px;">
+      {% for item in loophole.what_not_to_do[:3] %}
+      <li style="font-size:12.5px;margin-bottom:4px;color:#444;">{{ item | replace('DON\'T ', '') | replace("DON'T ", '') }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  4. ROOT CAUSE × MECHANISM MATRIX                             -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+{% if market_map and market_map.root_cause_mechanism_matrix %}
+<div class="section page-break">
+  <div class="section-header">
+    <span class="section-header-num">4.</span> Root Cause × Mechanism Matrix
+  </div>
+
+  <div class="matrix-legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--red-border);"></div>
+      <span>Saturated (many brands)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--yellow-border);"></div>
+      <span>Underexploited (1-2 brands)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--green-border);"></div>
+      <span>Wide Open (nobody owns it)</span>
+    </div>
+  </div>
+
+  {% for row in market_map.root_cause_mechanism_matrix %}
+  {% set gap_lower = row.gap | lower | default('underexploited') %}
+  {% if 'saturated' in gap_lower %}
+    {% set gap_class = 'gap-saturated' %}
+    {% set badge_class = 'gap-badge-saturated' %}
+    {% set badge_text = 'SATURATED' %}
+  {% elif 'wide' in gap_lower or 'open' in gap_lower %}
+    {% set gap_class = 'gap-wide-open' %}
+    {% set badge_class = 'gap-badge-wide-open' %}
+    {% set badge_text = 'WIDE OPEN' %}
+  {% else %}
+    {% set gap_class = 'gap-underexploited' %}
+    {% set badge_class = 'gap-badge-underexploited' %}
+    {% set badge_text = 'UNDEREXPLOITED' %}
+  {% endif %}
+  <div class="matrix-row">
+    <div class="matrix-cell {{ gap_class }}">
+      <div class="matrix-cell-content">
+        <div class="rc">Root Cause</div>
+        <div class="mech">{{ row.root_cause }}</div>
+        <div class="rc" style="margin-top:6px;">Mechanism</div>
+        <div class="mech" style="font-weight:400;">{{ row.mechanism }}</div>
+        <div class="brands" style="margin-top:6px;">
+          <strong>{{ row.num_brands }} brand{{ 's' if row.num_brands != 1 }}</strong>
+          · {{ row.brands_using | join(', ') }}
+          {% if row.market_share %}· {{ row.market_share }}% share{% endif %}
+        </div>
+      </div>
+      <span class="gap-badge {{ badge_class }}">{{ badge_text }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  5. VALIDATED LOOPHOLES                                        -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="section page-break">
+  <div class="section-header">
+    <span class="section-header-num">5.</span> Validated Loopholes
+  </div>
+
+  {% set medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣'] %}
+
+  {% for loop_item in loophole.loopholes %}
+  <div class="loophole-card {% if not loop.first %}{% endif %}">
+
+    <!-- Header -->
+    <div class="loophole-header">
+      <div class="loophole-title-block">
+        <div class="loophole-title">
+          <span class="loophole-rank">{{ medals[loop.index0] if loop.index0 < medals|length else '●' }}</span>
+          {{ loop_item.title }}
+        </div>
+        <div class="loophole-id">{{ loop_item.loophole_id }} · Priority Score {{ loop_item.priority_score }}/100</div>
+      </div>
+      <div class="score-badge">{{ loop_item.priority_score }}/100</div>
+    </div>
+
+    <!-- Tags -->
+    <div class="tag-row">
+      <span class="tag tag-gray">{{ loop_item.tam_size | upper }} TAM</span>
+      <span class="tag {% if loop_item.meta_competition == 'none' %}tag-green{% elif loop_item.meta_competition == 'low' %}tag-yellow{% else %}tag-red{% endif %}">
+        {{ loop_item.meta_competition | upper }} COMPETITION
+      </span>
+      <span class="tag {% if loop_item.risk_level == 'low' %}tag-green{% elif loop_item.risk_level == 'medium' %}tag-yellow{% else %}tag-red{% endif %}">
+        {{ loop_item.risk_level | upper }} RISK
+      </span>
+      <span class="tag tag-gray">{{ loop_item.effort_level | upper }} EFFORT</span>
+      {% if loop_item.timeline %}
+      <span class="tag tag-pink">{{ loop_item.timeline }}</span>
+      {% endif %}
+    </div>
+
+    <!-- The Gap -->
+    <div class="loophole-section-label">THE GAP</div>
+    <div class="loophole-gap-text">{{ loop_item.the_gap }}</div>
+
+    <!-- Strategy Grid -->
+    <div class="loophole-section-label" style="margin-top:16px;">EXECUTION STRATEGY</div>
+    <div class="loophole-strategy-grid">
+      <div class="strategy-cell">
+        <div class="strategy-cell-label">Root Cause</div>
+        <div class="strategy-cell-value">{{ loop_item.root_cause }}</div>
+      </div>
+      <div class="strategy-cell">
+        <div class="strategy-cell-label">Mechanism</div>
+        <div class="strategy-cell-value">{{ loop_item.mechanism }}</div>
+      </div>
+      <div class="strategy-cell">
+        <div class="strategy-cell-label">Target Avatar</div>
+        <div class="strategy-cell-value">{{ loop_item.target_avatar }}</div>
+      </div>
+      <div class="strategy-cell">
+        <div class="strategy-cell-label">Pain Point</div>
+        <div class="strategy-cell-value">{{ loop_item.pain_point }}</div>
+      </div>
+      <div class="strategy-cell" style="grid-column:1/-1;">
+        <div class="strategy-cell-label">Mass Desire</div>
+        <div class="strategy-cell-value">{{ loop_item.mass_desire }}</div>
+      </div>
+    </div>
+
+    <!-- Hook Examples -->
+    {% if loop_item.hook_examples %}
+    <div class="loophole-section-label" style="margin-top:16px;">HOOK EXAMPLES</div>
+    <ul class="hooks-list">
+      {% for hook in loop_item.hook_examples %}
+      <li>"{{ hook }}"</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <!-- Proof + Objections -->
+    {% if loop_item.proof_strategy or loop_item.objection_handling %}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">
+      {% if loop_item.proof_strategy %}
+      <div class="callout callout-green" style="margin-bottom:0;padding:12px 14px;">
+        <div class="callout-title" style="font-size:10.5px;">✓ PROOF STRATEGY</div>
+        <p style="font-size:12px;">{{ loop_item.proof_strategy }}</p>
+      </div>
+      {% endif %}
+      {% if loop_item.objection_handling %}
+      <div class="callout callout-yellow" style="margin-bottom:0;padding:12px 14px;">
+        <div class="callout-title" style="font-size:10.5px;">💬 OBJECTION HANDLING</div>
+        <p style="font-size:12px;">{{ loop_item.objection_handling }}</p>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Defensibility -->
+    {% if loop_item.defensibility %}
+    <div class="loophole-section-label" style="margin-top:14px;">DEFENSIBILITY</div>
+    <div style="font-size:12.5px;color:#555;font-style:italic;">{{ loop_item.defensibility }}</div>
+    {% endif %}
+
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  PRIORITY ROADMAP                                              -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">Priority Roadmap</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Rank</th>
+        <th>Loophole</th>
+        <th>Score</th>
+        <th>Effort</th>
+        <th>Risk</th>
+        <th>Timeline</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for loop_item in loophole.loopholes %}
+      {% set is_high = loop_item.priority_score >= 85 %}
+      <tr {% if is_high %}class="priority-row-high"{% endif %}>
+        <td><strong>{{ loop_item.loophole_id }}</strong></td>
+        <td>{{ loop_item.title }}</td>
+        <td><strong>{{ loop_item.priority_score }}</strong>/100</td>
+        <td>{{ loop_item.effort_level | capitalize }}</td>
+        <td>{{ loop_item.risk_level | capitalize }}</td>
+        <td>{{ loop_item.timeline or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  6. WHAT NOT TO DO                                             -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-header-num">6.</span> What Not To Do
+  </div>
+
+  <ul class="dont-list">
+    {% for item in loophole.what_not_to_do %}
+    <li>
+      <span class="dont-x">✗</span>
+      {{ item | replace("DON'T ", '') | replace("DON'T ", '') }}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  6-DIMENSION ANALYSIS (from Market Map)                        -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+{% if market_map %}
+<div class="section page-break">
+  <div class="section-header">6-Dimension Market Analysis</div>
+
+  {% set dims = [
+    ('Root Cause Patterns',  market_map.root_cause_comparison),
+    ('Mechanism Patterns',   market_map.mechanism_comparison),
+    ('Target Audience',      market_map.audience_comparison),
+    ('Pain Points',          market_map.pain_point_comparison),
+    ('Symptoms Referenced',  market_map.symptom_comparison),
+    ('Mass Desires',         market_map.desire_comparison),
+  ] %}
+
+  {% for dim_name, dim in dims %}
+  {% if dim %}
+  <div style="margin-bottom:20px;">
+    <div class="subsection-header">{{ dim_name }}</div>
+    {% for key in ['pattern_1', 'pattern_2', 'pattern_3'] %}
+    {% set pat = dim[key] if dim[key] is defined else {} %}
+    {% if pat and pat.keys()|list|length > 0 %}
+    <div class="dimension-card">
+      <div class="dimension-header">
+        <div class="dimension-name">
+          {% if pat.text is defined %}{{ pat.text | truncate(80) }}
+          {% elif pat.pain_point is defined %}{{ pat.pain_point | truncate(80) }}
+          {% elif pat.symptom is defined %}{{ pat.symptom | truncate(80) }}
+          {% elif pat.desire is defined %}{{ pat.desire | truncate(80) }}
+          {% elif pat.demographics is defined %}{{ pat.demographics | truncate(80) }}
+          {% else %}Pattern{% endif %}
+        </div>
+        {% if pat.brands_using is defined and pat.brands_using %}
+        <span class="dimension-brand-pill">{{ pat.brands_using | join(', ') | truncate(40) }}</span>
+        {% endif %}
+      </div>
+      {% if pat.example is defined and pat.example %}
+      <div class="dimension-text" style="color:var(--text-muted);font-style:italic;">"{{ pat.example | truncate(200) }}"</div>
+      {% endif %}
+      {% if pat.upstream_gap is defined and pat.upstream_gap %}
+      <div class="dimension-gap">Gap: {{ pat.upstream_gap | truncate(150) }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% if dim.loopholes is defined and dim.loopholes %}
+    <div class="callout callout-yellow" style="padding:10px 14px;margin-top:6px;">
+      <div class="callout-title" style="font-size:10px;">OPPORTUNITY</div>
+      <p style="font-size:12px;">{{ dim.loopholes[0] }}</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Footer -->
+<div class="page-footer">
+  <span>{{ loophole.meta.keyword | title }} Strategic Analysis · {{ generated_date }}</span>
+  <span>{{ loophole.loopholes | length }} Loopholes · {{ loophole.meta.brands_compared }} Brands · Stage {{ loophole.sophistication_assessment.stage }}</span>
+</div>
+
+</body>
+</html>

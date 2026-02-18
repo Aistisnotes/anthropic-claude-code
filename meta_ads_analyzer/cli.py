@@ -435,8 +435,88 @@ def compare(
             console.print(f"\n[bold green]✓[/] Strategic comparison complete")
             console.print(f"Generated {total_loopholes} execution-ready loopholes")
             console.print(f"High priority (80+): {high_priority}, Medium priority (50-79): {medium_priority}")
+
+            # Auto-generate PDF report
+            _generate_compare_pdf(result, query, config)
+
         else:
             console.print(f"\n[bold green]✓[/] Strategic market map complete")
+
+
+def _generate_compare_pdf(result, keyword: str, config: dict) -> None:
+    """Auto-generate PDF after a compare run."""
+    from meta_ads_analyzer.reporter.pdf_generator import generate_pdf_sync
+
+    output_dir_str = config.get("reporting", {}).get("output_dir", "output/reports")
+    output_base = Path(output_dir_str)
+
+    # Find the compare output directory (most recently modified)
+    kw_slug = "".join(c if c.isalnum() else "_" for c in keyword)[:50]
+    compare_dirs = sorted(output_base.glob(f"compare_{kw_slug}_*"), key=lambda p: p.stat().st_mtime)
+    if not compare_dirs:
+        console.print("[yellow]⚠ Could not find compare output dir for PDF generation[/]")
+        return
+
+    compare_dir = compare_dirs[-1]
+    loophole_path = compare_dir / "strategic_loophole_doc.json"
+    market_map_path = compare_dir / "strategic_market_map.json"
+
+    if not loophole_path.exists():
+        return
+
+    pdf_out_dir = Path.home() / "Desktop" / "reports"
+    console.print(f"\n[cyan]Generating PDF report...[/]")
+
+    try:
+        pdf_path = generate_pdf_sync(
+            loophole_doc_path=loophole_path,
+            market_map_path=market_map_path if market_map_path.exists() else None,
+            output_dir=pdf_out_dir,
+        )
+        console.print(f"[bold green]✓[/] PDF saved: {pdf_path}")
+    except Exception as e:
+        console.print(f"[yellow]⚠ PDF generation failed: {e}[/]")
+
+
+@app.command()
+def pdf(
+    loophole_doc: Path = typer.Argument(..., help="Path to strategic_loophole_doc.json"),
+    market_map: Optional[Path] = typer.Option(None, "--market-map", "-m", help="Path to strategic_market_map.json"),
+    output_dir: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory (default: ~/Desktop/reports/)"),
+    filename: Optional[str] = typer.Option(None, "--filename", "-f", help="Output filename (without .pdf)"),
+):
+    """Convert strategic compare JSON outputs to a PDF report."""
+    from meta_ads_analyzer.reporter.pdf_generator import generate_pdf_sync
+
+    if not loophole_doc.exists():
+        console.print(f"[red]File not found: {loophole_doc}[/]")
+        raise typer.Exit(1)
+
+    # Auto-detect market map in same directory
+    if market_map is None:
+        sibling = loophole_doc.parent / "strategic_market_map.json"
+        if sibling.exists():
+            market_map = sibling
+
+    out_dir = output_dir or (Path.home() / "Desktop" / "reports")
+    console.print(f"\n[bold]PDF Report Generator[/]")
+    console.print(f"Input: [cyan]{loophole_doc}[/]")
+    if market_map:
+        console.print(f"Market map: [cyan]{market_map}[/]")
+    console.print(f"Output dir: [cyan]{out_dir}[/]")
+    console.print()
+
+    try:
+        pdf_path = generate_pdf_sync(
+            loophole_doc_path=loophole_doc,
+            market_map_path=market_map,
+            output_dir=out_dir,
+            output_filename=filename,
+        )
+        console.print(f"[bold green]✓[/] PDF generated: {pdf_path}")
+    except Exception as e:
+        console.print(f"[red]✗ PDF generation failed: {e}[/]")
+        raise typer.Exit(1)
 
 
 @app.command()
