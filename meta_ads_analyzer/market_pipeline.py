@@ -151,10 +151,11 @@ class MarketPipeline:
             # Keyword scan ads for this brand
             keyword_ads = [ad for ad in scan_result.ads if ad.page_name == brand_name]
 
-            # Deep brand-specific search
-            deep_ads = await self._deep_search_brand(brand_name, dominant_type)
+            # Deep brand-specific search (tries multiple query variations)
+            deep_ads = await self._deep_search_brand(brand_name, dominant_type, keyword_ads)
 
-            # Combine + deduplicate by ad_id
+            # Combine keyword ads + deep ads, deduplicate by ad_id
+            # deep_ads already filtered to page_name==brand_name, so no cross-brand contamination
             seen_ids: set[str] = set()
             combined: list[ScrapedAd] = []
             for ad in keyword_ads + deep_ads:
@@ -287,26 +288,115 @@ class MarketPipeline:
             return await run_scan(keyword, self.config)
 
     async def _deep_search_brand(
-        self, brand_name: str, dominant_type: ProductType
+        self,
+        brand_name: str,
+        dominant_type: ProductType,
+        keyword_ads: list[ScrapedAd] | None = None,
     ) -> list[ScrapedAd]:
-        """Do a targeted brand-name search to get the brand's full ad library.
+        """Search multiple query variations to get a brand's full ad library.
+
+        Tries the page name, common-prefix-stripped variants, and domain stems
+        extracted from the brand's own ad link_urls. Filters every result to
+        only ads whose page_name matches this brand so cross-brand contamination
+        is impossible. Uses a higher max_ads cap (300) to surface large ad libraries.
 
         Args:
-            brand_name: Brand name to search for
-            dominant_type: Product type for filtering
+            brand_name: Meta page name (e.g. "TryElare")
+            dominant_type: Market-dominant product type for filtering
+            keyword_ads: Ads already collected for this brand from the keyword scan
+                         (used to extract domain/brand_name variations)
 
         Returns:
-            List of ads matching this brand's product type
+            Deduplicated list of this brand's ads (product-type filtered if applicable)
         """
-        try:
-            logger.info(f"Deep brand search: '{brand_name}'")
-            brand_scan = await self._run_scan_stage(brand_name, from_scan=None)
-            if dominant_type != ProductType.UNKNOWN:
-                return filter_ads_by_product_type(brand_scan.ads, dominant_type, allow_unknown=True)
-            return brand_scan.ads
-        except Exception as e:
-            logger.warning(f"Deep brand search failed for '{brand_name}': {e}")
-            return []
+        queries = self._generate_brand_queries(brand_name, keyword_ads or [])
+
+        # Deep searches use a higher max_ads than the keyword scan
+        deep_config = {**self.config, "scraper": {**self.config.get("scraper", {}), "max_ads": 300}}
+
+        all_brand_ads: dict[str, ScrapedAd] = {}  # ad_id → ScrapedAd, cross-query deduped
+
+        for query in queries:
+            try:
+                logger.info(f"Deep brand search: '{brand_name}' via query '{query}'")
+                from meta_ads_analyzer.scanner import run_scan as _run_scan
+                scan = await _run_scan(query, deep_config)
+                # Only keep ads that belong to THIS brand (page_name exact match)
+                brand_ads = [ad for ad in scan.ads if ad.page_name == brand_name]
+                new_count = sum(1 for ad in brand_ads if ad.ad_id not in all_brand_ads)
+                for ad in brand_ads:
+                    all_brand_ads[ad.ad_id] = ad
+                logger.info(
+                    f"  '{query}': {len(scan.ads)} total ads → "
+                    f"{len(brand_ads)} for '{brand_name}' ({new_count} new)"
+                )
+            except Exception as e:
+                logger.warning(f"Deep brand search failed for query '{query}': {e}")
+
+        combined = list(all_brand_ads.values())
+        if dominant_type != ProductType.UNKNOWN:
+            return filter_ads_by_product_type(combined, dominant_type, allow_unknown=True)
+        return combined
+
+    def _generate_brand_queries(
+        self, page_name: str, keyword_ads: list[ScrapedAd]
+    ) -> list[str]:
+        """Generate ordered list of unique search query variations for a brand.
+
+        Strategy (in priority order):
+        1. Original page name  (e.g. "TryElare")
+        2. Page name with marketing prefix stripped  (e.g. "Elare")
+        3. Domain stem from ad link_urls  (e.g. "elare" from "elare.store")
+        4. brand_name field from ad copy if present and different
+
+        Deduplication is case-insensitive so "Elare" and "elare" aren't both sent.
+        """
+        from urllib.parse import urlparse
+
+        MARKETING_PREFIXES = [
+            "try", "get", "buy", "shop", "use", "the", "official",
+            "my", "best", "order", "visit", "grab", "discover",
+        ]
+
+        queries: list[str] = []
+        seen_lower: set[str] = set()
+
+        def add(q: str) -> None:
+            q = q.strip()
+            if q and q.lower() not in seen_lower:
+                seen_lower.add(q.lower())
+                queries.append(q)
+
+        # 1. Original page name
+        add(page_name)
+
+        # 2. Strip one marketing prefix
+        lower = page_name.lower()
+        for prefix in MARKETING_PREFIXES:
+            if lower.startswith(prefix) and len(page_name) > len(prefix) + 2:
+                add(page_name[len(prefix):])
+                break
+
+        # 3. Domain stems from link_urls in keyword ads
+        for ad in keyword_ads:
+            if not ad.link_url:
+                continue
+            try:
+                netloc = urlparse(ad.link_url).netloc  # e.g. "www.elare.store"
+                if netloc.startswith("www."):
+                    netloc = netloc[4:]  # "elare.store"
+                stem = netloc.split(".")[0]  # "elare"
+                add(stem)
+                add(netloc)  # full domain e.g. "elare.store"
+            except Exception:
+                pass
+
+        # 4. brand_name field from ad copy (if populated and different)
+        for ad in keyword_ads:
+            if ad.brand_name:
+                add(ad.brand_name)
+
+        return queries
 
     def _check_competition_level(
         self, brand_ad_counts: dict[str, int]
