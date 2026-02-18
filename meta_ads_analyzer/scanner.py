@@ -39,6 +39,7 @@ async def run_scan(
     # Use existing MetaAdsScraper
     scraper = MetaAdsScraper(config)
     ads = await scraper.scrape(query, page_id=page_id)
+    found_page_ids = list(scraper._found_page_ids)  # view_all_page_id from advertiser header
 
     logger.info(f"Scraped {len(ads)} ads")
 
@@ -64,4 +65,5 @@ async def run_scan(
         advertisers=ranked,
         total_fetched=len(ads),
         pages_scanned=1,  # MetaAdsScraper scrolls single page
+        found_page_ids=found_page_ids,
     )

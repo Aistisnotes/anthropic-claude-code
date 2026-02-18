@@ -81,6 +81,9 @@ class MetaAdsScraper:
         self.filters = self.scraper_cfg.get("filters", {})
         self.debug_dir: Path | None = None
         self._browser: Browser | None = None
+        # Populated during _scrape_ads by scanning the full loaded page for
+        # view_all_page_id links in advertiser header sections.
+        self._found_page_ids: list[str] = []
 
     async def scrape(self, query: str, page_id: str | None = None) -> list[ScrapedAd]:
         """Scrape ads matching the query from Meta Ads Library.
@@ -130,6 +133,11 @@ class MetaAdsScraper:
         # Handle cookie consent / login dialogs
         await self._dismiss_dialogs(page)
         await asyncio.sleep(1)
+
+        # Extract page_ids from the advertiser header section (view_all_page_id links).
+        # These appear at the top of keyword search results when Meta recognises an
+        # advertiser; they are NOT inside individual ad cards so we scan the full DOM.
+        await self._extract_page_ids_from_page(page)
 
         # Take debug screenshot of initial page state
         await self._debug_screenshot(page, "01_initial_load")
@@ -230,6 +238,35 @@ class MetaAdsScraper:
             base += f"&media_type={media_type}"
 
         return base
+
+    async def _extract_page_ids_from_page(self, page: Page) -> None:
+        """Scan the full loaded page for view_all_page_id links.
+
+        Meta Ads Library shows an advertiser header section at the top of keyword
+        search results with a "See all ads from [Page]" link containing
+        view_all_page_id=PAGEID. This link is NOT inside individual ad cards —
+        it's a page-level element. Extracted IDs are stored in self._found_page_ids
+        and propagated to ScanResult.found_page_ids by run_scan().
+        """
+        try:
+            page_ids: list[str] = await page.evaluate(
+                """
+                () => {
+                    const ids = new Set();
+                    for (const a of document.querySelectorAll('a')) {
+                        const href = a.href || a.getAttribute('href') || '';
+                        const m = href.match(/[?&]view_all_page_id=(\d+)/);
+                        if (m) ids.add(m[1]);
+                    }
+                    return [...ids];
+                }
+                """
+            )
+            if page_ids:
+                logger.info(f"Found advertiser page_ids on search page: {page_ids}")
+                self._found_page_ids = page_ids
+        except Exception as e:
+            logger.debug(f"Failed to extract page_ids from page: {e}")
 
     async def _dismiss_dialogs(self, page: Page) -> None:
         """Dismiss cookie consent and other dialog popups."""

@@ -385,6 +385,10 @@ class ScanResult(BaseModel):
     total_fetched: int = 0
     pages_scanned: int = 0
 
+    # Page IDs extracted from advertiser header sections on the results page
+    # (populated by MetaAdsScraper._extract_page_ids_from_page)
+    found_page_ids: list[str] = Field(default_factory=list)
+
     # Optional: selection results if --select flag used
     selection: Optional[SelectionResult] = None
 

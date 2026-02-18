@@ -324,38 +324,13 @@ class MarketPipeline:
         }
 
         all_brand_ads: dict[str, ScrapedAd] = {}  # ad_id → ScrapedAd, cross-query deduped
+        seen_page_ids: set[str] = set()
 
         from meta_ads_analyzer.scanner import run_scan as _run_scan
 
-        # Stage A: page_id-based searches (view_all_page_id — returns ALL page ads, no filtering)
-        page_ids: list[str] = []
-        seen_page_ids: set[str] = set()
-        for ad in (keyword_ads or []):
-            if ad.page_id and ad.page_id not in seen_page_ids:
-                seen_page_ids.add(ad.page_id)
-                page_ids.append(ad.page_id)
-
-        for page_id in page_ids:
-            try:
-                logger.info(f"Deep brand search: '{brand_name}' via page_id '{page_id}'")
-                scan = await _run_scan(brand_name, deep_config, page_id=page_id)
-                # With view_all_page_id all results are from this page, but still
-                # check page_name to guard against edge cases
-                brand_ads = [ad for ad in scan.ads if ad.page_name == brand_name]
-                if not brand_ads and scan.ads:
-                    # page_name might differ slightly from stored brand_name; accept all
-                    brand_ads = scan.ads
-                new_count = sum(1 for ad in brand_ads if ad.ad_id not in all_brand_ads)
-                for ad in brand_ads:
-                    all_brand_ads[ad.ad_id] = ad
-                logger.info(
-                    f"  page_id={page_id}: {len(scan.ads)} total ads → "
-                    f"{len(brand_ads)} for '{brand_name}' ({new_count} new)"
-                )
-            except Exception as e:
-                logger.warning(f"Deep brand search (page_id={page_id}) failed: {e}")
-
-        # Stage B: keyword query variations (catches any ads missed by page_id search)
+        # Stage A: keyword query variations.
+        # Runs first so we can collect view_all_page_id values discovered in the
+        # advertiser header sections of each search results page.
         for query in queries:
             try:
                 logger.info(f"Deep brand search: '{brand_name}' via query '{query}'")
@@ -369,8 +344,35 @@ class MarketPipeline:
                     f"  '{query}': {len(scan.ads)} total ads → "
                     f"{len(brand_ads)} for '{brand_name}' ({new_count} new)"
                 )
+                # Collect page_ids surfaced in advertiser header sections
+                for pid in scan.found_page_ids:
+                    if pid not in seen_page_ids:
+                        seen_page_ids.add(pid)
+                        logger.info(f"  Discovered page_id from '{query}' results: {pid}")
             except Exception as e:
                 logger.warning(f"Deep brand search failed for query '{query}': {e}")
+
+        # Stage B: page_id-based search (view_all_page_id returns ALL ads from the page).
+        # Only runs if keyword searches discovered a page_id — this is the most
+        # complete way to enumerate a brand's full ad library.
+        for page_id in seen_page_ids:
+            try:
+                logger.info(f"Deep brand search: '{brand_name}' via page_id '{page_id}'")
+                scan = await _run_scan(brand_name, deep_config, page_id=page_id)
+                # With view_all_page_id all results belong to this page; accept all
+                # but still try page_name match first as a sanity check
+                brand_ads = [ad for ad in scan.ads if ad.page_name == brand_name]
+                if not brand_ads and scan.ads:
+                    brand_ads = scan.ads  # page_name may differ slightly — accept all
+                new_count = sum(1 for ad in brand_ads if ad.ad_id not in all_brand_ads)
+                for ad in brand_ads:
+                    all_brand_ads[ad.ad_id] = ad
+                logger.info(
+                    f"  page_id={page_id}: {len(scan.ads)} total ads → "
+                    f"{len(brand_ads)} for '{brand_name}' ({new_count} new)"
+                )
+            except Exception as e:
+                logger.warning(f"Deep brand search (page_id={page_id}) failed: {e}")
 
         combined = list(all_brand_ads.values())
         if dominant_type != ProductType.UNKNOWN:
