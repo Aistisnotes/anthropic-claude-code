@@ -311,15 +311,54 @@ class MarketPipeline:
         """
         queries = self._generate_brand_queries(brand_name, keyword_ads or [])
 
-        # Deep searches use a higher max_ads than the keyword scan
-        deep_config = {**self.config, "scraper": {**self.config.get("scraper", {}), "max_ads": 300}}
+        # Deep searches use higher limits than the keyword scan:
+        # - max_ads=500: handles brands with 300+ active ads
+        # - max_scroll_attempts=100: allows thorough scrolling for large libraries
+        deep_config = {
+            **self.config,
+            "scraper": {
+                **self.config.get("scraper", {}),
+                "max_ads": 500,
+                "max_scroll_attempts": 100,
+            },
+        }
 
         all_brand_ads: dict[str, ScrapedAd] = {}  # ad_id → ScrapedAd, cross-query deduped
 
+        from meta_ads_analyzer.scanner import run_scan as _run_scan
+
+        # Stage A: page_id-based searches (view_all_page_id — returns ALL page ads, no filtering)
+        page_ids: list[str] = []
+        seen_page_ids: set[str] = set()
+        for ad in (keyword_ads or []):
+            if ad.page_id and ad.page_id not in seen_page_ids:
+                seen_page_ids.add(ad.page_id)
+                page_ids.append(ad.page_id)
+
+        for page_id in page_ids:
+            try:
+                logger.info(f"Deep brand search: '{brand_name}' via page_id '{page_id}'")
+                scan = await _run_scan(brand_name, deep_config, page_id=page_id)
+                # With view_all_page_id all results are from this page, but still
+                # check page_name to guard against edge cases
+                brand_ads = [ad for ad in scan.ads if ad.page_name == brand_name]
+                if not brand_ads and scan.ads:
+                    # page_name might differ slightly from stored brand_name; accept all
+                    brand_ads = scan.ads
+                new_count = sum(1 for ad in brand_ads if ad.ad_id not in all_brand_ads)
+                for ad in brand_ads:
+                    all_brand_ads[ad.ad_id] = ad
+                logger.info(
+                    f"  page_id={page_id}: {len(scan.ads)} total ads → "
+                    f"{len(brand_ads)} for '{brand_name}' ({new_count} new)"
+                )
+            except Exception as e:
+                logger.warning(f"Deep brand search (page_id={page_id}) failed: {e}")
+
+        # Stage B: keyword query variations (catches any ads missed by page_id search)
         for query in queries:
             try:
                 logger.info(f"Deep brand search: '{brand_name}' via query '{query}'")
-                from meta_ads_analyzer.scanner import run_scan as _run_scan
                 scan = await _run_scan(query, deep_config)
                 # Only keep ads that belong to THIS brand (page_name exact match)
                 brand_ads = [ad for ad in scan.ads if ad.page_name == brand_name]

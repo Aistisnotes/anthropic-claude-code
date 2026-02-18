@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from meta_ads_analyzer.classifier.product_type import classify_product_type_batch
 from meta_ads_analyzer.models import ScanResult
@@ -14,7 +14,10 @@ logger = get_logger(__name__)
 
 
 async def run_scan(
-    query: str, config: dict[str, Any], classify_products: bool = True
+    query: str,
+    config: dict[str, Any],
+    classify_products: bool = True,
+    page_id: Optional[str] = None,
 ) -> ScanResult:
     """Run metadata-only scan of Meta Ads Library.
 
@@ -22,15 +25,20 @@ async def run_scan(
         query: Search keyword or advertiser name
         config: Full config dict
         classify_products: Whether to classify product types (default True)
+        page_id: Optional Facebook page ID; when set uses view_all_page_id URL
+                 which returns ALL ads from that specific page directly.
 
     Returns:
         ScanResult with ads and ranked advertisers
     """
-    logger.info(f"Starting scan for: {query}")
+    if page_id:
+        logger.info(f"Starting scan for page_id: {page_id} (brand: {query})")
+    else:
+        logger.info(f"Starting scan for: {query}")
 
     # Use existing MetaAdsScraper
     scraper = MetaAdsScraper(config)
-    ads = await scraper.scrape(query)
+    ads = await scraper.scrape(query, page_id=page_id)
 
     logger.info(f"Scraped {len(ads)} ads")
 

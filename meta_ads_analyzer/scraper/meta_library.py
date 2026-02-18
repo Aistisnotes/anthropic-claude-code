@@ -82,9 +82,18 @@ class MetaAdsScraper:
         self.debug_dir: Path | None = None
         self._browser: Browser | None = None
 
-    async def scrape(self, query: str) -> list[ScrapedAd]:
-        """Scrape ads matching the query from Meta Ads Library."""
-        logger.info(f"Starting scrape for query: {query} (max {self.max_ads} ads)")
+    async def scrape(self, query: str, page_id: str | None = None) -> list[ScrapedAd]:
+        """Scrape ads matching the query from Meta Ads Library.
+
+        Args:
+            query: Search keyword or brand name (used for q= parameter)
+            page_id: Optional Facebook page ID; when provided uses view_all_page_id
+                     URL which returns ALL ads from that specific page.
+        """
+        if page_id:
+            logger.info(f"Starting scrape for page_id: {page_id} (max {self.max_ads} ads)")
+        else:
+            logger.info(f"Starting scrape for query: {query} (max {self.max_ads} ads)")
 
         async with async_playwright() as p:
             self._browser = await p.chromium.launch(
@@ -102,16 +111,17 @@ class MetaAdsScraper:
             page = await context.new_page()
 
             try:
-                ads = await self._scrape_ads(page, query)
-                logger.info(f"Scraped {len(ads)} ads for query: {query}")
+                ads = await self._scrape_ads(page, query, page_id=page_id)
+                label = f"page_id:{page_id}" if page_id else f"query:{query}"
+                logger.info(f"Scraped {len(ads)} ads for {label}")
                 return ads
             finally:
                 await context.close()
                 await self._browser.close()
 
-    async def _scrape_ads(self, page: Page, query: str) -> list[ScrapedAd]:
+    async def _scrape_ads(self, page: Page, query: str, page_id: str | None = None) -> list[ScrapedAd]:
         """Navigate to ads library, apply filters, and extract ad cards."""
-        url = self._build_search_url(query)
+        url = self._build_search_url(query, page_id=page_id)
         logger.info(f"Navigating to: {url}")
 
         await page.goto(url, wait_until="networkidle", timeout=30000)
@@ -192,19 +202,29 @@ class MetaAdsScraper:
         await self._debug_screenshot(page, "final_state")
         return ads[: self.max_ads]
 
-    def _build_search_url(self, query: str) -> str:
-        """Build Meta Ads Library search URL with filters."""
+    def _build_search_url(self, query: str, page_id: str | None = None) -> str:
+        """Build Meta Ads Library search URL with filters.
+
+        When page_id is provided, uses view_all_page_id which returns ALL ads
+        from a specific Facebook page — the most reliable way to enumerate a
+        brand's complete ad library without search result filtering.
+        """
         country = self.filters.get("country", "US")
         ad_type = self.filters.get("ad_type", "all")
         status = self.filters.get("status", "active")
         media_type = self.filters.get("media_type", "all")
 
-        encoded_query = quote_plus(query)
-
         base = f"https://www.facebook.com/ads/library/?active_status={status}"
         base += f"&ad_type={ad_type}"
         base += f"&country={country}"
-        base += f"&q={encoded_query}"
+
+        if page_id:
+            # view_all_page_id returns every active ad from a specific page,
+            # bypassing search result ranking/filtering entirely.
+            base += f"&view_all_page_id={page_id}"
+        else:
+            encoded_query = quote_plus(query)
+            base += f"&q={encoded_query}"
 
         if media_type != "all":
             base += f"&media_type={media_type}"
@@ -478,6 +498,24 @@ class MetaAdsScraper:
                             }
                         }
 
+                        // ── Page ID ──
+                        // Look for view_all_page_id in "See all ads from this page" links
+                        for (const link of allLinks) {
+                            const href = link.href || link.getAttribute('href') || '';
+                            const m = href.match(/[?&]view_all_page_id=(\d+)/);
+                            if (m) { ad.page_id = m[1]; break; }
+                        }
+                        // Also check Facebook profile.php links (numeric page IDs)
+                        if (!ad.page_id) {
+                            const fbLinks = container.querySelectorAll('a[href*="facebook.com"]');
+                            for (const link of fbLinks) {
+                                const href = link.href || link.getAttribute('href') || '';
+                                const m = href.match(/profile\.php\?id=(\d+)/)
+                                    || href.match(/facebook\.com\/people\/[^/]+\/(\d+)/);
+                                if (m) { ad.page_id = m[1]; break; }
+                            }
+                        }
+
                         // ── Page name ──
                         // Usually the first prominent link text that isn't "Ad Library"
                         const candidateLinks = container.querySelectorAll('a[href*="facebook.com"]');
@@ -671,6 +709,7 @@ class MetaAdsScraper:
                 ScrapedAd(
                     ad_id=ad_id,
                     page_name=raw.get("page_name", "Unknown"),
+                    page_id=raw.get("page_id"),
                     ad_type=ad_type,
                     primary_text=raw.get("primary_text"),
                     headline=raw.get("headline"),
