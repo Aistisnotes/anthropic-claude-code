@@ -120,6 +120,7 @@ def _init_state():
         "last_compare_dir": None,
         "last_pdf_path": None,
         "process": None,
+        "_spawned": False,  # synchronous guard — prevents duplicate thread launches
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -230,6 +231,15 @@ def _find_pdf_for_compare(compare_dir: Path) -> Optional[Path]:
 def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
                   top_brands: int, ads_per_brand: int, run_compare: bool):
     """Execute the meta-ads pipeline in a background thread, streaming logs."""
+    # ── Duplicate-launch guard ──────────────────────────────────────────────
+    # Set running=True synchronously (in main thread) so the button is
+    # immediately disabled on the next rerun — before the thread even starts.
+    if st.session_state.running or st.session_state._spawned:
+        return
+    st.session_state.running = True
+    st.session_state._spawned = True
+    # ───────────────────────────────────────────────────────────────────────
+
     log = st.session_state.run_log
     log.clear()
 
@@ -238,7 +248,6 @@ def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
         log.append(f"[{ts}] {msg}")
 
     def _run():
-        st.session_state.running = True
         st.session_state.last_compare_dir = None
         st.session_state.last_pdf_path = None
 
@@ -339,6 +348,7 @@ def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
             _log(f"✗ Error: {e}")
         finally:
             st.session_state.running = False
+            st.session_state._spawned = False
             st.session_state.process = None
 
     thread = threading.Thread(target=_run, daemon=True)
@@ -423,16 +433,14 @@ def page_home():
     # Progress log
     if st.session_state.running or st.session_state.run_log:
         st.markdown("#### Pipeline Output")
-        if st.session_state.running:
-            st.spinner("Running...")
+        log_placeholder = st.empty()
+        log_text = "\n".join(st.session_state.run_log[-200:]) or "(waiting for output...)"
+        log_placeholder.code(log_text, language=None)
 
-        log_text = "\n".join(st.session_state.run_log[-200:])
-        st.code(log_text, language=None)
-
-        # Auto-refresh while running
-        if st.session_state.running:
-            time.sleep(1.5)
-            st.rerun()
+    # Auto-refresh while running — always checked, not nested inside the log block
+    if st.session_state.running:
+        time.sleep(1.5)
+        st.rerun()
 
     # Show "View Results" button when done
     if not st.session_state.running and st.session_state.last_compare_dir:
