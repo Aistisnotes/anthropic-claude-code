@@ -240,24 +240,48 @@ class MetaAdsScraper:
         return base
 
     async def _extract_page_ids_from_page(self, page: Page) -> None:
-        """Scan the full loaded page for view_all_page_id links.
+        """Scan the full loaded page for Facebook page IDs.
 
-        Meta Ads Library shows an advertiser header section at the top of keyword
-        search results with a "See all ads from [Page]" link containing
-        view_all_page_id=PAGEID. This link is NOT inside individual ad cards —
-        it's a page-level element. Extracted IDs are stored in self._found_page_ids
-        and propagated to ScanResult.found_page_ids by run_scan().
+        Uses two strategies:
+        1. view_all_page_id links in advertiser header sections (not always present)
+        2. Inline script JSON — Meta embeds "page_id":"DIGITS" in script data for
+           each advertiser shown in search results. This is the most reliable source.
+
+        Extracted IDs are stored in self._found_page_ids and propagated to
+        ScanResult.found_page_ids by run_scan().
         """
         try:
             page_ids: list[str] = await page.evaluate(
                 """
                 () => {
                     const ids = new Set();
+
+                    // Strategy 1: view_all_page_id in anchor hrefs
                     for (const a of document.querySelectorAll('a')) {
                         const href = a.href || a.getAttribute('href') || '';
-                        const m = href.match(/[?&]view_all_page_id=(\d+)/);
+                        const m = href.match(/[?&]view_all_page_id=(\\d+)/);
                         if (m) ids.add(m[1]);
                     }
+
+                    // Strategy 2: "page_id":"DIGITS" in inline script JSON.
+                    // Meta embeds advertiser page data in script tags, e.g.:
+                    //   "page_id":"761636290363012","page_is_deleted":false
+                    // Only collect IDs where page_is_deleted is false.
+                    for (const script of document.querySelectorAll('script')) {
+                        const text = script.textContent || '';
+                        if (!text.includes('page_id')) continue;
+                        // Match "page_id":"DIGITS" optionally followed by page_is_deleted check
+                        const matches = text.matchAll(/"page_id"\\s*:\\s*"?(\\d{10,})"?/g);
+                        for (const m of matches) {
+                            const pid = m[1];
+                            // Verify this page is not deleted by checking nearby context
+                            const ctx = text.substring(m.index, m.index + 150);
+                            if (!ctx.includes('page_is_deleted":true')) {
+                                ids.add(pid);
+                            }
+                        }
+                    }
+
                     return [...ids];
                 }
                 """
@@ -542,13 +566,17 @@ class MetaAdsScraper:
                             const m = href.match(/[?&]view_all_page_id=(\d+)/);
                             if (m) { ad.page_id = m[1]; break; }
                         }
-                        // Also check Facebook profile.php links (numeric page IDs)
+                        // Also check Facebook profile.php, /people/, and numeric page URLs
                         if (!ad.page_id) {
                             const fbLinks = container.querySelectorAll('a[href*="facebook.com"]');
                             for (const link of fbLinks) {
                                 const href = link.href || link.getAttribute('href') || '';
-                                const m = href.match(/profile\.php\?id=(\d+)/)
-                                    || href.match(/facebook\.com\/people\/[^/]+\/(\d+)/);
+                                // profile.php?id=DIGITS
+                                // facebook.com/people/Name/DIGITS/
+                                // facebook.com/DIGITS/ (numeric page URL used in ad cards)
+                                const m = href.match(/profile\.php\?id=(\d{10,})/)
+                                    || href.match(/facebook\.com\/people\/[^/]+\/(\d{10,})/)
+                                    || href.match(/facebook\.com\/(\d{10,})\/?(?:[?#]|$)/);
                                 if (m) { ad.page_id = m[1]; break; }
                             }
                         }
@@ -650,9 +678,25 @@ class MetaAdsScraper:
                         }
 
                         // ── Link URL ──
+                        // Meta wraps external links in l.facebook.com/l.php?u=ENCODED_URL
+                        // so a direct "not facebook.com" check misses them entirely.
+                        // We must decode the redirect wrapper to get the real destination.
                         for (const link of allLinks) {
                             const href = link.href || link.getAttribute('href') || '';
-                            if (href && !href.includes('facebook.com') && !href.includes('instagram.com') && href.startsWith('http')) {
+                            if (!href) continue;
+                            // Case 1: l.facebook.com redirect wrapper
+                            if (href.includes('l.facebook.com/l.php') || href.includes('l.php?u=')) {
+                                try {
+                                    const urlObj = new URL(href);
+                                    const u = urlObj.searchParams.get('u');
+                                    if (u && !u.includes('facebook.com') && !u.includes('instagram.com')) {
+                                        ad.link_url = decodeURIComponent(u);
+                                        break;
+                                    }
+                                } catch (e) { /* malformed URL */ }
+                            }
+                            // Case 2: direct external link (not facebook/instagram)
+                            if (!href.includes('facebook.com') && !href.includes('instagram.com') && href.startsWith('http')) {
                                 ad.link_url = href;
                                 break;
                             }

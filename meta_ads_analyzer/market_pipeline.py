@@ -359,11 +359,16 @@ class MarketPipeline:
             try:
                 logger.info(f"Deep brand search: '{brand_name}' via page_id '{page_id}'")
                 scan = await _run_scan(brand_name, deep_config, page_id=page_id)
-                # With view_all_page_id all results belong to this page; accept all
-                # but still try page_name match first as a sanity check
+                # Only keep ads whose page_name matches the target brand.
+                # When the page_id came from a co-advertiser page in search results
+                # (not the brand's own page), page_name won't match — skip those.
                 brand_ads = [ad for ad in scan.ads if ad.page_name == brand_name]
-                if not brand_ads and scan.ads:
-                    brand_ads = scan.ads  # page_name may differ slightly — accept all
+                if not brand_ads:
+                    logger.info(
+                        f"  page_id={page_id}: 0 ads match page_name='{brand_name}' "
+                        "(likely another advertiser's page) — skipping"
+                    )
+                    continue
                 new_count = sum(1 for ad in brand_ads if ad.ad_id not in all_brand_ads)
                 for ad in brand_ads:
                     all_brand_ads[ad.ad_id] = ad
