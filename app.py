@@ -601,7 +601,8 @@ def page_results():
         if wntd:
             st.markdown("### ⛔ What Not To Do")
             for item in wntd:
-                st.markdown(f"❌ {item.replace(\"DON'T \", '').replace('DON\\'T ', '')}")
+                clean = item.replace("DON'T ", "").replace("DON\u2019T ", "")
+                st.markdown(f"❌ {clean}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
