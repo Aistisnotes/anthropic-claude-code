@@ -359,22 +359,26 @@ class MarketPipeline:
         ]
 
         queries: list[str] = []
-        seen_lower: set[str] = set()
+        seen: set[str] = set()  # Case-sensitive: Meta search IS case-sensitive
 
         def add(q: str) -> None:
             q = q.strip()
-            if q and q.lower() not in seen_lower:
-                seen_lower.add(q.lower())
+            if q and q not in seen:
+                seen.add(q)
                 queries.append(q)
 
         # 1. Original page name
         add(page_name)
 
-        # 2. Strip one marketing prefix
+        # 2. Strip one marketing prefix — add BOTH original case and lowercase.
+        # Meta search is case-sensitive and lowercase often returns more results
+        # (e.g. "elare" returns 88 TryElare ads vs "Elare" returning only 25).
         lower = page_name.lower()
         for prefix in MARKETING_PREFIXES:
             if lower.startswith(prefix) and len(page_name) > len(prefix) + 2:
-                add(page_name[len(prefix):])
+                stripped = page_name[len(prefix):]
+                add(stripped)            # e.g. "Elare"
+                add(stripped.lower())    # e.g. "elare" — often returns more results
                 break
 
         # 3. Domain stems from link_urls in keyword ads
