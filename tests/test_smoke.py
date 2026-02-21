@@ -237,7 +237,7 @@ def test_filter_video_with_good_transcript():
             ad_id="video_good",
             text="This is a great ad about sleeping better at night.",
             confidence=0.88,
-            word_count=10,
+            word_count=25,  # must be >= 20 to pass has_transcript check
         )
     }
 
