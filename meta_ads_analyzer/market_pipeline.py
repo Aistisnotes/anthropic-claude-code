@@ -358,7 +358,10 @@ class MarketPipeline:
         for page_id in seen_page_ids:
             try:
                 logger.info(f"Deep brand search: '{brand_name}' via page_id '{page_id}'")
-                scan = await _run_scan(brand_name, deep_config, page_id=page_id)
+                scan = await _run_scan(
+                    brand_name, deep_config, page_id=page_id,
+                    expected_page_name=brand_name,
+                )
                 # Only keep ads whose page_name matches the target brand.
                 # When the page_id came from a co-advertiser page in search results
                 # (not the brand's own page), page_name won't match — skip those.

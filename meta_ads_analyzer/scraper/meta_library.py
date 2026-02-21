@@ -85,13 +85,20 @@ class MetaAdsScraper:
         # view_all_page_id links in advertiser header sections.
         self._found_page_ids: list[str] = []
 
-    async def scrape(self, query: str, page_id: str | None = None) -> list[ScrapedAd]:
+    async def scrape(
+        self,
+        query: str,
+        page_id: str | None = None,
+        expected_page_name: str | None = None,
+    ) -> list[ScrapedAd]:
         """Scrape ads matching the query from Meta Ads Library.
 
         Args:
             query: Search keyword or brand name (used for q= parameter)
             page_id: Optional Facebook page ID; when provided uses view_all_page_id
                      URL which returns ALL ads from that specific page.
+            expected_page_name: When set, abort early if no ads match this page_name
+                after 3 scrolls (avoids scraping irrelevant pages in Stage B).
         """
         if page_id:
             logger.info(f"Starting scrape for page_id: {page_id} (max {self.max_ads} ads)")
@@ -114,7 +121,9 @@ class MetaAdsScraper:
             page = await context.new_page()
 
             try:
-                ads = await self._scrape_ads(page, query, page_id=page_id)
+                ads = await self._scrape_ads(
+                    page, query, page_id=page_id, expected_page_name=expected_page_name
+                )
                 label = f"page_id:{page_id}" if page_id else f"query:{query}"
                 logger.info(f"Scraped {len(ads)} ads for {label}")
                 return ads
@@ -122,8 +131,23 @@ class MetaAdsScraper:
                 await context.close()
                 await self._browser.close()
 
-    async def _scrape_ads(self, page: Page, query: str, page_id: str | None = None) -> list[ScrapedAd]:
-        """Navigate to ads library, apply filters, and extract ad cards."""
+    async def _scrape_ads(
+        self,
+        page: Page,
+        query: str,
+        page_id: str | None = None,
+        expected_page_name: str | None = None,
+    ) -> list[ScrapedAd]:
+        """Navigate to ads library, apply filters, and extract ad cards.
+
+        Args:
+            page: Playwright page object
+            query: Search query string
+            page_id: Optional Facebook page ID for view_all_page_id searches
+            expected_page_name: When set (typically for page_id searches), abort
+                after 3 scrolls if no ads match this page_name. Prevents wasting
+                time scraping pages that belong to other brands.
+        """
         url = self._build_search_url(query, page_id=page_id)
         logger.info(f"Navigating to: {url}")
 
@@ -200,6 +224,22 @@ class MetaAdsScraper:
                     await asyncio.sleep(3)
             else:
                 stale_rounds = 0
+
+            # Early-exit for page_id searches: after 3 scrolls with at least a few
+            # ads loaded, if NONE match the expected brand this is the wrong page.
+            # Abort immediately rather than scraping hundreds of irrelevant ads.
+            if (
+                page_id
+                and expected_page_name
+                and scroll_attempts == 3
+                and ads
+                and not any(a.page_name == expected_page_name for a in ads)
+            ):
+                logger.info(
+                    f"Early exit: page_id={page_id} loaded {len(ads)} ads but none "
+                    f"match page_name='{expected_page_name}' — not this brand's page"
+                )
+                return []
 
             if scroll_attempts % 5 == 0:
                 logger.info(

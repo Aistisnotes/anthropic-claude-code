@@ -18,6 +18,7 @@ async def run_scan(
     config: dict[str, Any],
     classify_products: bool = True,
     page_id: Optional[str] = None,
+    expected_page_name: Optional[str] = None,
 ) -> ScanResult:
     """Run metadata-only scan of Meta Ads Library.
 
@@ -27,6 +28,8 @@ async def run_scan(
         classify_products: Whether to classify product types (default True)
         page_id: Optional Facebook page ID; when set uses view_all_page_id URL
                  which returns ALL ads from that specific page directly.
+        expected_page_name: When set, abort early if no ads match this page_name
+                 after 3 scrolls (used in Stage B to skip other brands' pages fast).
 
     Returns:
         ScanResult with ads and ranked advertisers
@@ -38,7 +41,7 @@ async def run_scan(
 
     # Use existing MetaAdsScraper
     scraper = MetaAdsScraper(config)
-    ads = await scraper.scrape(query, page_id=page_id)
+    ads = await scraper.scrape(query, page_id=page_id, expected_page_name=expected_page_name)
     found_page_ids = list(scraper._found_page_ids)  # view_all_page_id from advertiser header
 
     logger.info(f"Scraped {len(ads)} ads")
