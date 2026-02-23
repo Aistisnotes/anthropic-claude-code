@@ -163,11 +163,25 @@ class MarketPipeline:
                     seen_ids.add(ad.ad_id)
                     combined.append(ad)
 
+            if self._debug:
+                overlap = len(keyword_ads) + len(deep_ads) - len(combined)
+                logger.info(
+                    f"DEBUG '{brand_name}' dedup: keyword={len(keyword_ads)} + deep={len(deep_ads)} "
+                    f"= {len(keyword_ads)+len(deep_ads)} total, {overlap} overlap removed → {len(combined)} unique"
+                )
+
             # Apply product type filter to combined set
             if dominant_type != ProductType.UNKNOWN:
                 filtered = filter_ads_by_product_type(combined, dominant_type, allow_unknown=True)
             else:
                 filtered = combined
+
+            if self._debug:
+                dropped_final = len(combined) - len(filtered)
+                logger.info(
+                    f"DEBUG '{brand_name}' final qualifying: {len(filtered)} "
+                    f"({dropped_final} dropped by product-type filter on combined)"
+                )
 
             brand_deep_ads[brand_name] = filtered
             brand_ad_counts[brand_name] = len(filtered)
@@ -287,6 +301,10 @@ class MarketPipeline:
 
             return await run_scan(keyword, self.config)
 
+    @property
+    def _debug(self) -> bool:
+        return self.config.get("market", {}).get("debug", False)
+
     async def _deep_search_brand(
         self,
         brand_name: str,
@@ -331,10 +349,19 @@ class MarketPipeline:
         # Stage A: keyword query variations.
         # Runs first so we can collect view_all_page_id values discovered in the
         # advertiser header sections of each search results page.
+        #
+        # classify_products=False: skip product type classification for deep brand
+        # searches. Brand identity is confirmed by page_name filter (the brand was
+        # already selected from the market keyword scan as a supplement advertiser).
+        # Running classification here is unreliable — ads with poor text extraction
+        # get classified as "other" by Claude and are then silently dropped by the
+        # product type filter, causing severe undercounting (47/55 TryElare ads
+        # were classified as "other" and dropped). Skip classification; default
+        # product_type = UNKNOWN passes the filter with allow_unknown=True.
         for query in queries:
             try:
                 logger.info(f"Deep brand search: '{brand_name}' via query '{query}'")
-                scan = await _run_scan(query, deep_config)
+                scan = await _run_scan(query, deep_config, classify_products=False)
                 # Only keep ads that belong to THIS brand (page_name exact match)
                 brand_ads = [ad for ad in scan.ads if ad.page_name == brand_name]
                 new_count = sum(1 for ad in brand_ads if ad.ad_id not in all_brand_ads)
@@ -344,6 +371,12 @@ class MarketPipeline:
                     f"  '{query}': {len(scan.ads)} total ads → "
                     f"{len(brand_ads)} for '{brand_name}' ({new_count} new)"
                 )
+                if self._debug and brand_ads:
+                    type_dist = {}
+                    for ad in brand_ads:
+                        t = ad.product_type.value if ad.product_type else "None"
+                        type_dist[t] = type_dist.get(t, 0) + 1
+                    logger.info(f"  DEBUG product_type breakdown for '{query}' brand ads: {type_dist}")
                 # Collect page_ids surfaced in advertiser header sections
                 for pid in scan.found_page_ids:
                     if pid not in seen_page_ids:
@@ -361,6 +394,7 @@ class MarketPipeline:
                 scan = await _run_scan(
                     brand_name, deep_config, page_id=page_id,
                     expected_page_name=brand_name,
+                    classify_products=False,
                 )
                 # Only keep ads whose page_name matches the target brand.
                 # When the page_id came from a co-advertiser page in search results
@@ -379,12 +413,29 @@ class MarketPipeline:
                     f"  page_id={page_id}: {len(scan.ads)} total ads → "
                     f"{len(brand_ads)} for '{brand_name}' ({new_count} new)"
                 )
+                if self._debug and brand_ads:
+                    type_dist = {}
+                    for ad in brand_ads:
+                        t = ad.product_type.value if ad.product_type else "None"
+                        type_dist[t] = type_dist.get(t, 0) + 1
+                    logger.info(f"  DEBUG product_type breakdown for page_id={page_id} brand ads: {type_dist}")
             except Exception as e:
                 logger.warning(f"Deep brand search (page_id={page_id}) failed: {e}")
 
         combined = list(all_brand_ads.values())
-        if dominant_type != ProductType.UNKNOWN:
-            return filter_ads_by_product_type(combined, dominant_type, allow_unknown=True)
+        if self._debug:
+            type_dist: dict[str, int] = {}
+            for ad in combined:
+                t = ad.product_type.value if ad.product_type else "None"
+                type_dist[t] = type_dist.get(t, 0) + 1
+            logger.info(
+                f"DEBUG '{brand_name}' funnel — "
+                f"unique ads (all UNKNOWN since classify_products=False): {len(combined)}  "
+                f"type breakdown: {type_dist}"
+            )
+        # No product-type filter here: classify_products=False means all deep ads
+        # default to UNKNOWN. The main loop applies the filter on the combined
+        # keyword+deep set, where keyword ads carry correct classifications.
         return combined
 
     def _generate_brand_queries(

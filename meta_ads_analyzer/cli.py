@@ -283,6 +283,7 @@ def market(
     headless: bool = typer.Option(True, "--headless/--no-headless"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
+    debug: bool = typer.Option(False, "--debug", help="Print per-stage ad funnel breakdown for each brand"),
 ):
     """Competitive market research - analyze multiple brands for a keyword."""
     setup_logging(log_level)
@@ -293,6 +294,8 @@ def market(
     config.setdefault("scraper", {}).setdefault("filters", {})["country"] = country
     if output:
         config.setdefault("reporting", {})["output_dir"] = str(output)
+    if debug:
+        config.setdefault("market", {})["debug"] = True
 
     console.print(f"\n[bold]Market Research: {query}[/]")
     if brand:
