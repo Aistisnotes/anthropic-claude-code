@@ -91,7 +91,7 @@ class ComparePipeline:
             blue_ocean = self._try_load_blue_ocean(keyword, from_reports)
             if blue_ocean:
                 logger.info("Blue ocean report found — returning blue ocean result")
-                from meta_ads_analyzer.compare.strategic_dimensions import BlueOceanResult, StrategicCompareResult
+                from meta_ads_analyzer.compare.strategic_dimensions import BlueOceanResult
                 bo = BlueOceanResult(**blue_ocean) if isinstance(blue_ocean, dict) else blue_ocean
                 return StrategicCompareResult(
                     keyword=keyword,
