@@ -42,6 +42,15 @@ max_concurrent = 2
 # Minimum confidence threshold (0-1)
 min_confidence = 0.5
 
+[transcription]
+# Primary backend: "openai_api", "local_mlx", "local_whisper"
+# openai_api requires OPENAI_API_KEY env var; falls back to local if not set
+backend = "openai_api"
+# OpenAI Whisper API model
+openai_model = "whisper-1"
+# Max concurrent OpenAI API transcription requests
+openai_max_concurrent = 5
+
 [analyzer]
 # Claude model to use
 model = "claude-sonnet-4-20250514"

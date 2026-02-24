@@ -31,6 +31,7 @@ from meta_ads_analyzer.quality.gates import QualityGates, CopyQualityChecker
 from meta_ads_analyzer.reporter.output import ReportWriter
 from meta_ads_analyzer.scraper.meta_library import MetaAdsScraper
 from meta_ads_analyzer.transcriber.whisper import WhisperTranscriber
+from meta_ads_analyzer.transcriber.router import make_transcriber
 from meta_ads_analyzer.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -44,7 +45,7 @@ class Pipeline:
         self.config = config
         self.scraper = MetaAdsScraper(config)
         self.downloader = MediaDownloader(config)
-        self.transcriber = WhisperTranscriber(config)
+        self.transcriber = make_transcriber(config)
         self.ad_filter = AdFilter(config)
         self.analyzer = AdAnalyzer(config)
         self.pattern_analyzer = PatternAnalyzer(config)
