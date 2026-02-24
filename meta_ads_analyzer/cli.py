@@ -332,7 +332,7 @@ def market(
 def _display_market_summary(result: MarketResult):
     """Display cross-brand comparison table."""
     if result.competition_level == "blue_ocean":
-        console.print(f"\n[bold yellow]🌊 Blue ocean — no brands met 50-ad threshold[/]")
+        console.print(f"\n[bold yellow]🌊 Blue ocean — no brands met 30-ad threshold[/]")
         return
 
     console.print(f"\n[bold green]✓[/] Market research complete")
@@ -341,7 +341,7 @@ def _display_market_summary(result: MarketResult):
     )
     if result.competition_level == "thin":
         console.print(
-            "[yellow]⚠ Thin competition: fewer than 3 brands met the 50-ad threshold. "
+            "[yellow]⚠ Thin competition: fewer than 3 brands met the 30-ad threshold. "
             "Compare results will carry a low-confidence warning.[/]"
         )
 
@@ -455,7 +455,7 @@ def compare(
         if result.competition_level == "thin":
             console.print(
                 "\n[yellow]⚠ LOW CONFIDENCE WARNING: Fewer than 3 brands met the "
-                "50-ad threshold. Strategic patterns may not be statistically reliable.[/]"
+                "30-ad threshold. Strategic patterns may not be statistically reliable.[/]"
             )
 
         # Summary

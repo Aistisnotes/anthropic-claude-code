@@ -138,3 +138,7 @@ default_top_brands = 5
 default_ads_per_brand = 10
 # Pause between brands (seconds) for rate limiting
 brand_pause = 5
+# Relaxed text floor for ad selection in market research context.
+# Video ads often have short primary copy; transcripts carry the strategic content.
+# Overrides [selection].min_primary_text_words for market pipeline selection.
+min_primary_text_words = 10

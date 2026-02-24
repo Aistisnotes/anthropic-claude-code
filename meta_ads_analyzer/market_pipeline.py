@@ -33,7 +33,7 @@ from meta_ads_analyzer.selector import aggregate_by_advertiser, rank_advertisers
 from meta_ads_analyzer.utils.logging import get_logger
 
 # Minimum qualifying ads a brand must have to be included in competitive analysis
-BLUE_OCEAN_THRESHOLD = 50
+BLUE_OCEAN_THRESHOLD = 30
 
 logger = get_logger(__name__)
 console = Console()
@@ -148,6 +148,11 @@ class MarketPipeline:
         for advertiser in top_advertisers:
             brand_name = advertiser.page_name
 
+            # Skip sentinel page names (ads whose page_name could not be scraped)
+            if not brand_name or brand_name.strip().lower() in ("unknown", ""):
+                logger.info(f"Skipping sentinel brand name: '{brand_name}'")
+                continue
+
             # Keyword scan ads for this brand
             keyword_ads = [ad for ad in scan_result.ads if ad.page_name == brand_name]
 
@@ -203,11 +208,11 @@ class MarketPipeline:
         if competition_level == "thin":
             console.print(
                 f"\n[yellow]⚠ THIN COMPETITION: Only {len(qualifying_brands)} brand(s) "
-                f"have 50+ qualifying ads. Results may have low statistical confidence.[/]"
+                f"have {BLUE_OCEAN_THRESHOLD}+ qualifying ads. Results may have low statistical confidence.[/]"
             )
         else:
             console.print(
-                f"\n[green]✓ {len(qualifying_brands)} brands with 50+ qualifying ads — "
+                f"\n[green]✓ {len(qualifying_brands)} brands with {BLUE_OCEAN_THRESHOLD}+ qualifying ads — "
                 "proceeding with full analysis[/]"
             )
 
@@ -545,11 +550,21 @@ class MarketPipeline:
                 continue
 
             deep_ads = brand_deep_ads.get(brand_name, [])
+
+            # Override selection text-floor with market-specific setting.
+            # Market research keeps short-copy video ads (text is in transcript).
+            market_min_words = self.config.get("market", {}).get("min_primary_text_words")
+            selection_config = self.config
+            if market_min_words is not None:
+                import copy
+                selection_config = copy.deepcopy(self.config)
+                selection_config.setdefault("selection", {})["min_primary_text_words"] = market_min_words
+
             selection_result = select_ads_for_brand(
                 all_ads=deep_ads,
                 brand_name=brand_name,
                 limit=ads_per_brand,
-                config=self.config,
+                config=selection_config,
             )
 
             if selection_result.selected:
