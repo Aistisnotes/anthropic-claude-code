@@ -12,6 +12,7 @@ Coordinates multi-brand competitive analysis:
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -647,7 +648,7 @@ class MarketPipeline:
         console.print(f"[green]✓ Blue ocean report saved: {self.market_subdir}[/]")
 
         # Generate PDF
-        pdf_out_dir = Path.home() / "Desktop" / "reports"
+        pdf_out_dir = Path(os.environ.get("PDF_OUTPUT_DIR", str(Path.home() / "Desktop" / "reports")))
         try:
             pdf_path = await generate_blue_ocean_pdf(
                 blue_ocean_doc=blue_ocean_doc,

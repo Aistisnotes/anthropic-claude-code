@@ -10,9 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+def _pdf_output_dir() -> Path:
+    """Return PDF output directory — env override for Docker, Desktop fallback locally."""
+    return Path(os.environ.get("PDF_OUTPUT_DIR", str(Path.home() / "Desktop" / "reports")))
 
 import typer
 from rich.console import Console
@@ -484,7 +489,7 @@ def _generate_blue_ocean_pdf_from_market(blue_ocean_result_dict: dict, keyword: 
     from meta_ads_analyzer.compare.strategic_dimensions import BlueOceanResult
     from meta_ads_analyzer.reporter.pdf_generator import generate_blue_ocean_pdf_sync
 
-    pdf_out_dir = Path.home() / "Desktop" / "reports"
+    pdf_out_dir = _pdf_output_dir()
     # Check if PDF already exists
     kw_slug = "".join(c if c.isalnum() else "_" for c in keyword)[:50]
     from datetime import datetime as _dt
@@ -525,7 +530,7 @@ def _generate_compare_pdf(result, keyword: str, config: dict) -> None:
     if not loophole_path.exists():
         return
 
-    pdf_out_dir = Path.home() / "Desktop" / "reports"
+    pdf_out_dir = _pdf_output_dir()
     console.print(f"\n[cyan]Generating PDF report...[/]")
 
     try:
@@ -559,7 +564,7 @@ def pdf(
         if sibling.exists():
             market_map = sibling
 
-    out_dir = output_dir or (Path.home() / "Desktop" / "reports")
+    out_dir = output_dir or _pdf_output_dir()
     console.print(f"\n[bold]PDF Report Generator[/]")
     console.print(f"Input: [cyan]{loophole_doc}[/]")
     if market_map:

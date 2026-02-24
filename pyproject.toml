@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "playwright>=1.40",
     "anthropic>=0.40",
+    "openai>=1.0",
     "yt-dlp>=2024.1",
     "aiohttp>=3.9",
     "aiofiles>=23.2",
@@ -16,6 +17,8 @@ dependencies = [
     "pillow>=10.2",
     "pytesseract>=0.3.10",
     "aiosqlite>=0.19",
+    "streamlit>=1.28",
+    "pandas>=2.0",
 ]
 
 [project.optional-dependencies]

@@ -24,6 +24,8 @@ from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+import os
+
 from meta_ads_analyzer.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,8 +33,10 @@ logger = get_logger(__name__)
 # Directory containing Jinja2 templates
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
-# Default output directory
-_DEFAULT_OUTPUT_DIR = Path.home() / "Desktop" / "reports"
+# Default output directory — overridable via PDF_OUTPUT_DIR env var
+_DEFAULT_OUTPUT_DIR = Path(
+    os.environ.get("PDF_OUTPUT_DIR", str(Path.home() / "Desktop" / "reports"))
+)
 
 
 def _slugify(text: str) -> str:

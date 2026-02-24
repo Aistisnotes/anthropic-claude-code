@@ -11,6 +11,8 @@ Pages:
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -24,9 +26,15 @@ import streamlit as st
 # ── Project paths ──────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent
 VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python"
-META_ADS_BIN = PROJECT_ROOT / ".venv" / "bin" / "meta-ads"
+
+# Resolve meta-ads binary: venv first, then PATH (for Docker where it's installed globally)
+_venv_bin = PROJECT_ROOT / ".venv" / "bin" / "meta-ads"
+_system_bin = shutil.which("meta-ads")
+META_ADS_BIN = _venv_bin if _venv_bin.exists() else Path(_system_bin or "/usr/local/bin/meta-ads")
+
 REPORTS_DIR = PROJECT_ROOT / "output" / "reports"
-PDF_OUTPUT_DIR = Path.home() / "Desktop" / "reports"
+# PDF output dir — env var for Docker (/app/output/reports), Desktop fallback locally
+PDF_OUTPUT_DIR = Path(os.environ.get("PDF_OUTPUT_DIR", str(Path.home() / "Desktop" / "reports")))
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 PDF_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -109,6 +117,41 @@ st.markdown("""
   }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ── Auth ───────────────────────────────────────────────────────────────────────
+def _check_auth() -> bool:
+    """Return True if authenticated. Show login form and return False if not.
+
+    Auth is skipped entirely when TOOL_PASSWORD is not set (local dev mode).
+    """
+    if st.session_state.get("authenticated"):
+        return True
+
+    expected_user = os.environ.get("TOOL_USERNAME", "admin")
+    expected_pass = os.environ.get("TOOL_PASSWORD", "")
+
+    # No password configured — bypass auth (local dev)
+    if not expected_pass:
+        st.session_state["authenticated"] = True
+        return True
+
+    # Centre the login form
+    _, col, _ = st.columns([1, 2, 1])
+    with col:
+        st.markdown("## 🔐 Meta Ads Analyzer")
+        st.markdown("---")
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Login", use_container_width=True)
+            if submitted:
+                if username == expected_user and password == expected_pass:
+                    st.session_state["authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password.")
+    return False
 
 
 # ── Session state init ─────────────────────────────────────────────────────────
@@ -906,6 +949,8 @@ def page_history():
 #  ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
 def main():
+    if not _check_auth():
+        return
     sidebar()
     page = st.session_state.page
     if page == "home":

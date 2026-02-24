@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  meta-ads-app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: meta-ads-app:latest
+    container_name: meta-ads-app
+    restart: always
+    ports:
+      - "8501:8501"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TOOL_USERNAME=${TOOL_USERNAME:-admin}
+      - TOOL_PASSWORD=${TOOL_PASSWORD}
+      - PDF_OUTPUT_DIR=/app/output/reports
+    volumes:
+      # Persist reports and PDFs across container restarts
+      - ./reports:/app/output/reports
+      # Persist downloaded media (optional — large, comment out to save disk)
+      # - ./downloads:/app/output/downloads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
