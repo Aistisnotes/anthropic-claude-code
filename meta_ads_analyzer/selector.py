@@ -305,7 +305,7 @@ _GENERIC_DOMAINS = frozenset({
 })
 
 
-def _extract_root_domain(url: str) -> Optional[str]:
+def extract_root_domain(url: str) -> Optional[str]:
     """Return the root domain from a URL (e.g. 'elare.store' from 'https://www.elare.store/p')."""
     try:
         netloc = urlparse(url).netloc.lower()
@@ -321,6 +321,10 @@ def _extract_root_domain(url: str) -> Optional[str]:
     except Exception:
         pass
     return None
+
+
+# Keep underscore alias for backward compatibility
+_extract_root_domain = extract_root_domain
 
 
 def _merge_by_domain(
@@ -345,7 +349,7 @@ def _merge_by_domain(
     for ad in ads:
         if not ad.link_url or not ad.page_name:
             continue
-        domain = _extract_root_domain(ad.link_url)
+        domain = extract_root_domain(ad.link_url)
         if domain:
             page_domain_freq.setdefault(ad.page_name, {})
             page_domain_freq[ad.page_name][domain] = (

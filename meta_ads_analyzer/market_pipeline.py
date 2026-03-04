@@ -30,7 +30,7 @@ from meta_ads_analyzer.classifier.product_type import (
 )
 from meta_ads_analyzer.models import BrandReport, BrandSelection, MarketResult, ProductType, ScanResult, ScrapedAd
 from meta_ads_analyzer.pipeline import Pipeline
-from meta_ads_analyzer.selector import aggregate_by_advertiser, rank_advertisers, select_ads_for_brand
+from meta_ads_analyzer.selector import aggregate_by_advertiser, extract_root_domain, rank_advertisers, select_ads_for_brand
 from meta_ads_analyzer.utils.logging import get_logger
 
 # Minimum qualifying ads a brand must have to be included in competitive analysis
@@ -341,8 +341,19 @@ class MarketPipeline:
         Returns:
             Deduplicated list of this brand's ads (product-type filtered if applicable)
         """
-        # Set of page names that belong to this brand (for filtering scan results)
+        # Set of page names that belong to this brand (for filtering scan results).
+        # Grows during deep search as new pages sharing the brand domain are discovered.
         page_names_set: set[str] = set(all_page_names) if all_page_names else {brand_name}
+
+        # Primary domain of this brand — used as a fallback filter so deep searches
+        # by domain (e.g. "elare.store") capture ads from ALL of the brand's FB pages,
+        # not just the ones already known from the keyword scan.
+        brand_domain: str | None = None
+        for ad in (keyword_ads or []):
+            d = extract_root_domain(ad.link_url or "")
+            if d:
+                brand_domain = d
+                break
 
         queries = self._generate_brand_queries(brand_name, keyword_ads or [])
 
@@ -379,8 +390,22 @@ class MarketPipeline:
             try:
                 logger.info(f"Deep brand search: '{brand_name}' via query '{query}'")
                 scan = await _run_scan(query, deep_config, classify_products=False)
-                # Only keep ads that belong to THIS brand (any of its known page names)
-                brand_ads = [ad for ad in scan.ads if ad.page_name in page_names_set]
+                # Keep ads that belong to this brand: known page name OR same destination domain.
+                # The domain fallback catches pages not seen in the keyword scan but sharing
+                # the brand's website (e.g. 12 Glov Beauty pages all linking to glovbeauty.com).
+                brand_ads = []
+                for ad in scan.ads:
+                    if ad.page_name in page_names_set:
+                        brand_ads.append(ad)
+                    elif brand_domain and extract_root_domain(ad.link_url or "") == brand_domain:
+                        brand_ads.append(ad)
+                        # Expand known pages so page_id stage also catches this page
+                        if ad.page_name not in page_names_set:
+                            logger.info(
+                                f"  Discovered new page for '{brand_name}' via domain "
+                                f"match: '{ad.page_name}' → {brand_domain}"
+                            )
+                            page_names_set.add(ad.page_name)
                 new_count = sum(1 for ad in brand_ads if ad.ad_id not in all_brand_ads)
                 for ad in brand_ads:
                     all_brand_ads[ad.ad_id] = ad
@@ -413,14 +438,25 @@ class MarketPipeline:
                     expected_page_name=brand_name,
                     classify_products=False,
                 )
-                # Only keep ads whose page_name matches the target brand (any known page).
-                # When the page_id came from a co-advertiser page in search results
-                # (not the brand's own page), page_name won't match — skip those.
-                brand_ads = [ad for ad in scan.ads if ad.page_name in page_names_set]
+                # Only keep ads whose page_name matches the target brand (any known page)
+                # or whose destination domain matches the brand domain.
+                # When the page_id came from a co-advertiser page, neither will match.
+                brand_ads = []
+                for ad in scan.ads:
+                    if ad.page_name in page_names_set:
+                        brand_ads.append(ad)
+                    elif brand_domain and extract_root_domain(ad.link_url or "") == brand_domain:
+                        brand_ads.append(ad)
+                        if ad.page_name not in page_names_set:
+                            logger.info(
+                                f"  page_id={page_id}: discovered new page '{ad.page_name}' "
+                                f"via domain match → {brand_domain}"
+                            )
+                            page_names_set.add(ad.page_name)
                 if not brand_ads:
                     logger.info(
-                        f"  page_id={page_id}: 0 ads match any page_name in {page_names_set} "
-                        "(likely another advertiser's page) — skipping"
+                        f"  page_id={page_id}: 0 ads match page_names or domain "
+                        f"(likely another advertiser's page) — skipping"
                     )
                     continue
                 new_count = sum(1 for ad in brand_ads if ad.ad_id not in all_brand_ads)
