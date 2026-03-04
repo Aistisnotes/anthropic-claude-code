@@ -667,79 +667,81 @@ def _render_blue_ocean_result(bo: dict):
 def page_results():
     st.markdown('<div class="section-header">📊 Results</div>', unsafe_allow_html=True)
 
-    # Source selector
     compare_dirs = _get_compare_dirs()
-    if not compare_dirs:
-        st.info("No compare runs found yet. Run an analysis from the Home page.")
+    market_dirs = _get_market_dirs()
+
+    # Blue ocean market dirs: market runs that have a blue_ocean_report.json
+    bo_market_dirs = [d for d in market_dirs if (d / "blue_ocean_report.json").exists()]
+
+    if not compare_dirs and not bo_market_dirs:
+        st.info("No results found yet. Run an analysis from the Home page.")
         return
 
-    # Default to last run or session state
-    current_dir = st.session_state.get("last_compare_dir")
-    dir_options = {_parse_compare_dir(d)["keyword"] + " · " + d.name[-15:]: d for d in compare_dirs[:20]}
-    default_key = None
-    if current_dir:
-        for k, v in dir_options.items():
-            if v == current_dir:
-                default_key = k
-                break
+    # Build unified dropdown: compare runs first, then blue ocean market runs
+    dir_options: dict[str, tuple[str, Path]] = {}
+    for d in compare_dirs[:20]:
+        info = _parse_compare_dir(d)
+        label = info["keyword"] + " · " + d.name[-15:]
+        dir_options[label] = ("compare", d)
+    for d in bo_market_dirs[:20]:
+        parts = d.name.split("_")
+        keyword = " ".join(parts[1:-2]).replace("_", " ")
+        date_str = ""
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(f"{parts[-2]}_{parts[-1]}", "%Y%m%d_%H%M%S")
+            date_str = dt.strftime("%b %d %H:%M")
+        except Exception:
+            date_str = d.name[-15:]
+        label = f"🌊 {keyword} · {date_str}"
+        dir_options[label] = ("blue_ocean", d)
 
-    selected_label = st.selectbox(
-        "Select run",
-        options=list(dir_options.keys()),
-        index=0 if not default_key else list(dir_options.keys()).index(default_key),
-    )
-    selected_dir = dir_options[selected_label]
+    # Default to last run from session state
+    current_dir = st.session_state.get("last_compare_dir")
+    default_idx = 0
+    for i, (label, (kind, d)) in enumerate(dir_options.items()):
+        if d == current_dir:
+            default_idx = i
+            break
+
+    selected_label = st.selectbox("Select run", options=list(dir_options.keys()), index=default_idx)
+    run_kind, selected_dir = dir_options[selected_label]
+
+    st.markdown("---")
+
+    # ── Blue ocean run ────────────────────────────────────────────────────────
+    if run_kind == "blue_ocean":
+        blue_ocean_data = _load_blue_ocean_result(selected_dir)
+        if blue_ocean_data:
+            _render_blue_ocean_result(blue_ocean_data)
+            bo_pdf = _find_pdf_for_market(selected_dir)
+            if bo_pdf and bo_pdf.exists():
+                st.markdown("### 📄 Blue Ocean PDF Report")
+                with open(bo_pdf, "rb") as f:
+                    pdf_bytes = f.read()
+                st.download_button(
+                    f"⬇ Download PDF ({bo_pdf.stat().st_size // 1024}KB)",
+                    data=pdf_bytes, file_name=bo_pdf.name, mime="application/pdf",
+                )
+                import base64
+                b64 = base64.b64encode(pdf_bytes).decode()
+                st.markdown(
+                    f'<iframe src="data:application/pdf;base64,{b64}" '
+                    f'width="100%" height="900px" style="border:1px solid #e0e0e0;border-radius:8px;"></iframe>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.warning("Blue ocean report data not found.")
+        return
+
+    # ── Compare run ───────────────────────────────────────────────────────────
     info = _parse_compare_dir(selected_dir)
 
-    # Header meta
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Keyword", info["keyword"])
     col2.metric("Brands", info["brands_compared"])
     col3.metric("Loopholes", len(info["loopholes"]))
     col4.metric("Focus Brand", info["focus_brand"] or "—")
-
-    st.markdown("---")
-
-    # Check for blue ocean in adjacent market dir
-    blue_ocean_data = None
-    if not info["has_loopholes"]:
-        # Try to find blue ocean from corresponding market run
-        market_dirs = _get_market_dirs()
-        kw_slug = "".join(c if c.isalnum() else "_" for c in info["keyword"])[:30]
-        for md in market_dirs[:20]:
-            if kw_slug[:15].lower() in md.name.lower():
-                blue_ocean_data = _load_blue_ocean_result(md)
-                if blue_ocean_data:
-                    break
-
-    if blue_ocean_data:
-        st.markdown("---")
-        _render_blue_ocean_result(blue_ocean_data)
-        # Check for PDF
-        bo_pdf = None
-        market_dirs = _get_market_dirs()
-        for md in market_dirs[:10]:
-            bo_pdf = _find_pdf_for_market(md)
-            if bo_pdf:
-                break
-        if bo_pdf and bo_pdf.exists():
-            st.markdown("### 📄 Blue Ocean PDF Report")
-            with open(bo_pdf, "rb") as f:
-                pdf_bytes = f.read()
-            st.download_button(
-                f"⬇ Download Blue Ocean PDF ({bo_pdf.stat().st_size // 1024}KB)",
-                data=pdf_bytes,
-                file_name=bo_pdf.name,
-                mime="application/pdf",
-            )
-            import base64
-            b64 = base64.b64encode(pdf_bytes).decode()
-            st.markdown(
-                f'<iframe src="data:application/pdf;base64,{b64}" '
-                f'width="100%" height="900px" style="border:1px solid #e0e0e0;border-radius:8px;"></iframe>',
-                unsafe_allow_html=True,
-            )
-        return
 
     # PDF Section
     st.markdown("### 📄 PDF Report")
