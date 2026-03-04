@@ -86,21 +86,25 @@ echo "→ Starting Cloudflare tunnel → http://localhost:$PORT"
 echo "  (public URL will appear below in a few seconds)"
 echo "────────────────────────────────────────────────────"
 
-"$CLOUDFLARED_BIN" tunnel --url "http://localhost:$PORT" 2>&1 \
+TUNNEL_LOG=$(mktemp /tmp/cloudflared-XXXXXX.log)
+
+"$CLOUDFLARED_BIN" tunnel --url "http://localhost:$PORT" >"$TUNNEL_LOG" 2>&1 &
+TUNNEL_PID=$!
+
+# Tail the log and highlight the public URL
+tail -f "$TUNNEL_LOG" \
     | while IFS= read -r line; do
         echo "$line"
-        # Highlight the public URL
         if echo "$line" | grep -q "trycloudflare.com"; then
-            URL=$(echo "$line" | grep -o 'https://[^ ]*trycloudflare.com[^ ]*')
+            URL=$(echo "$line" | grep -o 'https://[^ |]*trycloudflare\.com[^ |]*')
             echo ""
-            echo "  ┌─────────────────────────────────────────────────┐"
-            echo "  │  🌐  PUBLIC URL:                                 │"
-            echo "  │  $URL"
-            echo "  └─────────────────────────────────────────────────┘"
+            echo "  ┌──────────────────────────────────────────────────────┐"
+            echo "  │  🌐  PUBLIC URL: $URL"
+            echo "  └──────────────────────────────────────────────────────┘"
             echo ""
         fi
     done &
-TUNNEL_PID=$!
 
-# Keep running until Ctrl-C
+# Keep running until cloudflared exits or Ctrl-C
 wait $TUNNEL_PID
+rm -f "$TUNNEL_LOG"
