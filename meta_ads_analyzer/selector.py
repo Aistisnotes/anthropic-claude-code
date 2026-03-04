@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import urlparse
 
 from meta_ads_analyzer.models import (
     AdvertiserEntry,
@@ -296,6 +297,119 @@ def select_ads(
     return SelectionResult(selected=selected, skipped=skipped, stats=stats)
 
 
+_GENERIC_DOMAINS = frozenset({
+    "facebook.com", "fb.com", "instagram.com", "youtube.com",
+    "linktr.ee", "linkinbio.com", "bio.site", "beacons.ai",
+    "shopify.com", "myshopify.com", "amazon.com", "amzn.to",
+    "etsy.com", "ebay.com", "walmart.com", "target.com",
+})
+
+
+def _extract_root_domain(url: str) -> Optional[str]:
+    """Return the root domain from a URL (e.g. 'elare.store' from 'https://www.elare.store/p')."""
+    try:
+        netloc = urlparse(url).netloc.lower()
+        if netloc.startswith("www."):
+            netloc = netloc[4:]
+        parts = netloc.split(".")
+        if len(parts) >= 2:
+            root = ".".join(parts[-2:])
+        else:
+            root = netloc
+        if root and root not in _GENERIC_DOMAINS and len(root) > 3:
+            return root
+    except Exception:
+        pass
+    return None
+
+
+def _merge_by_domain(
+    advertisers: list[AdvertiserEntry],
+    ads: list[ScrapedAd],
+) -> list[AdvertiserEntry]:
+    """Merge AdvertiserEntry objects that share the same destination domain.
+
+    A brand may run ads from multiple Facebook pages (e.g. "BrandPage",
+    "BrandDr.Smith", "Brand Official") all linking to the same website.
+    aggregate_by_advertiser() treats each page as a separate advertiser, so
+    a brand with 30 ads spread across 3 pages appears as three advertisers
+    each with 10 ads — all below BLUE_OCEAN_THRESHOLD.
+
+    This function detects pages that share the same primary destination domain
+    and merges them into a single AdvertiserEntry, summing their counts.
+    The page_name with the most ads becomes canonical; all page names are
+    stored in all_page_names for downstream filtering.
+    """
+    # Count how often each page links to each domain
+    page_domain_freq: dict[str, dict[str, int]] = {}
+    for ad in ads:
+        if not ad.link_url or not ad.page_name:
+            continue
+        domain = _extract_root_domain(ad.link_url)
+        if domain:
+            page_domain_freq.setdefault(ad.page_name, {})
+            page_domain_freq[ad.page_name][domain] = (
+                page_domain_freq[ad.page_name].get(domain, 0) + 1
+            )
+
+    # Primary domain for each page = most frequent domain
+    page_primary_domain: dict[str, str] = {
+        page: max(freq, key=freq.__getitem__)
+        for page, freq in page_domain_freq.items()
+        if freq
+    }
+
+    # Group advertiser entries by primary domain
+    domain_groups: dict[str, list[AdvertiserEntry]] = {}
+    no_domain: list[AdvertiserEntry] = []
+    for entry in advertisers:
+        domain = page_primary_domain.get(entry.page_name)
+        if domain:
+            domain_groups.setdefault(domain, []).append(entry)
+        else:
+            entry.all_page_names = [entry.page_name]
+            no_domain.append(entry)
+
+    merged: list[AdvertiserEntry] = []
+    for domain, entries in domain_groups.items():
+        if len(entries) == 1:
+            entries[0].all_page_names = [entries[0].page_name]
+            merged.append(entries[0])
+            continue
+
+        # Multiple pages share domain → merge into the one with most ads
+        entries.sort(key=lambda e: e.ad_count, reverse=True)
+        canonical = entries[0]
+        for other in entries[1:]:
+            canonical.ad_count += other.ad_count
+            canonical.active_ad_count += other.active_ad_count
+            canonical.recent_ad_count += other.recent_ad_count
+            canonical.total_impression_lower += other.total_impression_lower
+            if other.max_impression_upper:
+                canonical.max_impression_upper = max(
+                    canonical.max_impression_upper, other.max_impression_upper
+                )
+            if other.earliest_launch:
+                if canonical.earliest_launch is None or other.earliest_launch < canonical.earliest_launch:
+                    canonical.earliest_launch = other.earliest_launch
+            if other.latest_launch:
+                if canonical.latest_launch is None or other.latest_launch > canonical.latest_launch:
+                    canonical.latest_launch = other.latest_launch
+            for headline in other.headlines:
+                if headline not in canonical.headlines:
+                    canonical.headlines.append(headline)
+
+        canonical.all_page_names = [e.page_name for e in entries]
+        logger.info(
+            f"Domain merge: {len(entries)} pages → '{canonical.page_name}' "
+            f"(domain={domain}, total_ads={canonical.ad_count}): "
+            f"{canonical.all_page_names}"
+        )
+        merged.append(canonical)
+
+    return merged + no_domain
+
+
 def aggregate_by_advertiser(
     ads: list[ScrapedAd], now: Optional[datetime] = None
 ) -> list[AdvertiserEntry]:
@@ -379,7 +493,11 @@ def aggregate_by_advertiser(
         if ad.headline and ad.headline not in entry.headlines:
             entry.headlines.append(ad.headline)
 
-    return list(advertisers.values())
+    result = list(advertisers.values())
+    # Merge pages that share the same destination domain so brands running
+    # multiple Facebook pages don't fall below the qualifying-ads threshold.
+    result = _merge_by_domain(result, ads)
+    return result
 
 
 def rank_advertisers(advertisers: list[AdvertiserEntry]) -> list[AdvertiserEntry]:
@@ -428,6 +546,7 @@ def select_ads_for_brand(
     limit: int,
     config: dict,
     now: Optional[datetime] = None,
+    all_page_names: Optional[list[str]] = None,
 ) -> SelectionResult:
     """Select best ads for a specific brand.
 
@@ -439,14 +558,21 @@ def select_ads_for_brand(
         limit: Max ads to select for this brand
         config: Config dict with [selection] section
         now: Current datetime (for testing)
+        all_page_names: All Facebook page names for this brand (when a brand runs
+            ads from multiple pages). If provided, ads matching any of these page
+            names are included. Falls back to brand_name if not provided.
 
     Returns:
         SelectionResult with selected/skipped ads for this brand only
     """
-    # Filter to only this brand's ads
-    brand_ads = [ad for ad in all_ads if ad.page_name == brand_name]
+    # Filter to only this brand's ads (across all known page names)
+    names = set(all_page_names) if all_page_names else {brand_name}
+    brand_ads = [ad for ad in all_ads if ad.page_name in names]
 
-    logger.info(f"Selecting ads for brand '{brand_name}': {len(brand_ads)} total ads")
+    logger.info(
+        f"Selecting ads for brand '{brand_name}': {len(brand_ads)} total ads"
+        + (f" (across {len(names)} pages)" if len(names) > 1 else "")
+    )
 
     # Run standard selection pipeline on brand's ads
     return select_ads(brand_ads, config, limit, now)

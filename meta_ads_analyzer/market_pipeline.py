@@ -154,11 +154,15 @@ class MarketPipeline:
                 logger.info(f"Skipping sentinel brand name: '{brand_name}'")
                 continue
 
-            # Keyword scan ads for this brand
-            keyword_ads = [ad for ad in scan_result.ads if ad.page_name == brand_name]
+            # Keyword scan ads for this brand (all merged page names)
+            page_names = set(advertiser.all_page_names or [brand_name])
+            keyword_ads = [ad for ad in scan_result.ads if ad.page_name in page_names]
 
             # Deep brand-specific search (tries multiple query variations)
-            deep_ads = await self._deep_search_brand(brand_name, dominant_type, keyword_ads)
+            deep_ads = await self._deep_search_brand(
+                brand_name, dominant_type, keyword_ads,
+                all_page_names=advertiser.all_page_names or [brand_name],
+            )
 
             # Combine keyword ads + deep ads, deduplicate by ad_id
             # deep_ads already filtered to page_name==brand_name, so no cross-brand contamination
@@ -316,6 +320,7 @@ class MarketPipeline:
         brand_name: str,
         dominant_type: ProductType,
         keyword_ads: list[ScrapedAd] | None = None,
+        all_page_names: list[str] | None = None,
     ) -> list[ScrapedAd]:
         """Search multiple query variations to get a brand's full ad library.
 
@@ -325,14 +330,20 @@ class MarketPipeline:
         is impossible. Uses a higher max_ads cap (300) to surface large ad libraries.
 
         Args:
-            brand_name: Meta page name (e.g. "TryElare")
+            brand_name: Meta page name (canonical, e.g. "TryElare")
             dominant_type: Market-dominant product type for filtering
             keyword_ads: Ads already collected for this brand from the keyword scan
                          (used to extract domain/brand_name variations)
+            all_page_names: All Facebook page names for this brand (when a brand runs
+                ads from multiple pages). If provided, ads from any of these pages
+                are counted as this brand's ads.
 
         Returns:
             Deduplicated list of this brand's ads (product-type filtered if applicable)
         """
+        # Set of page names that belong to this brand (for filtering scan results)
+        page_names_set: set[str] = set(all_page_names) if all_page_names else {brand_name}
+
         queries = self._generate_brand_queries(brand_name, keyword_ads or [])
 
         # Deep searches use higher limits than the keyword scan:
@@ -368,8 +379,8 @@ class MarketPipeline:
             try:
                 logger.info(f"Deep brand search: '{brand_name}' via query '{query}'")
                 scan = await _run_scan(query, deep_config, classify_products=False)
-                # Only keep ads that belong to THIS brand (page_name exact match)
-                brand_ads = [ad for ad in scan.ads if ad.page_name == brand_name]
+                # Only keep ads that belong to THIS brand (any of its known page names)
+                brand_ads = [ad for ad in scan.ads if ad.page_name in page_names_set]
                 new_count = sum(1 for ad in brand_ads if ad.ad_id not in all_brand_ads)
                 for ad in brand_ads:
                     all_brand_ads[ad.ad_id] = ad
@@ -402,13 +413,13 @@ class MarketPipeline:
                     expected_page_name=brand_name,
                     classify_products=False,
                 )
-                # Only keep ads whose page_name matches the target brand.
+                # Only keep ads whose page_name matches the target brand (any known page).
                 # When the page_id came from a co-advertiser page in search results
                 # (not the brand's own page), page_name won't match — skip those.
-                brand_ads = [ad for ad in scan.ads if ad.page_name == brand_name]
+                brand_ads = [ad for ad in scan.ads if ad.page_name in page_names_set]
                 if not brand_ads:
                     logger.info(
-                        f"  page_id={page_id}: 0 ads match page_name='{brand_name}' "
+                        f"  page_id={page_id}: 0 ads match any page_name in {page_names_set} "
                         "(likely another advertiser's page) — skipping"
                     )
                     continue
@@ -566,6 +577,7 @@ class MarketPipeline:
                 brand_name=brand_name,
                 limit=ads_per_brand,
                 config=selection_config,
+                all_page_names=advertiser.all_page_names or [brand_name],
             )
 
             if selection_result.selected:

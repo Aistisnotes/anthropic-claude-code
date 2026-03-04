@@ -303,6 +303,10 @@ class AdvertiserEntry(BaseModel):
     latest_launch: Optional[datetime] = None
     headlines: list[str] = Field(default_factory=list)
     relevance_score: int = 0  # composite ranking score
+    # All Facebook page names that map to this brand (populated when multiple pages
+    # share the same destination domain and are merged into one entry).
+    # Always contains at least [page_name].
+    all_page_names: list[str] = Field(default_factory=list)
 
 
 class PageType(str, enum.Enum):
