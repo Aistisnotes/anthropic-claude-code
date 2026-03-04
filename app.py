@@ -743,7 +743,17 @@ def page_results():
 
     # PDF Section
     st.markdown("### 📄 PDF Report")
-    pdf_path = info.get("pdf_path")
+    # Use session_state path if it was just generated this session for this dir
+    session_pdf = st.session_state.get("last_pdf_path")
+    if session_pdf and Path(session_pdf).exists() and str(selected_dir) in str(st.session_state.get("last_compare_dir", "")):
+        pdf_path = Path(session_pdf)
+    else:
+        pdf_path = info.get("pdf_path")
+
+    _, refresh_col = st.columns([8, 1])
+    with refresh_col:
+        if st.button("🔄", help="Refresh — rescan for new PDF"):
+            st.rerun()
     if pdf_path and pdf_path.exists():
         with open(pdf_path, "rb") as f:
             pdf_bytes = f.read()
