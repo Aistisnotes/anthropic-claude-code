@@ -43,15 +43,41 @@ STATIC_DIR.mkdir(exist_ok=True)
 
 
 def _pdf_iframe(pdf_path: Path) -> None:
-    """Render a PDF inline using Streamlit's static file server (works on HTTPS/ngrok)."""
+    """Render a PDF inline. Uses components.v1.html so JavaScript can build the
+    correct absolute URL at runtime — works on localhost AND HTTPS/ngrok."""
     import shutil as _shutil
+    import streamlit.components.v1 as components
+
     dest = STATIC_DIR / pdf_path.name
     if not dest.exists() or dest.stat().st_mtime < pdf_path.stat().st_mtime:
         _shutil.copy2(pdf_path, dest)
-    st.markdown(
-        f'<iframe src="app/static/{pdf_path.name}" '
-        f'width="100%" height="900px" style="border:1px solid #e0e0e0;border-radius:8px;"></iframe>',
-        unsafe_allow_html=True,
+
+    filename = pdf_path.name
+    # components.v1.html runs in a same-origin iframe, so window.location.origin
+    # is the correct base (http://localhost:8501 locally, https://kandy.ngrok.pro on ngrok).
+    components.html(
+        f"""<!DOCTYPE html><html><head>
+<style>
+  * {{ box-sizing: border-box; }}
+  body {{ margin:0; padding:0; background:#f8f8f8; font-family:sans-serif; }}
+  #viewer {{ width:100%; height:912px; border:1px solid #ddd; border-radius:6px; display:block; }}
+  #openbtn {{ margin:6px 0; padding:6px 14px; background:#e91e8c; color:#fff;
+              border:none; border-radius:4px; cursor:pointer; font-size:13px; }}
+  #openbtn:hover {{ background:#c2176e; }}
+</style></head><body>
+<object id="viewer" type="application/pdf" data="">
+  <p style="padding:20px">Your browser cannot display the PDF inline.
+  <a id="fblink" href="#" target="_blank">Open it in a new tab →</a></p>
+</object>
+<script>
+  var url = window.location.origin + '/app/static/{filename}';
+  document.getElementById('viewer').data = url;
+  var fb = document.getElementById('fblink');
+  if (fb) fb.href = url;
+</script>
+</body></html>""",
+        height=940,
+        scrolling=False,
     )
 
 # ── Page config ────────────────────────────────────────────────────────────────
