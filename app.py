@@ -788,10 +788,14 @@ def page_results():
                 st.markdown("### 📄 Blue Ocean PDF Report")
                 with open(bo_pdf, "rb") as f:
                     pdf_bytes = f.read()
-                st.download_button(
-                    f"⬇ Download PDF ({bo_pdf.stat().st_size // 1024}KB)",
-                    data=pdf_bytes, file_name=bo_pdf.name, mime="application/pdf",
-                )
+                dl_col, nt_col = st.columns([2, 2])
+                with dl_col:
+                    st.download_button(
+                        f"⬇ Download PDF ({bo_pdf.stat().st_size // 1024}KB)",
+                        data=pdf_bytes, file_name=bo_pdf.name, mime="application/pdf",
+                    )
+                with nt_col:
+                    st.markdown(f'<a href="app/static/{bo_pdf.name}" target="_blank" style="text-decoration:none;"><button style="padding:6px 14px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;">↗ Open in new tab</button></a>', unsafe_allow_html=True)
                 _pdf_iframe(bo_pdf)
         else:
             st.warning("Blue ocean report data not found.")
@@ -813,7 +817,7 @@ def page_results():
         if pdf_path and pdf_path.exists():
             with open(pdf_path, "rb") as f:
                 pdf_bytes = f.read()
-            dl_col, info_col = st.columns([2, 3])
+            dl_col, nt_col, info_col = st.columns([2, 2, 3])
             with dl_col:
                 st.download_button(
                     label=f"⬇ Download PDF ({pdf_path.stat().st_size // 1024}KB)",
@@ -821,11 +825,13 @@ def page_results():
                     file_name=pdf_path.name,
                     mime="application/pdf",
                 )
+            with nt_col:
+                st.markdown(f'<a href="app/static/{pdf_path.name}" target="_blank" style="text-decoration:none;"><button style="padding:6px 14px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;">↗ Open in new tab</button></a>', unsafe_allow_html=True)
             with info_col:
-                st.caption(f"📁 {pdf_path}")
+                st.caption(f"📁 {pdf_path.name}")
             _pdf_iframe(pdf_path)
         else:
-            st.info("PDF not found. Run Compare from the Home page to generate one.")
+            st.info("PDF not found. Market PDF is auto-generated after each run.")
             if st.button("🔄 Refresh"):
                 st.rerun()
 
@@ -876,7 +882,7 @@ def page_results():
     if pdf_path and pdf_path.exists():
         with open(pdf_path, "rb") as f:
             pdf_bytes = f.read()
-        dl_col, info_col = st.columns([2, 3])
+        dl_col, nt_col, info_col = st.columns([2, 2, 3])
         with dl_col:
             st.download_button(
                 label=f"⬇ Download PDF ({pdf_path.stat().st_size // 1024}KB)",
@@ -884,8 +890,10 @@ def page_results():
                 file_name=pdf_path.name,
                 mime="application/pdf",
             )
+        with nt_col:
+            st.markdown(f'<a href="app/static/{pdf_path.name}" target="_blank" style="text-decoration:none;"><button style="padding:6px 14px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;">↗ Open in new tab</button></a>', unsafe_allow_html=True)
         with info_col:
-            st.caption(f"📁 {pdf_path}")
+            st.caption(f"📁 {pdf_path.name}")
 
         # Inline PDF viewer
         _pdf_iframe(pdf_path)
