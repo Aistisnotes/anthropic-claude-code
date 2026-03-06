@@ -175,6 +175,10 @@ st.markdown("""
     padding: 16px 20px;
     margin-bottom: 16px;
     background: white;
+    color: #111;
+  }
+  .loophole-card strong, .loophole-card span, .loophole-card div {
+    color: inherit;
   }
   .score-badge {
     display: inline-block;
@@ -619,7 +623,7 @@ def _render_loopholes(loopholes: list):
         <div class="loophole-card">
           <div>
             <span class="score-badge">{score}/100</span>
-            <strong style="font-size:16px;">{medal} {lp.get('title', '')}</strong><br>
+            <strong style="font-size:16px;color:#111;">{medal} {lp.get('title', '')}</strong><br>
             <span style="font-size:11px;color:#888;">{lp.get('loophole_id','')} &nbsp;·&nbsp;
               <span class="badge badge-gray">{tam.upper()} TAM</span>
               <span class="badge badge-{comp_color}">{competition.upper()} COMPETITION</span>
