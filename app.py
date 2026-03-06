@@ -37,6 +37,22 @@ REPORTS_DIR = PROJECT_ROOT / "output" / "reports"
 PDF_OUTPUT_DIR = Path(os.environ.get("PDF_OUTPUT_DIR", str(Path.home() / "Desktop" / "reports")))
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 PDF_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# Static dir for serving PDFs over HTTP (required for ngrok / HTTPS)
+STATIC_DIR = PROJECT_ROOT / "static"
+STATIC_DIR.mkdir(exist_ok=True)
+
+
+def _pdf_iframe(pdf_path: Path) -> None:
+    """Render a PDF inline using Streamlit's static file server (works on HTTPS/ngrok)."""
+    import shutil as _shutil
+    dest = STATIC_DIR / pdf_path.name
+    if not dest.exists() or dest.stat().st_mtime < pdf_path.stat().st_mtime:
+        _shutil.copy2(pdf_path, dest)
+    st.markdown(
+        f'<iframe src="app/static/{pdf_path.name}" '
+        f'width="100%" height="900px" style="border:1px solid #e0e0e0;border-radius:8px;"></iframe>',
+        unsafe_allow_html=True,
+    )
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -750,13 +766,7 @@ def page_results():
                     f"⬇ Download PDF ({bo_pdf.stat().st_size // 1024}KB)",
                     data=pdf_bytes, file_name=bo_pdf.name, mime="application/pdf",
                 )
-                import base64
-                b64 = base64.b64encode(pdf_bytes).decode()
-                st.markdown(
-                    f'<iframe src="data:application/pdf;base64,{b64}" '
-                    f'width="100%" height="900px" style="border:1px solid #e0e0e0;border-radius:8px;"></iframe>',
-                    unsafe_allow_html=True,
-                )
+                _pdf_iframe(bo_pdf)
         else:
             st.warning("Blue ocean report data not found.")
         return
@@ -787,13 +797,7 @@ def page_results():
                 )
             with info_col:
                 st.caption(f"📁 {pdf_path}")
-            import base64
-            b64 = base64.b64encode(pdf_bytes).decode()
-            st.markdown(
-                f'<iframe src="data:application/pdf;base64,{b64}" '
-                f'width="100%" height="900px" style="border:1px solid #e0e0e0;border-radius:8px;"></iframe>',
-                unsafe_allow_html=True,
-            )
+            _pdf_iframe(pdf_path)
         else:
             st.info("PDF not found. Run Compare from the Home page to generate one.")
             if st.button("🔄 Refresh"):
@@ -858,13 +862,7 @@ def page_results():
             st.caption(f"📁 {pdf_path}")
 
         # Inline PDF viewer
-        import base64
-        b64 = base64.b64encode(pdf_bytes).decode()
-        st.markdown(
-            f'<iframe src="data:application/pdf;base64,{b64}" '
-            f'width="100%" height="900px" style="border:1px solid #e0e0e0;border-radius:8px;"></iframe>',
-            unsafe_allow_html=True,
-        )
+        _pdf_iframe(pdf_path)
     else:
         if info["loophole_path"]:
             if st.button("🔄 Generate PDF for this run"):
