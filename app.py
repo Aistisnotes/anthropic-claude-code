@@ -271,17 +271,26 @@ def _find_pdf_for_compare(compare_dir: Path) -> Optional[Path]:
 
 
 def _find_pdf_for_market(market_dir: Path) -> Optional[Path]:
-    """Find a blue ocean PDF for a market directory."""
+    """Find a PDF (blue ocean or strategic) for a market directory."""
     if not PDF_OUTPUT_DIR.exists():
         return None
-    name = market_dir.name  # market_ESOPHAGUS_20260218_120000
+    name = market_dir.name
     parts = name.split("_")
-    if len(parts) >= 2:
-        keyword_slug = "_".join(parts[1:-2])[:20]
-        for pdf in PDF_OUTPUT_DIR.glob("*.pdf"):
-            if "blue_ocean" in pdf.stem and keyword_slug[:10].lower() in pdf.stem.lower():
-                return pdf
-    return None
+    if len(parts) < 2:
+        return None
+    keyword_slug = "_".join(parts[1:-2])[:20].lower()
+    slug10 = keyword_slug[:10]
+    # Prefer blue ocean PDF; fall back to any matching strategic analysis PDF
+    all_pdfs = sorted(PDF_OUTPUT_DIR.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
+    blue_ocean_match = next(
+        (p for p in all_pdfs if "blue_ocean" in p.stem and slug10 in p.stem.lower()), None
+    )
+    if blue_ocean_match:
+        return blue_ocean_match
+    # Fall back to strategic analysis PDF matching same keyword
+    return next(
+        (p for p in all_pdfs if slug10 in p.stem.lower() and "blue_ocean" not in p.stem), None
+    )
 
 
 def _load_blue_ocean_result(market_dir: Path) -> Optional[dict]:
@@ -672,8 +681,14 @@ def page_results():
 
     # Blue ocean market dirs: market runs that have a blue_ocean_report.json
     bo_market_dirs = [d for d in market_dirs if (d / "blue_ocean_report.json").exists()]
+    # Thin/normal competition market dirs: have brand reports but no blue ocean file
+    comp_market_dirs = [
+        d for d in market_dirs
+        if not (d / "blue_ocean_report.json").exists()
+        and any(d.glob("brand_report_*.json"))
+    ]
 
-    if not compare_dirs and not bo_market_dirs:
+    if not compare_dirs and not bo_market_dirs and not comp_market_dirs:
         st.info("No results found yet. Run an analysis from the Home page.")
         return
 
@@ -695,6 +710,18 @@ def page_results():
             date_str = d.name[-15:]
         label = f"🌊 {keyword} · {date_str}"
         dir_options[label] = ("blue_ocean", d)
+    for d in comp_market_dirs[:20]:
+        parts = d.name.split("_")
+        keyword = " ".join(parts[1:-2]).replace("_", " ")
+        date_str = ""
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(f"{parts[-2]}_{parts[-1]}", "%Y%m%d_%H%M%S")
+            date_str = dt.strftime("%b %d %H:%M")
+        except Exception:
+            date_str = d.name[-15:]
+        label = f"📊 {keyword} · {date_str}"
+        dir_options[label] = ("market_comp", d)
 
     # Default to last run from session state
     current_dir = st.session_state.get("last_compare_dir")
@@ -732,6 +759,66 @@ def page_results():
                 )
         else:
             st.warning("Blue ocean report data not found.")
+        return
+
+    # ── Competitive market run (thin competition, no blue ocean file) ─────────
+    if run_kind == "market_comp":
+        parts = selected_dir.name.split("_")
+        keyword = " ".join(parts[1:-2]).replace("_", " ")
+        brand_files = sorted(selected_dir.glob("brand_report_*.json"))
+        st.markdown(f"### 📊 Market Run — *{keyword}*")
+        col1, col2 = st.columns(2)
+        col1.metric("Brands Analyzed", len(brand_files))
+        col2.metric("Run Dir", selected_dir.name[-20:])
+
+        # PDF section — look for a matching PDF (strategic analysis or blue ocean)
+        st.markdown("### 📄 PDF Report")
+        pdf_path = _find_pdf_for_market(selected_dir)
+        if pdf_path and pdf_path.exists():
+            with open(pdf_path, "rb") as f:
+                pdf_bytes = f.read()
+            dl_col, info_col = st.columns([2, 3])
+            with dl_col:
+                st.download_button(
+                    label=f"⬇ Download PDF ({pdf_path.stat().st_size // 1024}KB)",
+                    data=pdf_bytes,
+                    file_name=pdf_path.name,
+                    mime="application/pdf",
+                )
+            with info_col:
+                st.caption(f"📁 {pdf_path}")
+            import base64
+            b64 = base64.b64encode(pdf_bytes).decode()
+            st.markdown(
+                f'<iframe src="data:application/pdf;base64,{b64}" '
+                f'width="100%" height="900px" style="border:1px solid #e0e0e0;border-radius:8px;"></iframe>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("PDF not found. Run Compare from the Home page to generate one.")
+            if st.button("🔄 Refresh"):
+                st.rerun()
+
+        # Brand report summaries
+        if brand_files:
+            st.markdown("### Brand Reports")
+            for bf in brand_files:
+                try:
+                    data = json.loads(bf.read_text())
+                    brand = data.get("brand_name") or data.get("page_name") or bf.stem
+                    with st.expander(f"📋 {brand}"):
+                        if data.get("top_hooks"):
+                            st.markdown("**Top Hooks**")
+                            for h in data["top_hooks"][:3]:
+                                st.markdown(f"> *\"{h}\"*")
+                        if data.get("primary_angle"):
+                            st.markdown(f"**Primary Angle:** {data['primary_angle']}")
+                        if data.get("root_cause"):
+                            st.markdown(f"**Root Cause:** {data['root_cause']}")
+                        if data.get("mechanism"):
+                            st.markdown(f"**Mechanism:** {data['mechanism']}")
+                except Exception:
+                    pass
         return
 
     # ── Compare run ───────────────────────────────────────────────────────────
