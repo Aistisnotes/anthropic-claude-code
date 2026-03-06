@@ -72,7 +72,10 @@ def _pdf_iframe(pdf_path: Path) -> None:
   pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-  var pdfUrl = window.location.origin + '/app/static/{filename}';
+  var base = (window.parent && window.parent.location.origin !== 'null')
+             ? window.parent.location.origin
+             : window.location.origin;
+  var pdfUrl = base + '/app/static/{filename}';
 
   pdfjsLib.getDocument(pdfUrl).promise.then(function(pdf) {{
     document.getElementById('loading').style.display = 'none';
