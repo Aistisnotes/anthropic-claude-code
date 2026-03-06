@@ -198,10 +198,109 @@ def generate_pdf_sync(
 
 
 
+def _aggregate_market_patterns(brands: list[dict]) -> dict:
+    """Aggregate patterns across all brand reports for the market-level section.
+
+    Returns a dict with:
+      - top_root_causes: list of {root_cause, frequency, scientific_explanation, brands}
+      - top_mechanisms: list of {mechanism, frequency, scientific_explanation, brands}
+      - top_pain_points: list of {pain_point, frequency, brands}
+      - what_nobody_does_well: deduplicated list across all brands
+      - top_avatars: aggregated cross-brand avatar profiles
+    """
+    from collections import defaultdict
+
+    rc_map: dict[str, dict] = defaultdict(lambda: {"frequency": 0, "brands": [], "scientific_explanation": "", "upstream_gap": ""})
+    mech_map: dict[str, dict] = defaultdict(lambda: {"frequency": 0, "brands": [], "scientific_explanation": "", "ingredients_involved": []})
+    pain_map: dict[str, dict] = defaultdict(lambda: {"frequency": 0, "brands": [], "symptoms": []})
+    nobody_does_well: list[str] = []
+
+    for brand in brands:
+        bname = brand.get("brand_name", "Unknown")
+
+        for rc in brand.get("root_causes", []):
+            key = (rc.get("root_cause") or "")[:80]
+            if not key or key.lower() in ("none stated", "none stated in ad"):
+                continue
+            rc_map[key]["frequency"] += rc.get("frequency", 1)
+            if bname not in rc_map[key]["brands"]:
+                rc_map[key]["brands"].append(bname)
+            if not rc_map[key]["scientific_explanation"] and rc.get("scientific_explanation"):
+                rc_map[key]["scientific_explanation"] = rc["scientific_explanation"]
+            if not rc_map[key]["upstream_gap"] and rc.get("upstream_gap"):
+                rc_map[key]["upstream_gap"] = rc["upstream_gap"]
+
+        for mech in brand.get("mechanisms", []):
+            key = (mech.get("mechanism") or "")[:80]
+            if not key or key.lower() in ("none stated", "none stated in ad"):
+                continue
+            mech_map[key]["frequency"] += mech.get("frequency", 1)
+            if bname not in mech_map[key]["brands"]:
+                mech_map[key]["brands"].append(bname)
+            if not mech_map[key]["scientific_explanation"] and mech.get("scientific_explanation"):
+                mech_map[key]["scientific_explanation"] = mech["scientific_explanation"]
+            for ing in mech.get("ingredients_involved", []):
+                if ing and ing not in mech_map[key]["ingredients_involved"]:
+                    mech_map[key]["ingredients_involved"].append(ing)
+
+        for pp in brand.get("pain_points", []):
+            key = (pp.get("pain_point") or "")[:80]
+            if not key:
+                continue
+            pain_map[key]["frequency"] += pp.get("frequency", 1)
+            if bname not in pain_map[key]["brands"]:
+                pain_map[key]["brands"].append(bname)
+            for sym in pp.get("symptoms", []):
+                if sym and sym not in pain_map[key]["symptoms"]:
+                    pain_map[key]["symptoms"].append(sym)
+
+        for item in brand.get("what_nobody_does_well", []):
+            if item and item not in nobody_does_well:
+                nobody_does_well.append(item)
+
+    top_root_causes = sorted(
+        [{"root_cause": k, **v} for k, v in rc_map.items()],
+        key=lambda x: (len(x["brands"]), x["frequency"]),
+        reverse=True,
+    )[:6]
+
+    top_mechanisms = sorted(
+        [{"mechanism": k, **v} for k, v in mech_map.items()],
+        key=lambda x: (len(x["brands"]), x["frequency"]),
+        reverse=True,
+    )[:6]
+
+    top_pain_points = sorted(
+        [{"pain_point": k, **v} for k, v in pain_map.items()],
+        key=lambda x: (len(x["brands"]), x["frequency"]),
+        reverse=True,
+    )[:8]
+
+    return {
+        "top_root_causes": top_root_causes,
+        "top_mechanisms": top_mechanisms,
+        "top_pain_points": top_pain_points,
+        "what_nobody_does_well": nobody_does_well,
+    }
+
+
+def _build_cross_category_gap(brands: list[dict]) -> list[str]:
+    """Aggregate 'what_nobody_does_well' items across all cross-category brands."""
+    seen: set[str] = set()
+    items: list[str] = []
+    for b in brands:
+        for item in b.get("what_nobody_does_well", []):
+            if item and item not in seen:
+                seen.add(item)
+                items.append(item)
+    return items[:8]
+
+
 async def generate_market_pdf(
     market_dir: Path,
     keyword: str,
     output_dir: Optional[Path] = None,
+    blue_ocean_framing: bool = False,
 ) -> Path:
     """Generate a standalone PDF from a market run's brand reports.
 
@@ -260,6 +359,15 @@ async def generate_market_pdf(
             "recommendations": pr.get("recommendations", []),
             "what_not_to_do": what_not_to_do_str,
             "what_not_to_do_list": what_not_to_do_list,
+            # New deep analysis fields
+            "avatars": pr.get("avatars", [])[:4],
+            "concepts": pr.get("concepts", [])[:4],
+            "what_nobody_does_well": pr.get("what_nobody_does_well", []),
+            "creative_format_distribution": pr.get("creative_format_distribution", {}),
+            "executive_summary": pr.get("executive_summary", ""),
+            # Cross-category fields
+            "cross_category": data.get("cross_category", False),
+            "cross_category_product_type": data.get("cross_category_product_type", ""),
         })
 
     # Build output path
@@ -270,7 +378,25 @@ async def generate_market_pdf(
 
     date_str = datetime.now().strftime("%B %d, %Y")
     date_slug = datetime.now().strftime("%Y%m%d")
-    pdf_path = output_dir / f"{_slugify(keyword)}_{date_slug}_market_analysis.pdf"
+    keyword_slug = _slugify(keyword)
+    slug = "blue_ocean_cross_category" if blue_ocean_framing else "market_analysis"
+    pdf_path = output_dir / f"{keyword_slug}_{date_slug}_{slug}.pdf"
+
+    # Aggregate market-level patterns across all brands
+    market_patterns = _aggregate_market_patterns(brands)
+
+    # Flatten loopholes from all brands into a single ranked list for Section C
+    all_loopholes = []
+    for brand in brands:
+        for lh in brand.get("loopholes", []):
+            entry = dict(lh) if isinstance(lh, dict) else {}
+            entry["brand"] = brand.get("brand_name", "Unknown")
+            all_loopholes.append(entry)
+    # Sort by score descending, fallback to 0
+    all_loopholes.sort(key=lambda x: x.get("score", 0) or 0, reverse=True)
+
+    # Build cross-category gap list for blue ocean framing
+    cross_category_market_gap = _build_cross_category_gap(brands) if blue_ocean_framing else []
 
     # Render HTML template
     logger.info(f"Rendering market report HTML for {len(brands)} brands...")
@@ -285,7 +411,11 @@ async def generate_market_pdf(
         keyword=keyword,
         date_str=date_str,
         brands=brands,
+        market_patterns=market_patterns,
+        all_loopholes=all_loopholes,
         market_dir_name=market_dir.name,
+        blue_ocean_framing=blue_ocean_framing,
+        cross_category_market_gap=cross_category_market_gap,
     )
 
     # Write to temp file and render with Playwright

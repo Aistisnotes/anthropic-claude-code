@@ -30,6 +30,13 @@ Below are deep analysis results from {{total_ads}} ads:
 
 {{ad_analyses_json}}
 
+## Signal Strength Classification
+Each ad in the data includes `impression_rank` (1 = highest impressions in this brand's set), `days_since_launch`, and `priority_label` metadata. Use these to assign **signal_strength** to every pattern:
+- **strong**: pattern appears in top 5 ads by impressions AND the most recent ad using it was launched <14 days ago
+- **valuable**: appears in top 10, most recent ad <30 days ago
+- **directional**: older pattern or lower impressions (still analytically useful)
+- **test**: single instance only — treat as hypothesis, not confirmed pattern
+
 ## Analysis Framework
 
 Analyze ALL individual ad analyses and produce a strategic intelligence report. For each section, don't just describe what the brand does — find what's MISSING, WEAK, and EXPLOITABLE.
@@ -41,19 +48,49 @@ Respond in the following JSON format:
   "competitive_verdict": "2-3 sentence verdict: What is this brand's single biggest vulnerability? Where is the crack in their armor that a competitor can drive a truck through?",
 
   "common_pain_points": [
-    {"pain_point": "Exact pain point in customer language", "frequency": 0, "percentage": 0.0}
+    {
+      "pain_point": "Exact pain point in customer language",
+      "symptoms": ["Observable daily experiences — what they see/feel that tells them something is wrong. e.g. 'dry flaking patches around eyes in the morning'"],
+      "frequency": 0,
+      "percentage": 0.0,
+      "signal_strength": "strong|valuable|directional|test"
+    }
   ],
   "common_symptoms": [
     {"symptom": "Observable symptom", "frequency": 0, "percentage": 0.0}
   ],
 
+  "avatars": [
+    {
+      "avatar": "Full composite profile — age, gender, situation, what they've tried that failed, emotional state when seeing this ad, what identity they hold, what they already believe about their problem",
+      "message_fit": "The full argument this ad makes for this specific avatar — how does it speak to their exact situation, what belief does it try to install, what does it promise them",
+      "frequency": 0,
+      "signal_strength": "strong|valuable|directional|test"
+    }
+  ],
+
+  "concepts": [
+    {
+      "concept": "Root cause + mechanism combination name (e.g. 'Cortisol spike → fat cell expansion → metabolic slowdown fixed by adaptogen stack')",
+      "root_cause": "The RC component of this concept",
+      "mechanism": "The mechanism component of this concept",
+      "scientific_explanation": "What is the ACTUAL science behind this combination — biological chain, specific enzymes/proteins/hormones, cellular pathway, ingredient actions. Go deep even if the ad is vague. This is analyst-level science, not ad copy. Write 3-5 sentences.",
+      "how_brand_explains_it": "What storyline, narrative, analogy, or ingredient list the brand uses to explain this concept to the audience",
+      "loophole_in_chain": "Where in the RC→mechanism chain is there a gap a competitor could exploit with better science, deeper explanation, or a specific ingredient story",
+      "frequency": 0,
+      "signal_strength": "strong|valuable|directional|test"
+    }
+  ],
+
   "root_cause_patterns": [
     {
       "root_cause": "The stated root cause",
+      "scientific_explanation": "Full biological/physiological explanation of WHY this cause exists — hormone pathways, cellular processes, specific proteins/enzymes involved, ingredients if relevant. The depth the brand SHOULD reach but doesn't. Write 3-5 sentences of genuine science.",
+      "how_ad_explains_it": "What narrative/story/ingredient/analogy the ad uses to explain this root cause to the audience",
+      "upstream_gap": "What causes THIS root cause? The 'why behind the why' that no ad explains. This upstream gap is the biggest exploitable opportunity.",
       "frequency": 0,
-      "description": "How ads frame this root cause",
-      "depth": "surface/moderate/deep/cellular — what level do most ads reach?",
-      "upstream_gap": "What's the UPSTREAM cause they never explain? The 'why behind the why' that's missing. This is the biggest opportunity."
+      "signal_strength": "strong|valuable|directional|test",
+      "depth": "surface|moderate|deep|cellular"
     }
   ],
 
@@ -69,10 +106,13 @@ Respond in the following JSON format:
   "mechanism_patterns": [
     {
       "mechanism": "The mechanism used",
+      "scientific_explanation": "What actually happens biologically — cellular pathway, specific enzymes/proteins, ingredient actions. The level the brand should be explaining. Write 3-5 sentences of genuine science.",
+      "how_ad_explains_it": "How the brand/ad actually explains it (story, analogy, ingredient list, clinical claim, before/after visual)",
+      "ingredients_involved": ["Specific ingredients mentioned in these ads + their actual biological mechanism of action"],
+      "stops_short_at": "Exactly WHERE does the explanation stop? What specific next-level depth do they never reach?",
       "frequency": 0,
-      "description": "How it's presented",
-      "depth": "claim-only / process-level / cellular-molecular",
-      "stops_short_at": "Exactly WHERE does the explanation stop? What's the next level of depth they never reach?"
+      "signal_strength": "strong|valuable|directional|test",
+      "depth": "claim-only | process-level | cellular-molecular"
     }
   ],
 
@@ -125,6 +165,10 @@ Respond in the following JSON format:
     "attack_strategy": "How to exploit these cracks without directly contradicting their claims"
   },
 
+  "what_nobody_does_well": [
+    "Market-wide gap — what NO ad in this brand's library does well or explains at all. Be specific: name the missing upstream science, the unexplained mechanism, the proof element never used, the belief never installed. Each item is a concrete opening for a competitor to own. e.g. 'WHY ceramides deplete with age (the estrogen-CerS3 pathway) — every ad says barriers weaken but none explains the hormonal root cause'."
+  ],
+
   "delivery_mechanism_patterns": [
     {"delivery_type": "Format/dosage/timeline", "frequency": 0, "notes": "Any gaps or weaknesses in delivery positioning"}
   ],
@@ -170,6 +214,15 @@ Respond in the following JSON format:
     "emoji_heavy": 0,
     "direct_response": 0
   },
+  "creative_format_distribution": {
+    "testimonial": 0,
+    "ugc": 0,
+    "educational": 0,
+    "before_after": 0,
+    "talking_head": 0,
+    "hook_story_offer": 0,
+    "listicle": 0
+  },
   "offer_distribution": {
     "discount": 0,
     "free_trial": 0,
@@ -195,8 +248,10 @@ Respond in the following JSON format:
       "rank": 1,
       "title": "Short descriptive name for this loophole",
       "score": 0,
-      "gap": "What specific gap or weakness this loophole exploits — be precise",
-      "why_massive": "Why this gap is a high-impact opportunity. What psychological advantage does it create? What 'aha moment' does it trigger? Why can't the incumbent easily copy it?",
+      "gap": "What specific gap or weakness this loophole exploits — be precise and specific",
+      "why_massive": "Scientific + psychological reason this is a high-impact gap. What biological pathway does it exploit? What belief does installing it create? What 'aha moment' does it trigger? Why can't the incumbent easily copy it without undermining their existing positioning?",
+      "science_to_use": "Specific biological pathway, ingredient, study, or mechanism explanation to deploy in execution. Be specific and deployable. e.g. 'The estrogen-ceramide connection: declining estradiol in perimenopause directly suppresses ceramide synthase 3 (CerS3) activity, which explains why skin barrier collapse accelerates after 45 — no moisturizer addresses this root cause.'",
+      "targets_concept": "Which RC+mechanism combination from the concepts list this loophole attacks or bypasses",
       "execution_hooks": ["2-3 specific hook lines or positioning phrases a competitor could use to exploit this gap"],
       "effort": "low/medium/high",
       "timeline": "e.g. 2-4 weeks"
@@ -245,3 +300,6 @@ Respond in the following JSON format:
 5. **Be ruthlessly specific**: Don't say "the brand has proof gaps." Say "The brand claims 'lymphatic vessels get congested after 40' in 66% of ads but never cites a single study, named researcher, or specific data point for this claim. A competitor citing the 2019 Petrova et al. study on age-related lymphatic decline would instantly outclass this."
 6. **Frequency counts matter** — ground every pattern in actual data from the ad analyses.
 7. **Think about Schwartz sophistication ceiling** — what level is this brand operating at, and what's the NEXT level a competitor could reach?
+8. **Loopholes must be diverse** — no more than 2 loopholes from the same attack angle (same root cause gap, same mechanism depth gap, same proof type). Force variety: cover upstream science, mechanism depth, ingredient transparency, belief installation, proof architecture, and emotional angles.
+9. **scientific_explanation fields are mandatory** — every root_cause_pattern and mechanism_pattern must have a real, specific scientific explanation (not a restatement of the ad). If you don't know the science, state the biochemical pathway at a general level. Vague fillers like "this affects the body" are unacceptable.
+10. **concepts must be RC+mechanism combos** — never label a creative format (testimonial, before/after, 8-week program) as a concept. A concept is always: [biological cause] → [what it does to body] + [how product/ingredient fixes it].

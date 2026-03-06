@@ -22,19 +22,22 @@ from rich.table import Table
 
 from meta_ads_analyzer.classifier.keyword_expander import (
     deduplicate_ads_across_keywords,
+    generate_cross_category_keywords,
     generate_related_keywords,
 )
 from meta_ads_analyzer.classifier.product_type import (
     filter_ads_by_product_type,
     get_dominant_product_type,
 )
-from meta_ads_analyzer.models import BrandReport, BrandSelection, MarketResult, ProductType, ScanResult, ScrapedAd
+from meta_ads_analyzer.models import BrandReport, BrandSelection, ClassifiedAd, MarketResult, ProductType, ScanResult, ScrapedAd, SelectionStats
 from meta_ads_analyzer.pipeline import Pipeline
 from meta_ads_analyzer.selector import aggregate_by_advertiser, extract_root_domain, rank_advertisers, select_ads_for_brand
 from meta_ads_analyzer.utils.logging import get_logger
 
-# Minimum qualifying ads a brand must have to be included in competitive analysis
-BLUE_OCEAN_THRESHOLD = 30
+# Minimum keyword-scan ads a brand must have to be considered a real competitor.
+# Uses only the keyword-level scan count (not deep-search total) so general retailers
+# with one eye-mask ad amid hundreds of unrelated ads don't inflate competition metrics.
+BLUE_OCEAN_THRESHOLD = 5
 
 logger = get_logger(__name__)
 console = Console()
@@ -194,12 +197,24 @@ class MarketPipeline:
                 )
 
             brand_deep_ads[brand_name] = filtered
-            brand_ad_counts[brand_name] = len(filtered)
+
+            # Competition level uses ONLY keyword-scan ads (not deep-search total).
+            # Deep search inflates counts for general retailers (e.g. YesStyle has 1
+            # "collagen eye mask" ad but 49 total ads across all K-beauty products).
+            # Keyword count is the true proxy for "is this brand advertising THIS product?"
+            if dominant_type != ProductType.UNKNOWN:
+                keyword_qualifying = [
+                    a for a in keyword_ads
+                    if a.product_type == dominant_type or a.product_type == ProductType.UNKNOWN
+                ]
+            else:
+                keyword_qualifying = keyword_ads
+            brand_ad_counts[brand_name] = len(keyword_qualifying)
 
             console.print(
                 f"  [dim]{brand_name[:35]:35s}  "
-                f"keyword={len(keyword_ads):3d}  deep={len(deep_ads):3d}  "
-                f"qualifying={len(filtered):3d}[/]"
+                f"keyword={len(keyword_qualifying):3d}  deep={len(deep_ads):3d}  "
+                f"qualifying={len(keyword_qualifying):3d}[/]"
             )
 
         # Determine competition level
@@ -653,7 +668,7 @@ class MarketPipeline:
         focus_brand: Optional[str],
         dominant_type: ProductType,
     ) -> MarketResult:
-        """Handle blue ocean case: no brands have 50+ qualifying ads.
+        """Handle blue ocean case: no brands have 5+ keyword-scan qualifying ads.
 
         Runs focus brand analysis (if provided) and generates blue ocean report.
         """
@@ -690,7 +705,41 @@ class MarketPipeline:
                 logger.error(f"Focus brand analysis failed: {e}")
                 console.print(f"[yellow]⚠ Focus brand analysis failed: {e}[/]")
 
-        # Generate blue ocean document
+        # Create output directory first (needed for saving brand reports during cross-category analysis)
+        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword)[:50]
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        output_dir = Path(self.config.get("reporting", {}).get("output_dir", "output/reports"))
+        self.market_subdir = output_dir / f"market_{keyword_slug}_{timestamp}"
+        self.market_subdir.mkdir(parents=True, exist_ok=True)
+
+        # ── Cross-Category Deep Analysis (runs BEFORE blue ocean doc so data feeds into it) ──
+        adjacent_brand_reports: list[BrandReport] = []
+        try:
+            console.print("\n[bold cyan]🔍 Scanning adjacent categories for loophole analysis...[/]")
+            cross_kws = await self._generate_cross_category_keywords(keyword, count=5)
+            if cross_kws:
+                cc_brands = await self._run_cross_category_scan(cross_kws, max_brands=4, min_ads=5)
+                ads_per_brand = self.config.get("market", {}).get("ads_per_brand", 10)
+                for advertiser, ads, category_label in cc_brands:
+                    console.print(f"\n[cyan]Analyzing: {advertiser.page_name} ({category_label})[/]")
+                    try:
+                        selection = self._build_cross_category_selection(advertiser, ads, ads_per_brand)
+                        report = await self._analyze_brand(
+                            selection, keyword,
+                            extra_fields={"cross_category": True, "cross_category_product_type": category_label},
+                        )
+                        adjacent_brand_reports.append(report)
+                        console.print(f"[green]✓ {advertiser.page_name}: {report.pattern_report.total_ads_analyzed} ads analyzed[/]")
+                    except Exception as e:
+                        logger.error(f"Cross-category brand {advertiser.page_name} failed: {e}")
+            if adjacent_brand_reports:
+                console.print(f"\n[green]✓ {len(adjacent_brand_reports)} adjacent brands analyzed — feeding into loophole analysis[/]")
+            else:
+                console.print("[yellow]⚠ No adjacent brands analyzed — generating simpler blue ocean report[/]")
+        except Exception as e:
+            logger.error(f"Cross-category scan failed (non-critical): {e}")
+
+        # Generate blue ocean document (now with adjacent brand analyses for gold standard structure)
         console.print("\n[cyan]Generating blue ocean strategy...[/]")
         blue_ocean_doc = await generate_blue_ocean_doc(
             keyword=keyword,
@@ -698,14 +747,8 @@ class MarketPipeline:
             brand_ad_counts=brand_ad_counts,
             focus_brand_pattern_report=focus_pattern_report,
             config=self.config,
+            adjacent_brand_reports=adjacent_brand_reports if adjacent_brand_reports else None,
         )
-
-        # Create output directory and save
-        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword)[:50]
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        output_dir = Path(self.config.get("reporting", {}).get("output_dir", "output/reports"))
-        self.market_subdir = output_dir / f"market_{keyword_slug}_{timestamp}"
-        self.market_subdir.mkdir(parents=True, exist_ok=True)
 
         save_blue_ocean_doc(blue_ocean_doc, self.market_subdir)
         console.print(f"[green]✓ Blue ocean report saved: {self.market_subdir}[/]")
@@ -722,15 +765,30 @@ class MarketPipeline:
             logger.error(f"Blue ocean PDF generation failed: {e}")
             console.print(f"[yellow]⚠ PDF generation failed: {e}[/]")
 
+        # Compute blue ocean confidence based on how many advertisers were found
+        num_advertisers = len(scan_result.advertisers)
+        if num_advertisers == 0:
+            blue_ocean_confidence = "high"
+        elif num_advertisers <= 2:
+            blue_ocean_confidence = "medium"
+        else:
+            blue_ocean_confidence = "low"
+
+        logger.info(
+            f"Blue ocean confidence: {blue_ocean_confidence} "
+            f"({num_advertisers} advertisers found, all below {BLUE_OCEAN_THRESHOLD} qualifying ads)"
+        )
+
         return MarketResult(
             keyword=keyword,
             country=scan_result.country,
             scan_date=scan_result.scan_date,
             total_advertisers=len(scan_result.advertisers),
-            brands_analyzed=0,
-            brand_reports=[],
+            brands_analyzed=len(adjacent_brand_reports),
+            brand_reports=adjacent_brand_reports,
             competition_level="blue_ocean",
             blue_ocean_result=blue_ocean_doc.model_dump(mode="json"),
+            blue_ocean_confidence=blue_ocean_confidence,
         )
 
     def _show_brand_ad_counts_table(self, brand_ad_counts: dict[str, int]) -> None:
@@ -780,7 +838,7 @@ class MarketPipeline:
         # Determine product type for expansion
         dominant_type, _ = get_dominant_product_type(scan_result.ads)
 
-        # Generate related keywords
+        # Generate related keywords (round 1: synonyms/adjacent)
         related = await generate_related_keywords(
             primary_keyword, dominant_type, self.config, count=4
         )
@@ -808,9 +866,58 @@ class MarketPipeline:
             all_ads_by_keyword
         )
 
+        # Round 2: if still <3 brands, try ingredient-level and symptom-level searches
+        num_brands_after_round1 = len(aggregate_by_advertiser(deduplicated_ads))
+        if num_brands_after_round1 < 3:
+            logger.warning(
+                f"Only {num_brands_after_round1} brands after initial expansion. "
+                "Trying ingredient-level and symptom-level keyword searches..."
+            )
+            console.print(
+                f"[yellow]Still only {num_brands_after_round1} brands. "
+                "Trying ingredient and symptom-level searches...[/]"
+            )
+
+            # Ingredient-level expansion
+            ingredient_kws = await generate_related_keywords(
+                f"{primary_keyword} active ingredients",
+                dominant_type, self.config, count=3,
+            )
+            # Symptom-level expansion
+            symptom_kws = await generate_related_keywords(
+                f"{primary_keyword} symptoms solution",
+                dominant_type, self.config, count=3,
+            )
+
+            secondary_kws = [k for k in (ingredient_kws + symptom_kws) if k not in all_ads_by_keyword]
+            if secondary_kws:
+                console.print(f"[cyan]Scanning {len(secondary_kws)} secondary keywords:[/] {', '.join(secondary_kws)}")
+                for kw in secondary_kws:
+                    logger.info(f"Scanning secondary keyword: {kw}")
+                    try:
+                        sec_scan = await self._run_scan_stage(kw, from_scan=None)
+                        all_ads_by_keyword[kw] = sec_scan.ads
+                        console.print(f"  [dim]• {kw}: {len(sec_scan.ads)} ads[/]")
+                    except Exception as e:
+                        logger.error(f"Failed to scan '{kw}': {e}")
+                        all_ads_by_keyword[kw] = []
+
+                # Re-deduplicate with secondary keywords
+                deduplicated_ads, contributions = deduplicate_ads_across_keywords(
+                    all_ads_by_keyword
+                )
+
+        total_variations = len(all_ads_by_keyword)
+        if total_variations < 4:
+            logger.warning(
+                f"Blue ocean check: only {total_variations} keyword variations tried. "
+                "Consider manually searching related terms before declaring blue ocean."
+            )
+
         console.print(
             f"\n[green]Combined results: {len(deduplicated_ads)} unique ads "
-            f"(from {sum(len(ads) for ads in all_ads_by_keyword.values())} total)[/]"
+            f"(from {sum(len(ads) for ads in all_ads_by_keyword.values())} total, "
+            f"{total_variations} keyword variations)[/]"
         )
 
         # Show keyword contributions
@@ -1057,19 +1164,30 @@ class MarketPipeline:
         console.print(table)
 
     async def _analyze_brand(
-        self, selection: BrandSelection, keyword: str
+        self, selection: BrandSelection, keyword: str,
+        extra_fields: Optional[dict] = None,
     ) -> BrandReport:
         """Stage 3: Analyze a single brand's selected ads.
 
         Args:
             selection: Brand selection with ads to analyze
             keyword: Search keyword (for report context)
+            extra_fields: Optional extra fields to set on BrandReport (e.g. cross_category)
 
         Returns:
             BrandReport with full analysis
         """
         # Extract ScrapedAd objects from ClassifiedAd wrappers
         selected_ads = [ca.ad for ca in selection.selected_ads]
+
+        # Build ad metadata mapping from ClassifiedAd (priority_label, days_since_launch)
+        ad_metadata = {
+            ca.ad.ad_id: {
+                "priority_label": ca.priority_label,
+                "days_since_launch": ca.days_since_launch,
+            }
+            for ca in selection.selected_ads
+        }
 
         logger.info(
             f"Analyzing {len(selected_ads)} ads for {selection.advertiser.page_name}"
@@ -1080,15 +1198,17 @@ class MarketPipeline:
             scraped_ads=selected_ads,
             query=keyword,
             brand=selection.advertiser.page_name,
+            ad_metadata=ad_metadata,
         )
 
-        # Package as BrandReport
+        # Package as BrandReport (inject extra_fields at construction time)
         brand_report = BrandReport(
             advertiser=selection.advertiser,
             keyword=keyword,
             selection_stats=selection.selection_stats,
             pattern_report=pattern_report,
             generated_at=datetime.utcnow(),
+            **(extra_fields or {}),
         )
 
         # Save brand report to market subdirectory
@@ -1096,3 +1216,115 @@ class MarketPipeline:
             self.pipeline.reporter.save_brand_report(brand_report, self.market_subdir)
 
         return brand_report
+
+    async def _generate_cross_category_keywords(
+        self, keyword: str, count: int = 5
+    ) -> list[dict]:
+        """Generate cross-category keywords for blue ocean analysis."""
+        try:
+            result = await generate_cross_category_keywords(keyword, self.config, count=count)
+            logger.info(f"Cross-category keywords generated: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Failed to generate cross-category keywords: {e}")
+            return []
+
+    async def _run_cross_category_scan(
+        self,
+        cross_category_kws: list[dict],
+        max_brands: int = 4,
+        min_ads: int = 5,
+    ) -> list[tuple]:
+        """Scan cross-category keywords and return top brands with their ads and category labels.
+
+        Args:
+            cross_category_kws: List of {"category": str, "keyword": str} dicts
+            max_brands: Max number of brands to return
+            min_ads: Minimum ads a brand must have to be included
+
+        Returns:
+            List of (AdvertiserEntry, list[ScrapedAd], category_label) tuples
+        """
+        page_to_category: dict[str, str] = {}  # page_name → category_label (first-wins)
+        all_ads_by_kw: dict[str, list[ScrapedAd]] = {}
+
+        for kw_entry in cross_category_kws:
+            kw = kw_entry["keyword"]
+            category_label = kw_entry["category"]
+            try:
+                scan = await self._run_scan_stage(kw, from_scan=None)
+                all_ads_by_kw[kw] = scan.ads
+                for ad in scan.ads:
+                    if ad.page_name not in page_to_category:
+                        page_to_category[ad.page_name] = category_label
+                console.print(f"  [dim]• {kw} ({category_label}): {len(scan.ads)} ads[/]")
+            except Exception as e:
+                logger.error(f"Cross-category scan failed for '{kw}': {e}")
+                all_ads_by_kw[kw] = []
+
+        if not any(all_ads_by_kw.values()):
+            return []
+
+        # Deduplicate and aggregate across all cross-category keywords
+        deduplicated_ads, _ = deduplicate_ads_across_keywords(all_ads_by_kw)
+        advertisers = aggregate_by_advertiser(deduplicated_ads)
+        ranked = rank_advertisers(advertisers)
+
+        # Get top brands meeting the minimum ads threshold
+        result = []
+        for advertiser in ranked:
+            if len(result) >= max_brands:
+                break
+            if advertiser.ad_count < min_ads:
+                continue
+            page_names = set(advertiser.all_page_names or [advertiser.page_name])
+            ads = [ad for ad in deduplicated_ads if ad.page_name in page_names]
+            category = page_to_category.get(advertiser.page_name, "unknown")
+            result.append((advertiser, ads, category))
+
+        return result
+
+    def _build_cross_category_selection(
+        self,
+        advertiser,
+        ads: list[ScrapedAd],
+        ads_per_brand: int = 10,
+    ) -> BrandSelection:
+        """Build a BrandSelection for cross-category brands, skipping P1-P4 rules.
+
+        Sorts by impression_lower desc, caps at ads_per_brand.
+        All ads get priority_label="P1" — we want all ad types from these brands.
+        """
+        from datetime import timezone
+
+        sorted_ads = sorted(ads, key=lambda a: a.impression_lower, reverse=True)[:ads_per_brand]
+
+        classified = []
+        for ad in sorted_ads:
+            days_since_launch = None
+            if ad.started_running:
+                try:
+                    started = datetime.fromisoformat(ad.started_running.replace("Z", "+00:00"))
+                    now = datetime.now(timezone.utc)
+                    days_since_launch = (now - started).days
+                except Exception:
+                    pass
+
+            classified.append(ClassifiedAd(
+                ad=ad,
+                priority_label="P1",
+                days_since_launch=days_since_launch,
+            ))
+
+        stats = SelectionStats(
+            total_scanned=len(ads),
+            total_selected=len(classified),
+            total_skipped=len(ads) - len(classified),
+            by_priority={"P1": len(classified)},
+        )
+
+        return BrandSelection(
+            advertiser=advertiser,
+            selected_ads=classified,
+            selection_stats=stats,
+        )

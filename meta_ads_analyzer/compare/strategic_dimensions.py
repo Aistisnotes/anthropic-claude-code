@@ -244,9 +244,27 @@ class BlueOceanResult(BaseModel):
     first_5_ad_concepts: list[BlueOceanAdConcept] = Field(default_factory=list)
     testing_roadmap: list[BlueOceanWeekPlan] = Field(default_factory=list)
 
-    # Adjacent market insights
+    # Adjacent market insights (keyword scan level — blue ocean confirmation)
     adjacent_keywords: list[dict] = Field(default_factory=list)  # [{keyword, brands_with_50_plus, max_ads, has_competition}]
     adjacent_insights: str = ""
+
+    # Gold standard sections (from deep ad analysis of adjacent categories)
+    competitive_landscape: list[dict] = Field(default_factory=list)
+    # ^ [{brand, category, root_cause, root_cause_depth, root_cause_gap,
+    #     mechanism, mechanism_depth, mechanism_gap,
+    #     ingredient_story, ingredient_score, authority}]
+    what_nobody_does_well: list[str] = Field(default_factory=list)
+    upstream_root_cause_gap: dict = Field(default_factory=dict)
+    # ^ {what_nobody_explains, the_chain: list[str], opportunity}
+    cellular_mechanism_gap: dict = Field(default_factory=dict)
+    # ^ {what_nobody_explains, specific_questions: list[str], example_depth}
+    ingredient_gap: dict = Field(default_factory=dict)
+    # ^ {what_nobody_explains, opportunities: list[{label, example}], specific_vulnerability}
+    market_loopholes: list[dict] = Field(default_factory=list)
+    # ^ [{rank, title, score, loophole_type, risk_level, effort, timeline,
+    #     the_gap, why_its_massive: list[str], execution: list[str]}]
+    execution_roadmap: dict = Field(default_factory=dict)
+    # ^ {immediate_actions: list[str], what_not_to_do: list[str]}
 
 
 class StrategicCompareResult(BaseModel):

@@ -211,6 +211,17 @@ class AdAnalysis(BaseModel):
     hook_psychology: str = ""
     cta_strategy: str = ""
 
+    # Concept & format (new fields)
+    concept: str = ""  # RC + mechanism combination (NOT a creative format)
+    creative_format: str = ""  # ad execution format: testimonial, ugc, before_after, etc.
+    avatar: str = ""  # full composite profile of targeted person
+    scientific_note: str = ""  # analyst-level science even when ad is vague
+
+    # Signal metadata (populated by pipeline from ScrapedAd / ClassifiedAd)
+    impression_lower: int = 0
+    days_since_launch: Optional[int] = None
+    priority_label: str = ""  # P1/P2/P3/P4 from selection engine
+
     # Quality
     analysis_confidence: float = 0.0
     copy_quality_score: float = 0.0
@@ -260,6 +271,12 @@ class PatternReport(BaseModel):
     format_distribution: dict[str, int] = Field(default_factory=dict)
     offer_distribution: dict[str, int] = Field(default_factory=dict)
     cta_distribution: dict[str, int] = Field(default_factory=dict)
+    creative_format_distribution: dict = Field(default_factory=dict)
+
+    # NEW: Deep analysis additions
+    avatars: list[dict] = Field(default_factory=list)
+    concepts: list[dict] = Field(default_factory=list)
+    what_nobody_does_well: list[str] = Field(default_factory=list)
 
     # Deep analysis: gaps and weaknesses
     competitive_verdict: str = ""
@@ -413,6 +430,8 @@ class BrandReport(BaseModel):
     selection_stats: SelectionStats
     pattern_report: PatternReport
     generated_at: datetime = Field(default_factory=datetime.utcnow)
+    cross_category: bool = False
+    cross_category_product_type: Optional[str] = None
 
 
 class MarketResult(BaseModel):
@@ -426,6 +445,7 @@ class MarketResult(BaseModel):
     brand_reports: list[BrandReport] = Field(default_factory=list)
     competition_level: str = "normal"  # normal / thin / blue_ocean
     blue_ocean_result: Optional[Any] = None  # BlueOceanResult (dict-serialized)
+    blue_ocean_confidence: str = ""  # "high|medium|low" — set when competition_level=="blue_ocean"
 
 
 # ============================================================================

@@ -3,45 +3,40 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ report.keyword | title }} — Blue Ocean Analysis</title>
+<title>{{ report.keyword | title }} — Loophole Analysis</title>
 <style>
-  /* ── Reset & Base ─────────────────────────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { font-size: 14px; }
+  html { font-size: 13px; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: #1a1a1a;
     background: #ffffff;
-    line-height: 1.6;
+    line-height: 1.55;
   }
 
-  /* ── Color System ─────────────────────────────────────────────── */
   :root {
-    --pink:       #e91e8c;
-    --pink-light: #fce4ec;
-    --ocean:      #0277bd;
-    --ocean-light: #e1f5fe;
-    --ocean-mid:  #4fc3f7;
-    --yellow:     #fff8e1;
+    --pink:        #e91e8c;
+    --pink-light:  #fce4ec;
+    --pink-border: #f48fb1;
+    --yellow:      #fff8e1;
     --yellow-border: #ffc107;
-    --green:      #e8f5e9;
+    --green:       #e8f5e9;
     --green-border: #4caf50;
-    --gray-bg:    #f8f8f8;
-    --gray-line:  #e0e0e0;
-    --text-muted: #666;
-    --text-light: #888;
+    --gray-bg:     #f8f8f8;
+    --gray-line:   #e0e0e0;
+    --text-muted:  #666;
+    --text-light:  #888;
   }
 
-  /* ── Page Setup ───────────────────────────────────────────────── */
-  @page { size: A4; margin: 14mm 15mm; }
+  @page { size: A4; margin: 14mm 15mm 14mm 15mm; }
   @page :first { margin: 0; }
 
-  /* ── Cover Page ───────────────────────────────────────────────── */
+  /* ── Cover ─────────────────────────────────────────────────────── */
   .cover {
     page-break-after: always;
     break-after: always;
     height: 297mm;
-    background: #ffffff;
+    background: #fff;
     display: flex;
     flex-direction: column;
     padding: 36px 44px;
@@ -51,310 +46,430 @@
   .cover-top-bar {
     width: 100%;
     height: 6px;
-    background: linear-gradient(90deg, var(--ocean) 0%, var(--ocean-mid) 100%);
+    background: var(--pink);
     border-radius: 3px;
     margin-bottom: 32px;
   }
-  .cover-emoji { font-size: 52px; margin-bottom: 14px; line-height: 1; }
   .cover-title {
-    font-size: 34px;
+    font-size: 38px;
     font-weight: 800;
     color: #111;
     line-height: 1.15;
-    margin-bottom: 10px;
+    margin-bottom: 14px;
     letter-spacing: -0.5px;
   }
-  .cover-title span { color: var(--ocean); }
-  .cover-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 3px; }
-  .cover-meta {
+  .cover-title span { color: var(--pink); }
+  .cover-meta-line { font-size: 13px; color: #333; margin-bottom: 4px; }
+  .cover-meta-line strong { color: #111; }
+  .cover-verdict {
     margin-top: 24px;
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
+    background: var(--pink-light);
+    border-left: 5px solid var(--pink);
+    border-radius: 6px;
+    padding: 14px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--pink);
+    line-height: 1.5;
   }
-  .cover-chip {
-    background: var(--ocean-light);
-    border: 1px solid var(--ocean-mid);
-    border-radius: 20px;
-    padding: 5px 14px;
+  .cover-insight {
+    margin-top: 16px;
+    background: var(--yellow);
+    border-left: 5px solid var(--yellow-border);
+    border-radius: 6px;
+    padding: 14px 18px;
+  }
+  .cover-insight-label {
     font-size: 12px;
-    font-weight: 600;
-    color: var(--ocean);
+    font-weight: 800;
+    color: #b8860b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
   }
-  .cover-finding {
-    margin-top: 30px;
-    background: var(--ocean-light);
-    border-left: 5px solid var(--ocean);
+  .cover-insight p { font-size: 13px; color: #333; line-height: 1.6; }
+  .cover-insight strong { font-weight: 700; }
+  .cover-toc {
+    margin-top: 22px;
+    border: 1px solid var(--gray-line);
     border-radius: 8px;
-    padding: 16px 20px;
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--ocean);
+    padding: 14px 18px;
+    background: var(--gray-bg);
   }
+  .cover-toc-title { font-size: 13px; font-weight: 700; color: #333; margin-bottom: 10px; }
+  .cover-toc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 24px;
+  }
+  .cover-toc-item { font-size: 12px; color: #444; padding: 2px 0; }
+  .cover-toc-item span { color: var(--pink); font-weight: 700; margin-right: 6px; }
   .cover-bottom {
     margin-top: auto;
-    padding-top: 20px;
+    padding-top: 16px;
     border-top: 1px solid var(--gray-line);
     font-size: 11px;
     color: var(--text-light);
-  }
-  .cover-decoration {
-    position: absolute;
-    right: -60px;
-    top: 50px;
-    width: 320px;
-    height: 320px;
-    border-radius: 50%;
-    background: var(--ocean-light);
-    opacity: 0.4;
+    text-align: center;
   }
 
-  /* ── Layout ───────────────────────────────────────────────────── */
-  .section { margin-bottom: 22px; }
-
+  /* ── Section structure ─────────────────────────────────────────── */
+  .section { margin-bottom: 20px; }
   .section-header {
-    font-size: 17px;
+    font-size: 18px;
     font-weight: 800;
-    color: var(--ocean);
-    border-bottom: 3px solid var(--ocean);
+    color: var(--pink);
+    border-bottom: 3px solid var(--pink);
     padding-bottom: 5px;
     margin-bottom: 14px;
     page-break-after: avoid;
     break-after: avoid;
   }
-
   .subsection-header {
     font-size: 13px;
     font-weight: 700;
     color: #333;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
     margin-bottom: 8px;
     margin-top: 14px;
   }
 
-  /* ── Callout Boxes ────────────────────────────────────────────── */
+  /* ── Tables ────────────────────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  table th {
+    background: #fff;
+    border: 1px solid #ccc;
+    padding: 7px 10px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 12px;
+  }
+  table td {
+    border: 1px solid #ddd;
+    padding: 6px 10px;
+    vertical-align: top;
+  }
+  table tr:nth-child(even) td { background: var(--gray-bg); }
+  table tbody tr { page-break-inside: avoid; break-inside: avoid; }
+  .check { color: #2e7d32; font-weight: 700; }
+  .cross { color: #c62828; font-weight: 700; }
+
+  /* ── Callout boxes ─────────────────────────────────────────────── */
   .callout {
     border-radius: 8px;
-    padding: 11px 15px;
-    margin-bottom: 10px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
     font-size: 13px;
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  .callout-ocean {
-    background: var(--ocean-light);
-    border-left: 4px solid var(--ocean);
+  .callout-pink  { background: var(--pink-light); border-left: 4px solid var(--pink); }
+  .callout-yellow{ background: var(--yellow);     border-left: 4px solid var(--yellow-border); }
+  .callout-green { background: var(--green);      border-left: 4px solid var(--green-border); }
+  .callout-label {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--pink);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
   }
-  .callout-yellow {
-    background: var(--yellow);
-    border-left: 4px solid var(--yellow-border);
-  }
-  .callout-green {
-    background: var(--green);
-    border-left: 4px solid var(--green-border);
-  }
+  .callout-label-yellow { color: #b8860b; }
+  .callout-label-green  { color: #2e7d32; }
+  .callout ul { padding-left: 16px; margin-top: 6px; }
+  .callout li { margin-bottom: 3px; }
   .callout strong { font-weight: 700; }
 
-  /* ── Brand Counts Table ───────────────────────────────────────── */
-  .brand-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12.5px;
+  /* ── "Nobody does well" bullets ────────────────────────────────── */
+  .nobody-list { list-style: none; margin: 8px 0 0 0; padding: 0; }
+  .nobody-list li {
+    font-size: 13px;
+    color: #333;
+    padding: 3px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .nobody-list li:last-child { border-bottom: none; }
+  .nobody-list li strong { color: #111; }
+
+  /* ── Upstream story / cellular depth box ───────────────────────── */
+  .gap-box {
+    border: 1px solid var(--gray-line);
+    border-radius: 8px;
+    padding: 14px 16px;
     margin-bottom: 12px;
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  .brand-table th {
-    background: var(--ocean);
+  .gap-box-label {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--pink);
+    margin-bottom: 8px;
+  }
+  .gap-box p { font-size: 13px; color: #333; margin-bottom: 8px; line-height: 1.6; }
+  .chain-list { list-style: none; padding: 0; margin: 4px 0 8px 0; }
+  .chain-list li {
+    font-size: 13px;
+    color: #333;
+    padding: 2px 0;
+    font-weight: 600;
+  }
+  .opportunity-box {
+    background: var(--yellow);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #333;
+    margin-top: 8px;
+  }
+  .opportunity-box strong { color: #b8860b; }
+  .bullet-q { padding-left: 16px; margin: 4px 0; }
+  .bullet-q li { font-size: 13px; color: #333; margin-bottom: 2px; }
+
+  /* ── Ingredient transparency ───────────────────────────────────── */
+  .vuln-box {
+    background: var(--yellow);
+    border-left: 4px solid var(--yellow-border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .vuln-box-label {
+    font-size: 11px;
+    font-weight: 800;
+    color: #b8860b;
+    margin-bottom: 6px;
+  }
+  .vuln-box p { font-size: 13px; color: #333; }
+
+  /* ── Loophole cards ────────────────────────────────────────────── */
+  .loophole-card {
+    border: 1px solid var(--gray-line);
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    background: #fff;
+  }
+  .loophole-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+  }
+  .loophole-title { font-size: 15px; font-weight: 800; color: #111; }
+  .loophole-score {
+    background: var(--pink);
     color: white;
-    padding: 7px 12px;
-    text-align: left;
+    border-radius: 20px;
+    padding: 3px 12px;
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+    margin-left: 12px;
+    flex-shrink: 0;
+  }
+  .loophole-section-label {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-top: 10px;
+    margin-bottom: 4px;
+  }
+  .loophole-gap { font-size: 13px; color: #333; line-height: 1.6; }
+  .loophole-tags { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .tag {
+    border-radius: 4px;
+    padding: 2px 10px;
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.4px;
   }
-  .brand-table td { padding: 6px 12px; border-bottom: 1px solid var(--gray-line); }
-  .brand-table tr:nth-child(even) td { background: var(--gray-bg); }
-  .brand-table .count-low { color: #c62828; font-weight: 700; }
-  .brand-table .count-high { color: #2e7d32; font-weight: 700; }
-  .brand-table tbody tr { page-break-inside: avoid; break-inside: avoid; }
+  .tag-type  { background: #e3f2fd; color: #1565c0; }
+  .tag-risk  { background: var(--green); color: #2e7d32; }
+  .tag-risk-med { background: #fff3e0; color: #e65100; }
+  .loophole-bullets { list-style: none; padding: 0; margin: 6px 0 0 0; }
+  .loophole-bullets li {
+    font-size: 13px;
+    color: #333;
+    padding: 2px 0;
+    border-bottom: 1px solid #f5f5f5;
+  }
+  .loophole-bullets li:last-child { border-bottom: none; }
+  .loophole-bullets li::before { content: "• "; color: var(--pink); font-weight: 700; }
 
-  /* ── Ad Concept Cards ─────────────────────────────────────────── */
-  .concept-card {
-    border: 1px solid var(--gray-line);
-    border-left: 5px solid var(--ocean);
+  /* ── Priority matrix ───────────────────────────────────────────── */
+  .priority-table tr.priority-top td { background: var(--green); }
+
+  /* ── Roadmap actions ───────────────────────────────────────────── */
+  .action-box {
     border-radius: 8px;
     padding: 14px 18px;
     margin-bottom: 12px;
-    background: white;
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  .concept-number {
-    display: inline-block;
-    background: var(--ocean);
-    color: white;
-    border-radius: 20px;
-    padding: 2px 10px;
-    font-size: 11px;
-    font-weight: 800;
-    float: right;
-  }
-  .concept-title { font-size: 14px; font-weight: 700; color: #111; margin-bottom: 8px; }
-  .concept-hook {
-    background: var(--ocean-light);
-    border-radius: 6px;
-    padding: 8px 12px;
-    font-style: italic;
-    font-size: 13px;
-    color: var(--ocean);
-    margin-bottom: 8px;
-  }
-  .concept-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    font-size: 12px;
-    margin-bottom: 6px;
-  }
-  .concept-field label { font-weight: 700; color: var(--text-muted); font-size: 10px; text-transform: uppercase; }
-  .concept-field p { color: #333; margin-top: 1px; }
-  .concept-why {
-    background: var(--green);
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 12px;
-    color: #2e7d32;
-    margin-top: 6px;
-  }
+  .action-box-green { background: var(--green); border-left: 5px solid var(--green-border); }
+  .action-box-yellow{ background: var(--yellow); border-left: 5px solid var(--yellow-border); }
+  .action-box-label { font-size: 12px; font-weight: 800; margin-bottom: 8px; }
+  .action-box-label-green { color: #2e7d32; }
+  .action-box-label-yellow{ color: #b8860b; }
+  .action-list { list-style: none; padding: 0; }
+  .action-list li { font-size: 13px; color: #333; padding: 3px 0; }
+  .action-list li::before { content: "• "; color: inherit; font-weight: 700; }
 
-  /* ── Roadmap Cards ────────────────────────────────────────────── */
-  .roadmap-card {
+  /* ── Adjacent confirmation table ───────────────────────────────── */
+  .adj-yes { color: #c62828; font-weight: 700; }
+  .adj-no  { color: #2e7d32; font-weight: 700; }
+
+  /* ── Ad concept cards ──────────────────────────────────────────── */
+  .concept-card {
     border: 1px solid var(--gray-line);
+    border-left: 5px solid var(--pink);
     border-radius: 8px;
     padding: 12px 16px;
     margin-bottom: 10px;
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  .roadmap-week {
-    display: inline-block;
-    background: var(--ocean);
+  .concept-num {
+    float: right;
+    background: var(--pink);
     color: white;
-    border-radius: 4px;
+    border-radius: 20px;
     padding: 2px 10px;
     font-size: 11px;
     font-weight: 800;
-    margin-bottom: 6px;
   }
-  .roadmap-focus { font-size: 13px; font-weight: 700; color: #111; margin-bottom: 6px; }
-  .roadmap-actions { list-style: none; }
-  .roadmap-actions li { font-size: 12.5px; color: #333; padding: 2px 0; }
-  .roadmap-actions li::before { content: "→ "; color: var(--ocean); font-weight: 700; }
-
-  /* ── Brand Deep Dive ──────────────────────────────────────────── */
-  .brand-dive-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 14px;
-  }
-  .brand-dive-card {
-    border: 1px solid var(--gray-line);
-    border-radius: 8px;
-    padding: 12px 14px;
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-  .brand-dive-card h4 { font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; }
-  .brand-dive-card ul { list-style: none; }
-  .brand-dive-card li { font-size: 12.5px; color: #333; padding: 2px 0; border-bottom: 1px solid #f0f0f0; }
-  .brand-dive-card li:last-child { border-bottom: none; }
-  .brand-dive-card li::before { content: "• "; color: var(--ocean); }
-  .strength-item::before { content: "✓ " !important; color: #2e7d32 !important; }
-  .gap-item::before { content: "✗ " !important; color: #c62828 !important; }
-
-  /* ── Adjacent Keywords ────────────────────────────────────────── */
-  .adjacent-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12.5px;
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-  .adjacent-table th {
-    background: var(--gray-bg);
-    border: 1px solid var(--gray-line);
-    padding: 6px 10px;
-    font-weight: 700;
-    font-size: 11px;
-    text-align: left;
-  }
-  .adjacent-table td { border: 1px solid var(--gray-line); padding: 6px 10px; }
-  .has-competition { color: #c62828; font-weight: 700; }
-  .no-competition { color: #2e7d32; font-weight: 700; }
-
-  /* ── Recs List ────────────────────────────────────────────────── */
-  .rec-list { list-style: none; margin: 0; padding: 0; }
-  .rec-list li {
-    border-left: 4px solid var(--ocean);
-    padding: 8px 12px;
-    margin-bottom: 8px;
-    background: var(--gray-bg);
-    border-radius: 0 6px 6px 0;
+  .concept-title { font-size: 14px; font-weight: 700; color: #111; margin-bottom: 6px; }
+  .concept-hook {
+    background: var(--pink-light);
+    border-radius: 6px;
+    padding: 7px 11px;
+    font-style: italic;
     font-size: 13px;
-    break-inside: avoid;
-    page-break-inside: avoid;
+    color: var(--pink);
+    margin-bottom: 8px;
   }
-  .rec-num {
-    display: inline-block;
-    background: var(--ocean);
-    color: white;
-    border-radius: 50%;
-    width: 18px;
-    height: 18px;
+  .concept-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px; margin-bottom: 6px; }
+  .concept-field label { font-weight: 700; color: var(--text-muted); font-size: 10px; text-transform: uppercase; }
+  .concept-field p { color: #333; margin-top: 2px; }
+  .concept-why { background: var(--green); border-radius: 6px; padding: 5px 10px; font-size: 12px; color: #2e7d32; }
+
+  /* ── Roadmap week cards ────────────────────────────────────────── */
+  .week-card { border: 1px solid var(--gray-line); border-radius: 8px; padding: 11px 15px; margin-bottom: 10px; break-inside: avoid; }
+  .week-badge { display: inline-block; background: var(--pink); color: white; border-radius: 4px; padding: 2px 10px; font-size: 11px; font-weight: 800; margin-bottom: 5px; }
+  .week-focus { font-size: 13px; font-weight: 700; color: #111; margin-bottom: 5px; }
+  .week-actions { list-style: none; padding: 0; }
+  .week-actions li { font-size: 12.5px; color: #333; padding: 2px 0; }
+  .week-actions li::before { content: "→ "; color: var(--pink); font-weight: 700; }
+
+  /* ── Footer ────────────────────────────────────────────────────── */
+  .footer {
+    margin-top: 30px;
+    padding-top: 12px;
+    border-top: 1px solid var(--gray-line);
+    font-size: 11px;
+    color: var(--text-light);
     text-align: center;
-    line-height: 18px;
-    font-size: 10px;
-    font-weight: 800;
-    margin-right: 8px;
   }
 </style>
 </head>
 <body>
 
-<!-- ═══ COVER PAGE ════════════════════════════════════════════════ -->
+<!-- ═══ COVER PAGE ══════════════════════════════════════════════════ -->
 <div class="cover">
-  <div class="cover-decoration"></div>
   <div class="cover-top-bar"></div>
-
-  <div class="cover-emoji">🌊</div>
 
   <div class="cover-title">
     {% if report.focus_brand %}
-      <span>{{ report.focus_brand }}</span> Blue Ocean Analysis
+      <span>{{ report.focus_brand }}</span> Loophole Analysis
     {% else %}
-      <span>{{ report.keyword | title }}</span> Blue Ocean Analysis
+      <span>{{ report.keyword | title }}</span> Loophole Analysis
     {% endif %}
   </div>
-  <div class="cover-subtitle">Meta Ads Library · Strategic Intelligence Report</div>
-  <div class="cover-subtitle">{{ report.keyword | upper }}</div>
 
-  <div class="cover-meta">
-    <span class="cover-chip">🌊 Blue Ocean Market</span>
-    <span class="cover-chip">{{ report.brands_scanned }} Brands Scanned</span>
-    <span class="cover-chip">Max {{ report.max_qualifying_ads }} Ads Found</span>
-    {% if report.focus_brand %}
-      <span class="cover-chip">Focus: {{ report.focus_brand }}</span>
+  <div class="cover-meta-line">
+    {% if report.focus_brand %}<strong>Brand:</strong> {{ report.focus_brand }} &nbsp;|&nbsp;{% endif %}
+    <strong>Market:</strong> {{ report.keyword | title }}
+  </div>
+  <div class="cover-meta-line">
+    <strong>Research Date:</strong> {{ generated_date }}
+    {% if report.market_loopholes %}
+      &nbsp;|&nbsp; <strong>Focus:</strong> Root Cause, Mechanism &amp; Ingredient Gaps
     {% endif %}
-    <span class="cover-chip">{{ generated_date }}</span>
   </div>
 
-  <div class="cover-finding">
-    🌊 No brand is running 50+ qualifying ads in "{{ report.keyword }}" on Meta Ads Library.
-    This market is wide open — first-mover advantage is available.
+  {% if report.market_loopholes %}
+  <div class="cover-verdict">
+    🎯 FINDING: Primary loopholes are
+    {% for lh in report.market_loopholes[:2] %}{{ lh.loophole_type | lower }}{% if not loop.last %}, {% endif %}{% endfor %}
+    depth and ingredient transparency gaps.
+    {% if report.adjacent_brands_count is defined and report.adjacent_brands_count %}
+      {{ report.adjacent_brands_count }} adjacent competitors analyzed — none explain the upstream cause or cellular mechanism.
+    {% else %}
+      Adjacent category analysis reveals nobody explains the upstream cause or cellular mechanism.
+    {% endif %}
+  </div>
+  {% elif report.blue_ocean_summary %}
+  <div class="cover-verdict">
+    🌊 BLUE OCEAN: No brand has 30+ qualifying ads for "{{ report.keyword }}" on Meta. First-mover advantage is available.
+  </div>
+  {% endif %}
+
+  {% if report.upstream_root_cause_gap and report.upstream_root_cause_gap.what_nobody_explains %}
+  <div class="cover-insight">
+    <div class="cover-insight-label">⚡ KEY INSIGHT: Nobody Explains WHY</div>
+    <p>
+      {% set urc = report.upstream_root_cause_gap %}
+      {{ urc.what_nobody_explains }}
+      {% if urc.opportunity %}
+        <strong>{{ urc.opportunity[:200] }}</strong>
+      {% endif %}
+    </p>
+  </div>
+  {% elif report.what_nobody_does_well %}
+  <div class="cover-insight">
+    <div class="cover-insight-label">⚡ KEY INSIGHT: Market-Wide Gaps</div>
+    <p><strong>What nobody does well:</strong>
+      {% for gap in report.what_nobody_does_well[:3] %}{{ gap }}{% if not loop.last %} · {% endif %}{% endfor %}
+    </p>
+  </div>
+  {% endif %}
+
+  <div class="cover-toc">
+    <div class="cover-toc-title">📋 Contents</div>
+    <div class="cover-toc-grid">
+      {% if report.competitive_landscape %}
+      <div class="cover-toc-item"><span>1.</span> Competitive Landscape</div>
+      {% endif %}
+      {% if report.upstream_root_cause_gap %}
+      <div class="cover-toc-item"><span>2.</span> Root Cause Gaps</div>
+      {% endif %}
+      {% if report.cellular_mechanism_gap %}
+      <div class="cover-toc-item"><span>3.</span> Mechanism Gaps</div>
+      {% endif %}
+      {% if report.ingredient_gap %}
+      <div class="cover-toc-item"><span>4.</span> Ingredient Story Gaps</div>
+      {% endif %}
+      {% if report.market_loopholes %}
+      <div class="cover-toc-item"><span>5.</span> Validated Loopholes</div>
+      {% endif %}
+      <div class="cover-toc-item"><span>6.</span> Execution Roadmap</div>
+      {% if report.first_5_ad_concepts %}
+      <div class="cover-toc-item"><span>7.</span> First 5 Ad Concepts</div>
+      {% endif %}
+    </div>
   </div>
 
   <div class="cover-bottom">
@@ -362,178 +477,332 @@
   </div>
 </div>
 
-<!-- ═══ SECTION 1: FINDING ════════════════════════════════════════ -->
+
+<!-- ═══ SECTION 1: COMPETITIVE LANDSCAPE ═══════════════════════════ -->
+{% if report.competitive_landscape %}
 <div class="section">
-  <div class="section-header">1. Market Scan Finding</div>
+  <div class="section-header">1. Competitive Landscape Summary</div>
 
-  <div class="callout callout-ocean">
-    <strong>🌊 Blue Ocean Detected:</strong> Scanned {{ report.brands_scanned }} brands
-    advertising on Meta for "{{ report.keyword }}". No brand reached the 50-ad qualifying threshold
-    required for meaningful pattern analysis. The maximum qualifying ads found by any single
-    brand was <strong>{{ report.max_qualifying_ads }}</strong>.
-  </div>
-
-  {% if report.blue_ocean_summary %}
-  <div style="font-size:13.5px; line-height:1.7; color:#333; margin-bottom:14px;">
-    {{ report.blue_ocean_summary | replace('\n', '<br>') }}
-  </div>
-  {% endif %}
-
-  <!-- Brand counts table -->
-  {% if report.brand_ad_counts %}
-  <table class="brand-table">
+  <table>
     <thead>
       <tr>
         <th>Brand</th>
-        <th>Qualifying Ads</th>
-        <th>Status</th>
+        <th>Root Cause</th>
+        <th>Mechanism</th>
+        <th>Ingredient Story</th>
+        <th>Authority</th>
       </tr>
     </thead>
     <tbody>
-      {% for entry in report.brand_ad_counts %}
+      {% for brand in report.competitive_landscape %}
       <tr>
-        <td>{{ entry.brand }}</td>
-        <td class="{% if entry.qualifying_ads >= 50 %}count-high{% else %}count-low{% endif %}">
-          {{ entry.qualifying_ads }}
-        </td>
+        <td><strong>{{ brand.brand }}</strong>{% if brand.category %}<br><span style="font-size:10px;color:#888;">{{ brand.category }}</span>{% endif %}</td>
+        <td>{{ brand.root_cause | default('None stated') }}</td>
+        <td>{{ brand.mechanism | default('None stated') }}</td>
         <td>
-          {% if entry.qualifying_ads >= 50 %}
-            <span style="color:#2e7d32;">✓ Qualifies</span>
+          {% set score = brand.ingredient_score | string %}
+          {% if score in ['0', '0/10', '1', '1/10', '2', '2/10'] %}
+            <span class="cross">✗ NONE</span>
+          {% elif brand.ingredient_story and brand.ingredient_story != 'NONE' %}
+            <span class="check">✓ {{ brand.ingredient_story[:60] }}</span>
           {% else %}
-            <span style="color:#c62828;">✗ Below threshold</span>
+            <span class="cross">✗ NONE</span>
           {% endif %}
         </td>
+        <td>{{ brand.authority | default('None') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if report.what_nobody_does_well %}
+  <div class="subsection-header">What NOBODY Does Well:</div>
+  <ul class="nobody-list">
+    {% for gap in report.what_nobody_does_well %}
+    <li>
+      {% set parts = gap.split(' — ') %}
+      {% if parts | length > 1 %}
+        <strong>{{ parts[0] }}</strong> — {{ parts[1:] | join(' — ') }}
+      {% else %}
+        {{ gap }}
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endif %}
+
+
+<!-- ═══ SECTION 2: ROOT CAUSE GAPS ═════════════════════════════════ -->
+{% if report.competitive_landscape or report.upstream_root_cause_gap %}
+<div class="section">
+  <div class="section-header">2. Root Cause Gaps</div>
+
+  {% if report.competitive_landscape %}
+  <div class="subsection-header">Current Market Root Causes</div>
+  <table>
+    <thead>
+      <tr><th>Brand</th><th>Root Cause</th><th>Depth</th><th>Gap</th></tr>
+    </thead>
+    <tbody>
+      {% for brand in report.competitive_landscape %}
+      <tr>
+        <td><strong>{{ brand.brand }}</strong></td>
+        <td>{{ brand.root_cause | default('None stated') | truncate(80) }}</td>
+        <td>{{ brand.root_cause_depth | default('Surface') | title }}</td>
+        <td style="color:#c62828;">{{ brand.root_cause_gap | default('No explanation') | truncate(80) }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% endif %}
-</div>
 
-<!-- ═══ SECTION 2: FOCUS BRAND DEEP DIVE ═════════════════════════ -->
-{% if report.focus_brand and report.focus_brand_ads_analyzed > 0 %}
-<div class="section">
-  <div class="section-header">2. Focus Brand Deep Dive — {{ report.focus_brand }}</div>
-
-  <div class="callout callout-yellow">
-    <strong>{{ report.focus_brand_ads_analyzed }} ads analyzed.</strong>
-    Since this is a blue ocean market, the strategic focus shifts from differentiation
-    to category ownership. Here's what {{ report.focus_brand }}'s current messaging reveals.
-  </div>
-
-  <div class="brand-dive-grid">
-    {% if report.focus_brand_root_causes %}
-    <div class="brand-dive-card">
-      <h4>Root Causes Used</h4>
-      <ul>
-        {% for rc in report.focus_brand_root_causes %}
-        <li>{{ rc }}</li>
-        {% endfor %}
-      </ul>
-    </div>
+  {% set urc = report.upstream_root_cause_gap %}
+  {% if urc and urc.what_nobody_explains %}
+  <div class="subsection-header">The Missing Upstream Story</div>
+  <div class="gap-box">
+    <div class="gap-box-label">What Nobody Explains:</div>
+    <p>{{ urc.what_nobody_explains }}</p>
+    {% if urc.the_chain %}
+    <ul class="chain-list">
+      {% for step in urc.the_chain %}
+      <li>{{ step }}</li>
+      {% endfor %}
+    </ul>
     {% endif %}
-
-    {% if report.focus_brand_mechanisms %}
-    <div class="brand-dive-card">
-      <h4>Mechanisms Positioned</h4>
-      <ul>
-        {% for m in report.focus_brand_mechanisms %}
-        <li>{{ m }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-
-    {% if report.focus_brand_top_pain_points %}
-    <div class="brand-dive-card">
-      <h4>Top Pain Points</h4>
-      <ul>
-        {% for pp in report.focus_brand_top_pain_points %}
-        <li>{{ pp }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-
-    {% if report.focus_brand_avatar %}
-    <div class="brand-dive-card">
-      <h4>Target Avatar</h4>
-      <p style="font-size:12.5px;color:#333;">{{ report.focus_brand_avatar }}</p>
-    </div>
-    {% endif %}
-  </div>
-
-  {% if report.focus_brand_strengths or report.focus_brand_gaps %}
-  <div class="brand-dive-grid">
-    {% if report.focus_brand_strengths %}
-    <div class="brand-dive-card">
-      <h4>What's Working (Strengths)</h4>
-      <ul>
-        {% for s in report.focus_brand_strengths %}
-        <li class="strength-item">{{ s }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-
-    {% if report.focus_brand_gaps %}
-    <div class="brand-dive-card">
-      <h4>Messaging Gaps to Fix</h4>
-      <ul>
-        {% for g in report.focus_brand_gaps %}
-        <li class="gap-item">{{ g }}</li>
-        {% endfor %}
-      </ul>
-    </div>
+    {% if urc.opportunity %}
+    <div class="opportunity-box"><strong>Opportunity:</strong> {{ urc.opportunity }}</div>
     {% endif %}
   </div>
   {% endif %}
 </div>
 {% endif %}
 
-<!-- ═══ SECTION 3: EXECUTION STRATEGY ════════════════════════════ -->
+
+<!-- ═══ SECTION 3: MECHANISM GAPS ══════════════════════════════════ -->
+{% if report.competitive_landscape or report.cellular_mechanism_gap %}
 <div class="section">
-  <div class="section-header">3. Blue Ocean Execution Strategy</div>
+  <div class="section-header">3. Mechanism Gaps</div>
 
-  <div class="callout callout-green">
-    <strong>First-Mover Rules Apply.</strong> With no competition, the goal is to
-    own the category keyword on Meta, test depth levels and avatar variations,
-    and scale what works — without worrying about differentiation.
+  {% if report.competitive_landscape %}
+  <div class="subsection-header">Current Market Mechanisms</div>
+  <table>
+    <thead>
+      <tr><th>Brand</th><th>Mechanism</th><th>Depth</th><th>Gap</th></tr>
+    </thead>
+    <tbody>
+      {% for brand in report.competitive_landscape %}
+      <tr>
+        <td><strong>{{ brand.brand }}</strong></td>
+        <td>{{ brand.mechanism | default('None stated') | truncate(80) }}</td>
+        <td>{{ brand.mechanism_depth | default('Claim-only') | title }}</td>
+        <td style="color:#c62828;">{{ brand.mechanism_gap | default('No explanation') | truncate(80) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% set cmg = report.cellular_mechanism_gap %}
+  {% if cmg and cmg.what_nobody_explains %}
+  <div class="subsection-header">The Missing Cellular Depth</div>
+  <div class="gap-box">
+    <div class="gap-box-label">What Nobody Explains:</div>
+    <p>{{ cmg.what_nobody_explains }}</p>
+    {% if cmg.specific_questions %}
+    <ul class="bullet-q">
+      {% for q in cmg.specific_questions %}
+      <li>{{ q }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if cmg.example_depth %}
+    <div class="opportunity-box"><strong>Example depth:</strong> {{ cmg.example_depth }}</div>
+    {% endif %}
   </div>
+  {% endif %}
+</div>
+{% endif %}
 
-  {% if report.execution_recommendations %}
-  <div class="subsection-header">Execution Recommendations</div>
-  <ul class="rec-list">
-    {% for rec in report.execution_recommendations %}
-    <li><span class="rec-num">{{ loop.index }}</span>{{ rec }}</li>
-    {% endfor %}
-  </ul>
+
+<!-- ═══ SECTION 4: INGREDIENT STORY GAPS ════════════════════════════ -->
+{% if report.ingredient_gap or report.competitive_landscape %}
+<div class="section">
+  <div class="section-header">4. Ingredient Story Gaps</div>
+
+  {% if report.competitive_landscape %}
+  <div class="subsection-header">Market-Wide Ingredient Transparency</div>
+  <table>
+    <thead>
+      <tr><th>Brand</th><th>Origin Story</th><th>Sourcing</th><th>Why Special</th><th>Score</th></tr>
+    </thead>
+    <tbody>
+      {% for brand in report.competitive_landscape %}
+      {% set score = brand.ingredient_score | string %}
+      {% set has_story = brand.ingredient_story and brand.ingredient_story != 'NONE' %}
+      {% set score_num = score.split('/')[0] | int if '/' in score else score | int if score.isdigit() else 0 %}
+      <tr>
+        <td><strong>{{ brand.brand }}</strong></td>
+        <td>{% if score_num >= 6 %}<span class="check">✓</span>{% else %}<span class="cross">✗</span>{% endif %}</td>
+        <td>{% if score_num >= 5 %}<span class="check">✓</span>{% else %}<span class="cross">✗</span>{% endif %}</td>
+        <td>{% if has_story %}<span class="check">✓ {{ brand.ingredient_story[:50] }}</span>{% else %}<span class="cross">✗</span>{% endif %}</td>
+        <td><strong>{{ brand.ingredient_score | default('0') }}/10</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% set ig = report.ingredient_gap %}
+  {% if ig %}
+    {% if ig.specific_vulnerability %}
+    <div class="vuln-box">
+      <div class="vuln-box-label">🎯 Biggest Vulnerability</div>
+      <p>{{ ig.specific_vulnerability }}</p>
+    </div>
+    {% endif %}
+
+    {% if ig.opportunities %}
+    <div class="callout callout-pink">
+      <div class="callout-label">Ingredient Story Opportunities</div>
+      <div class="callout-label-context" style="font-size:12px;color:#555;margin-bottom:8px;">What's Missing Market-Wide:</div>
+      <ul>
+        {% for opp in ig.opportunities %}
+        <li><strong>{{ opp.label }}:</strong> {{ opp.example }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+
+<!-- ═══ SECTION 5: VALIDATED LOOPHOLES ════════════════════════════ -->
+{% if report.market_loopholes %}
+<div class="section">
+  <div class="section-header">5. Validated Loopholes</div>
+
+  {% for lh in report.market_loopholes %}
+  <div class="loophole-card">
+    <div class="loophole-card-top">
+      <div class="loophole-title">
+        {% if lh.rank %}🥇{% if lh.rank == 2 %}🥈{% elif lh.rank == 3 %}🥉{% endif %}{% endif %}
+        {{ lh.title }}
+      </div>
+      <div class="loophole-score">{{ lh.score }}/50</div>
+    </div>
+
+    <div class="loophole-section-label">THE GAP</div>
+    <div class="loophole-gap">{{ lh.the_gap }}</div>
+
+    {% if lh.why_its_massive %}
+    <div class="loophole-section-label">WHY IT'S MASSIVE</div>
+    <ul class="loophole-bullets">
+      {% for point in lh.why_its_massive %}
+      <li>{{ point }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <div class="loophole-tags">
+      {% if lh.loophole_type %}
+      <span class="tag tag-type">{{ lh.loophole_type }}</span>
+      {% endif %}
+      {% if lh.risk_level %}
+      <span class="tag {% if 'LOW' in lh.risk_level %}tag-risk{% else %}tag-risk-med{% endif %}">{{ lh.risk_level }}</span>
+      {% endif %}
+    </div>
+
+    {% if lh.execution %}
+    <div class="loophole-section-label">EXECUTION</div>
+    <ul class="loophole-bullets">
+      {% for action in lh.execution %}
+      <li>{{ action }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+
+<!-- ═══ SECTION 6: EXECUTION ROADMAP ══════════════════════════════ -->
+<div class="section">
+  <div class="section-header">6. Execution Roadmap</div>
+
+  {% if report.market_loopholes %}
+  <div class="subsection-header">Priority Matrix</div>
+  <table class="priority-table">
+    <thead>
+      <tr><th>Rank</th><th>Loophole</th><th>Score</th><th>Effort</th><th>Timeline</th></tr>
+    </thead>
+    <tbody>
+      {% for lh in report.market_loopholes %}
+      <tr {% if loop.index <= 2 %}class="priority-top"{% endif %}>
+        <td>{{ loop.index }}</td>
+        <td><strong>{{ lh.title | replace('LOOPHOLE ' ~ loop.index ~ ': ', '') }}</strong></td>
+        <td><strong>{{ lh.score }}/50</strong></td>
+        <td>{{ lh.effort | default('Medium') }}</td>
+        <td>{{ lh.timeline | default('4-6 weeks') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% set er = report.execution_roadmap %}
+  {% if er and er.immediate_actions %}
+  <div class="action-box action-box-green">
+    <div class="action-box-label action-box-label-green">
+      🚀 Immediate Actions (Week 1-2)
+    </div>
+    <ul class="action-list">
+      {% for action in er.immediate_actions %}
+      <li>{{ action }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% elif report.execution_recommendations %}
+  <div class="action-box action-box-green">
+    <div class="action-box-label action-box-label-green">🚀 Execution Recommendations</div>
+    <ul class="action-list">
+      {% for rec in report.execution_recommendations %}
+      <li>{{ rec }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if er and er.what_not_to_do %}
+  <div class="action-box action-box-yellow">
+    <div class="action-box-label action-box-label-yellow">✗ What NOT To Do</div>
+    <ul class="action-list">
+      {% for item in er.what_not_to_do %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </div>
   {% endif %}
 </div>
 
-<!-- ═══ SECTION 4: FIRST 5 AD CONCEPTS ══════════════════════════ -->
+
+<!-- ═══ SECTION 7: AD CONCEPTS ════════════════════════════════════ -->
 {% if report.first_5_ad_concepts %}
 <div class="section">
-  <div class="section-header">4. First 5 Ad Concepts to Launch</div>
+  <div class="section-header">7. First 5 Ad Concepts to Launch</div>
 
   {% for concept in report.first_5_ad_concepts %}
   <div class="concept-card">
-    <span class="concept-number">Concept {{ loop.index }}</span>
+    <span class="concept-num">Concept {{ loop.index }}</span>
     <div class="concept-title">{{ concept.title }}</div>
     <div class="concept-hook">"{{ concept.hook }}"</div>
     <div class="concept-grid">
-      <div class="concept-field">
-        <label>Angle</label>
-        <p>{{ concept.angle }}</p>
-      </div>
-      <div class="concept-field">
-        <label>Root Cause</label>
-        <p>{{ concept.root_cause }}</p>
-      </div>
-      <div class="concept-field" style="grid-column: 1 / -1;">
-        <label>Mechanism</label>
-        <p>{{ concept.mechanism }}</p>
-      </div>
+      <div class="concept-field"><label>Angle</label><p>{{ concept.angle }}</p></div>
+      <div class="concept-field"><label>Root Cause</label><p>{{ concept.root_cause }}</p></div>
+      <div class="concept-field" style="grid-column: 1 / -1;"><label>Mechanism</label><p>{{ concept.mechanism }}</p></div>
     </div>
     <div class="concept-why">💡 {{ concept.why_it_works }}</div>
   </div>
@@ -541,16 +810,17 @@
 </div>
 {% endif %}
 
-<!-- ═══ SECTION 5: TESTING ROADMAP ══════════════════════════════ -->
+
+<!-- ═══ SECTION 8: TESTING ROADMAP ═══════════════════════════════ -->
 {% if report.testing_roadmap %}
 <div class="section">
-  <div class="section-header">5. Testing Roadmap</div>
+  <div class="section-header">8. Testing Roadmap</div>
 
   {% for week in report.testing_roadmap %}
-  <div class="roadmap-card">
-    <div class="roadmap-week">{{ week.week }}</div>
-    <div class="roadmap-focus">{{ week.focus }}</div>
-    <ul class="roadmap-actions">
+  <div class="week-card">
+    <div class="week-badge">{{ week.week }}</div>
+    <div class="week-focus">{{ week.focus }}</div>
+    <ul class="week-actions">
       {% for action in week.actions %}
       <li>{{ action }}</li>
       {% endfor %}
@@ -560,23 +830,22 @@
 </div>
 {% endif %}
 
-<!-- ═══ SECTION 6: ADJACENT MARKETS ═════════════════════════════ -->
+
+<!-- ═══ SECTION 9: ADJACENT MARKET CONFIRMATION ══════════════════ -->
 {% if report.adjacent_keywords %}
 <div class="section">
-  <div class="section-header">6. Adjacent Market Intelligence</div>
+  <div class="section-header">9. Adjacent Market Intelligence</div>
 
   {% if report.adjacent_insights %}
-  <div style="font-size:13.5px; line-height:1.7; color:#333; margin-bottom:14px;">
-    {{ report.adjacent_insights | replace('\n', '<br>') }}
-  </div>
+  <p style="font-size:13px;line-height:1.7;color:#333;margin-bottom:12px;">{{ report.adjacent_insights }}</p>
   {% endif %}
 
-  <table class="adjacent-table">
+  <table>
     <thead>
       <tr>
         <th>Keyword</th>
         <th>Total Brands</th>
-        <th>Brands with 50+ Ads</th>
+        <th>Brands 50+ Ads</th>
         <th>Max Ads</th>
         <th>Competition</th>
       </tr>
@@ -590,9 +859,9 @@
         <td>{{ kw.max_ads }}</td>
         <td>
           {% if kw.has_competition %}
-            <span class="has-competition">Yes — study this</span>
+            <span class="adj-yes">Yes — study this</span>
           {% else %}
-            <span class="no-competition">Blue ocean too</span>
+            <span class="adj-no">Blue ocean too</span>
           {% endif %}
         </td>
       </tr>
@@ -601,6 +870,20 @@
   </table>
 </div>
 {% endif %}
+
+
+<!-- ═══ FOOTER ═══════════════════════════════════════════════════ -->
+<div class="footer">
+  {{ report.keyword | title }} Loophole Analysis —
+  Research Date: {{ generated_date }} |
+  {% if report.competitive_landscape %}
+    Adjacent Competitor Analysis: {{ report.competitive_landscape | map(attribute='brand') | join(', ') }} |
+  {% endif %}
+  {% if report.market_loopholes %}
+    {{ report.market_loopholes | length }} Validated Loopholes |
+  {% endif %}
+  Focus: Depth over Demographics
+</div>
 
 </body>
 </html>

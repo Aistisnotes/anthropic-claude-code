@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -95,6 +96,7 @@ class Pipeline:
         scraped_ads: list[ScrapedAd],
         query: str,
         brand: str,
+        ad_metadata: dict[str, dict] | None = None,
     ) -> PatternReport:
         """Run pipeline stages 2-8 on pre-scraped ads (bypass Stage 1).
 
@@ -123,7 +125,8 @@ class Pipeline:
                     run_id=run_id,
                     scraped_ads=scraped_ads,
                     query=query,
-                    brand=brand
+                    brand=brand,
+                    ad_metadata=ad_metadata,
                 )
                 await self.store.complete_run(run_id, "completed")
                 return report
@@ -137,6 +140,7 @@ class Pipeline:
         scraped_ads: list[ScrapedAd],
         query: str,
         brand: str,
+        ad_metadata: dict[str, dict] | None = None,
     ) -> PatternReport:
         """Execute stages 2-8 of the pipeline (download through report).
 
@@ -243,6 +247,27 @@ class Pipeline:
             )
 
             analyses = [a for a in analysis_results.values() if a is not None]
+
+            # Enrich analyses with impression and date metadata from scraped ads
+            scraped_map = {ad.ad_id: ad for ad in scraped_ads}
+            today = date.today()
+            for analysis in analyses:
+                scraped = scraped_map.get(analysis.ad_id)
+                if scraped:
+                    analysis.impression_lower = scraped.impression_lower
+                    if scraped.started_running and analysis.days_since_launch is None:
+                        try:
+                            start = datetime.strptime(scraped.started_running[:10], "%Y-%m-%d").date()
+                            analysis.days_since_launch = (today - start).days
+                        except (ValueError, AttributeError):
+                            pass
+                if ad_metadata and analysis.ad_id in ad_metadata:
+                    meta = ad_metadata[analysis.ad_id]
+                    if meta.get("priority_label"):
+                        analysis.priority_label = meta["priority_label"]
+                    if meta.get("days_since_launch") is not None and analysis.days_since_launch is None:
+                        analysis.days_since_launch = meta["days_since_launch"]
+
             for analysis in analyses:
                 await self.store.save_analysis(run_id, analysis)
 

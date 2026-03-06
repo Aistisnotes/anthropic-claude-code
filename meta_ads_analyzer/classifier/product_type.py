@@ -185,6 +185,11 @@ ONLY return the JSON array, no other text."""
 def get_dominant_product_type(ads: list[ScrapedAd]) -> tuple[ProductType, dict[ProductType, int]]:
     """Get dominant product type from a list of ads.
 
+    Requires clear dominance — the top type must be at least 45% of non-UNKNOWN
+    ads AND at least 1.5x the count of the runner-up.  If neither condition is
+    met (e.g. supplement=33% vs skincare=30% for a mixed keyword like
+    "collagen eye mask"), returns UNKNOWN so no filtering is applied.
+
     Args:
         ads: List of ads
 
@@ -201,8 +206,31 @@ def get_dominant_product_type(ads: list[ScrapedAd]) -> tuple[ProductType, dict[P
     if not candidates:
         return ProductType.UNKNOWN, distribution
 
-    dominant = max(candidates.items(), key=lambda x: x[1])[0]
-    return dominant, distribution
+    sorted_candidates = sorted(candidates.items(), key=lambda x: x[1], reverse=True)
+    dominant_type, dominant_count = sorted_candidates[0]
+    total_non_unknown = sum(candidates.values())
+    dominant_pct = dominant_count / total_non_unknown * 100
+
+    # Must be clearly dominant: ≥45% of non-UNKNOWN ads
+    if dominant_pct < 45:
+        logger.info(
+            f"No clear dominant product type ({dominant_type.value}={dominant_pct:.1f}% < 45%) — "
+            "using all product types"
+        )
+        return ProductType.UNKNOWN, distribution
+
+    # Must also be ≥1.5× the runner-up (prevents 34% vs 33% from filtering)
+    if len(sorted_candidates) > 1:
+        runner_up_count = sorted_candidates[1][1]
+        if dominant_count < runner_up_count * 1.5:
+            logger.info(
+                f"No clear dominant product type ({dominant_type.value}={dominant_count} vs "
+                f"{sorted_candidates[1][0].value}={runner_up_count}, ratio={dominant_count/runner_up_count:.2f} < 1.5) — "
+                "using all product types"
+            )
+            return ProductType.UNKNOWN, distribution
+
+    return dominant_type, distribution
 
 
 def filter_ads_by_product_type(

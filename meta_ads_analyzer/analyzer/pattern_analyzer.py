@@ -60,12 +60,23 @@ class PatternAnalyzer:
             f"Running pattern analysis on {len(analyses)} ads for '{search_query}'"
         )
 
+        # Compute impression_rank from impression_lower (1 = highest impressions)
+        sorted_by_impressions = sorted(analyses, key=lambda a: a.impression_lower, reverse=True)
+        impression_rank_map = {a.ad_id: i + 1 for i, a in enumerate(sorted_by_impressions)}
+
         # Prepare ad analyses as JSON for the prompt
         analyses_data = []
         for a in analyses:
             analyses_data.append({
                 "ad_id": a.ad_id,
+                "impression_rank": impression_rank_map.get(a.ad_id, len(analyses)),
+                "days_since_launch": a.days_since_launch if a.days_since_launch is not None else 999,
+                "priority_label": a.priority_label,
                 "brand": a.brand,
+                "avatar": a.avatar,
+                "concept": a.concept,
+                "creative_format": a.creative_format,
+                "scientific_note": a.scientific_note,
                 "target_customer_profile": a.target_customer_profile,
                 "target_demographics": a.target_demographics,
                 "target_psychographics": a.target_psychographics,
@@ -216,6 +227,11 @@ class PatternAnalyzer:
                 format_distribution=data.get("format_distribution", {}),
                 offer_distribution=data.get("offer_distribution", {}),
                 cta_distribution=data.get("cta_distribution", {}),
+                creative_format_distribution=data.get("creative_format_distribution", {}),
+                # NEW: Deep analysis additions
+                avatars=data.get("avatars", []),
+                concepts=data.get("concepts", []),
+                what_nobody_does_well=data.get("what_nobody_does_well", []),
                 # Deep analysis fields
                 competitive_verdict=data.get("competitive_verdict", ""),
                 root_cause_gaps=data.get("root_cause_gaps", []),

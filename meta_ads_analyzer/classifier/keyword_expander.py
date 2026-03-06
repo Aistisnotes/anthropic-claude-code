@@ -87,6 +87,70 @@ Return ONLY a JSON array of {count} related keywords, no other text:
         return []
 
 
+async def generate_cross_category_keywords(
+    primary_keyword: str,
+    config: dict,
+    count: int = 5,
+) -> list[dict]:
+    """Returns list of {"category": str, "keyword": str} for non-direct competitors.
+
+    Identifies different product types that target the same audience as primary_keyword
+    but through completely different formats — for blue ocean cross-category analysis.
+    """
+    logger.info(f"Generating {count} cross-category keywords for: {primary_keyword}")
+
+    prompt = f"""Identify {count} DIFFERENT product categories that solve the SAME underlying problem for the SAME audience as "{primary_keyword}", but through completely different formats.
+
+Rules:
+- Each must be a different product type (device, serum, supplement, tool, treatment, cream, etc.)
+- No synonyms or slight variations of the same product
+- Must target the same person with the same underlying desire
+
+Examples for "collagen eye mask":
+- red light therapy eye device (different format: device)
+- eye serum retinol vitamin c (different format: topical serum)
+- collagen peptide supplement eyes (different format: ingestible)
+- jade roller eye depuffer (different format: tool)
+- under eye microneedling patch (different format: micro-treatment)
+
+Return ONLY a JSON array, no other text:
+[{{"category": "red light eye device", "keyword": "red light therapy eye device"}}, ...]"""
+
+    try:
+        client = anthropic.AsyncAnthropic()
+        response = await client.messages.create(
+            model=config.get("analyzer", {}).get("model", "claude-sonnet-4-20250514"),
+            max_tokens=512,
+            temperature=0.7,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        text = response.content[0].text.strip()
+
+        if "[" in text and "]" in text:
+            start = text.find("[")
+            end = text.rfind("]") + 1
+            json_text = text[start:end]
+            items = json.loads(json_text)
+
+            # Validate: each item must have both keys
+            valid = [
+                item for item in items
+                if isinstance(item, dict) and "category" in item and "keyword" in item
+            ]
+            valid = valid[:count]
+
+            logger.info(f"Generated {len(valid)} cross-category keywords: {valid}")
+            return valid
+        else:
+            logger.warning("Could not parse cross-category keyword response, returning empty list")
+            return []
+
+    except Exception as e:
+        logger.error(f"Failed to generate cross-category keywords: {e}")
+        return []
+
+
 def deduplicate_ads_across_keywords(
     all_ads_by_keyword: dict[str, list],
 ) -> tuple[list, dict[str, int]]:

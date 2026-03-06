@@ -34,21 +34,25 @@ Respond in the following JSON format exactly:
   "target_customer_profile": "Who this ad targets — their specific SITUATION (not just demographics). Extract from ACTUAL ad language. If not explicitly stated, write 'not specified in ad'.",
   "target_demographics": "Age, gender, income, location signals from the copy. Extract only explicit mentions or clear signals. If none, write 'not specified in ad'.",
   "target_psychographics": "Beliefs they already hold, identity they want to claim, tribe they belong to. Extract from ACTUAL ad language only. If none stated, write 'not specified in ad'.",
+  "avatar": "The specific person being targeted with the FULL message — their situation, the emotional state they're in when they see this ad, what they've already tried, what identity they hold. e.g. 'Woman 45-55, has tried retinol + moisturizers, blames herself for skin aging, doesn't know hormones are responsible, wants a scientific explanation not a sales pitch'. Synthesize from all available signals in the ad.",
 
   "pain_points": ["Specific pain point extracted from copy — use their EXACT language where possible. If no pain points are mentioned, use empty array []"],
   "pain_point_symptoms": ["Observable symptoms — what does the customer SEE/FEEL that tells them something is wrong. Extract from ACTUAL ad copy only. If none stated, use empty array []"],
 
   "root_cause": "The root cause as STATED in the ad — the explanation given for why the problem exists. CRITICAL: Extract only what the ad explicitly claims as the cause. If no root cause is mentioned, write 'none stated in ad'. Do NOT infer or invent.",
   "root_cause_chain": [
-    "Upstream cause (the WHY behind the why — what CAUSES the stated root cause?)",
-    "Stated root cause (what the ad claims)",
-    "Downstream effect (what happens because of the root cause)",
-    "Visible symptom (what the customer actually notices)"
+    "Upstream cause — label as '(stated in ad)' if mentioned, or '(analyst context — not stated in ad)' if you are adding this. What CAUSES the stated root cause?",
+    "Stated root cause — label as '(stated in ad)'. What the ad explicitly claims is the cause.",
+    "Downstream effect — label as '(stated in ad)' or '(analyst context)'. What happens as a result of the root cause?",
+    "Visible symptom — label as '(stated in ad)' or '(analyst context)'. What does the customer actually see or feel?"
   ],
   "root_cause_depth": "One of: surface (just names a cause), moderate (explains a mechanism), deep (traces a causal chain), cellular (goes to molecular/cellular level). Most ads stop at surface or moderate.",
+  "concept": "The root cause + mechanism combination that forms the core argument. e.g. 'Estrogen decline → ceramide loss → barrier breakdown, fixed by ceramide ratio replication'. This is NOT a creative format (not '8-week timeline' or 'before/after story'). If no clear RC+mechanism combo is stated, write 'none stated'.",
+  "creative_format": "The ad execution format: testimonial, before/after, educational explainer, ugc-style, talking head, listicle, hook-story-offer, etc.",
 
   "mechanism": "The mechanism as presented — HOW does the product solve the problem? What's the unique pathway? CRITICAL: Extract only what the ad explicitly explains. If no mechanism is explained, write 'none stated in ad'. Do NOT infer or invent.",
   "mechanism_depth": "One of: claim-only (just says it works), process-level (describes steps/phases), cellular-molecular (explains at biological level). Note exactly WHERE the explanation stops short. If no mechanism stated, use 'none'.",
+  "scientific_note": "Even if the ad is vague, what is the ACTUAL science behind the root cause and mechanism being referenced? e.g. if ad says 'barrier collapse', explain: what the skin barrier actually is, what ceramides do, what causes their depletion. This is analyst context, not ad copy extraction. Write 2-4 sentences of genuine scientific depth.",
 
   "proof_elements": ["Every proof element used: authority figures, studies cited, specific numbers/percentages, testimonial claims, before/after data, credentials mentioned, clinical language"],
   "proof_gaps": ["What claims are made WITHOUT proof? Where does the ad assert something as fact without evidence? Where are studies referenced vaguely ('studies show') vs specifically?"],
