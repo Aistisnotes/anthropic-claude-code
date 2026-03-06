@@ -43,8 +43,7 @@ STATIC_DIR.mkdir(exist_ok=True)
 
 
 def _pdf_iframe(pdf_path: Path) -> None:
-    """Render a PDF inline. Uses components.v1.html so JavaScript can build the
-    correct absolute URL at runtime — works on localhost AND HTTPS/ngrok."""
+    """Render a PDF inline using PDF.js (canvas-based, works in sandboxed iframes on HTTPS/ngrok)."""
     import shutil as _shutil
     import streamlit.components.v1 as components
 
@@ -53,31 +52,58 @@ def _pdf_iframe(pdf_path: Path) -> None:
         _shutil.copy2(pdf_path, dest)
 
     filename = pdf_path.name
-    # components.v1.html runs in a same-origin iframe, so window.location.origin
-    # is the correct base (http://localhost:8501 locally, https://kandy.ngrok.pro on ngrok).
     components.html(
         f"""<!DOCTYPE html><html><head>
 <style>
-  * {{ box-sizing: border-box; }}
-  body {{ margin:0; padding:0; background:#f8f8f8; font-family:sans-serif; }}
-  #viewer {{ width:100%; height:912px; border:1px solid #ddd; border-radius:6px; display:block; }}
-  #openbtn {{ margin:6px 0; padding:6px 14px; background:#e91e8c; color:#fff;
-              border:none; border-radius:4px; cursor:pointer; font-size:13px; }}
-  #openbtn:hover {{ background:#c2176e; }}
-</style></head><body>
-<object id="viewer" type="application/pdf" data="">
-  <p style="padding:20px">Your browser cannot display the PDF inline.
-  <a id="fblink" href="#" target="_blank">Open it in a new tab →</a></p>
-</object>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: #525659; font-family: sans-serif; overflow-y: auto; }}
+  #loading {{ color: #ccc; padding: 40px; text-align: center; font-size: 14px; }}
+  #error   {{ color: #f88; padding: 20px; font-size: 13px; }}
+  #pages   {{ display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 12px; }}
+  canvas   {{ background: white; box-shadow: 0 2px 8px rgba(0,0,0,.5); max-width: 100%; }}
+</style>
+</head><body>
+<div id="loading">Loading PDF…</div>
+<div id="error"  style="display:none"></div>
+<div id="pages"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
-  var url = window.location.origin + '/app/static/{filename}';
-  document.getElementById('viewer').data = url;
-  var fb = document.getElementById('fblink');
-  if (fb) fb.href = url;
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  var pdfUrl = window.location.origin + '/app/static/{filename}';
+
+  pdfjsLib.getDocument(pdfUrl).promise.then(function(pdf) {{
+    document.getElementById('loading').style.display = 'none';
+    var container = document.getElementById('pages');
+    var scale = Math.min(1.6, (window.innerWidth - 40) / 612);
+
+    var chain = Promise.resolve();
+    for (var i = 1; i <= pdf.numPages; i++) {{
+      (function(pageNum) {{
+        chain = chain.then(function() {{
+          return pdf.getPage(pageNum).then(function(page) {{
+            var vp = page.getViewport({{ scale: scale }});
+            var canvas = document.createElement('canvas');
+            canvas.width  = vp.width;
+            canvas.height = vp.height;
+            container.appendChild(canvas);
+            return page.render({{ canvasContext: canvas.getContext('2d'), viewport: vp }}).promise;
+          }});
+        }});
+      }})(i);
+    }}
+  }}).catch(function(err) {{
+    document.getElementById('loading').style.display = 'none';
+    var el = document.getElementById('error');
+    el.style.display = 'block';
+    el.textContent = 'Could not load PDF: ' + err.message;
+  }});
 </script>
 </body></html>""",
-        height=940,
-        scrolling=False,
+        height=1100,
+        scrolling=True,
     )
 
 # ── Page config ────────────────────────────────────────────────────────────────
