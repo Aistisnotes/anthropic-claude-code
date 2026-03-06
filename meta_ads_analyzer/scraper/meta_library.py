@@ -85,6 +85,11 @@ class MetaAdsScraper:
         # view_all_page_id links in advertiser header sections.
         self._found_page_ids: list[str] = []
 
+    @property
+    def found_page_ids(self) -> list[str]:
+        """Page IDs discovered during the most recent scrape() call."""
+        return list(self._found_page_ids)
+
     async def scrape(
         self,
         query: str,
@@ -180,11 +185,14 @@ class MetaAdsScraper:
         seen_ids: set[str] = set()
         scroll_attempts = 0
         stale_rounds = 0
+        _debug = bool(self.debug_dir)
+        _label = f"page_id:{page_id}" if page_id else f"q:{query}"
 
         while len(ads) < self.max_ads and scroll_attempts < self.max_scroll_attempts:
             new_ads = await self._extract_ad_cards(page, container_selector)
 
             added_this_round = 0
+            dupes_this_round = 0
             for ad in new_ads:
                 if ad.ad_id not in seen_ids:
                     seen_ids.add(ad.ad_id)
@@ -193,8 +201,21 @@ class MetaAdsScraper:
                     added_this_round += 1
                     if len(ads) >= self.max_ads:
                         break
+                else:
+                    dupes_this_round += 1
+
+            if _debug and scroll_attempts == 0:
+                logger.info(
+                    f"[FUNNEL:SCRAPER] {_label} initial_load: "
+                    f"dom_cards={len(new_ads)} unique_collected={len(ads)} "
+                    f"intra_page_dupes={dupes_this_round}"
+                )
 
             if len(ads) >= self.max_ads:
+                logger.info(
+                    f"[FUNNEL:SCRAPER] {_label} HIT max_ads CAP={self.max_ads} "
+                    f"after {scroll_attempts} scrolls — brand likely has MORE ads"
+                )
                 break
 
             # Scroll down
@@ -214,6 +235,12 @@ class MetaAdsScraper:
                     stale_rounds = 0
                 else:
                     stale_rounds += 1
+                    if _debug:
+                        logger.info(
+                            f"[FUNNEL:SCRAPER] {_label} stale={stale_rounds}/5 "
+                            f"scroll={scroll_attempts} unique={len(ads)} "
+                            f"dom_visible={len(post_scroll_ads)}"
+                        )
                     if stale_rounds >= 5:
                         logger.info(
                             f"No more ads after {scroll_attempts} scrolls. "
@@ -248,7 +275,14 @@ class MetaAdsScraper:
                 )
 
         await self._debug_screenshot(page, "final_state")
-        return ads[: self.max_ads]
+        result = ads[: self.max_ads]
+        hit_cap = len(result) >= self.max_ads
+        logger.info(
+            f"[FUNNEL:SCRAPER] {_label} DONE scrolls={scroll_attempts} "
+            f"unique_collected={len(result)} cap={self.max_ads} "
+            f"hit_cap={'YES — truncated' if hit_cap else 'NO — natural end'}"
+        )
+        return result
 
     def _build_search_url(self, query: str, page_id: str | None = None) -> str:
         """Build Meta Ads Library search URL with filters.

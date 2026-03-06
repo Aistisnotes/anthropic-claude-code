@@ -265,30 +265,92 @@ class MarketPipeline:
 
         # 4. Analyze each brand
         brand_reports = []
+        # funnel_rows: list of per-brand funnel dicts for the summary table
+        funnel_rows: list[dict] = []
         for i, selection in enumerate(brand_selections, 1):
             console.print(
                 f"\n[bold cyan]═══ Analyzing brand {i}/{len(brand_selections)}: "
                 f"{selection.advertiser.page_name} ═══[/]"
             )
+            brand_name = selection.advertiser.page_name
+            deep_total = brand_ad_counts.get(brand_name, 0)
+            deep_pool = len(brand_deep_ads.get(brand_name, []))
+            selector_in = selection.selection_stats.total_scanned
+            selector_passed = selection.selection_stats.total_selected
+            selector_skipped = selection.selection_stats.total_skipped
+            selector_skip_reasons = dict(selection.selection_stats.skip_reasons)
+
             console.print(
                 f"[dim]Selected {len(selection.selected_ads)} ads "
                 f"({selection.selection_stats.total_selected} total)[/]"
             )
+            if self._debug:
+                logger.info(
+                    f"[FUNNEL:SELECTOR] brand={brand_name} "
+                    f"deep_pool={deep_pool} selector_in={selector_in} "
+                    f"passed={selector_passed} skipped={selector_skipped} "
+                    f"skip_reasons={selector_skip_reasons}"
+                )
 
             try:
                 brand_report = await self._analyze_brand(selection, keyword)
                 brand_reports.append(brand_report)
+                analyzed = len([
+                    a for a in brand_report.pattern_report.analyzed_ads
+                    if a is not None
+                ]) if brand_report.pattern_report and hasattr(brand_report.pattern_report, 'analyzed_ads') else "?"
                 console.print(
-                    f"[green]✓ Completed {selection.advertiser.page_name}[/]"
+                    f"[green]✓ Completed {brand_name}[/]"
                 )
+                funnel_rows.append({
+                    "brand": brand_name,
+                    "keyword_qualifying": brand_ad_counts.get(brand_name, 0),
+                    "deep_pool": deep_pool,
+                    "selector_in": selector_in,
+                    "selector_passed": selector_passed,
+                    "selector_skip": f"{selector_skipped} {selector_skip_reasons}",
+                    "analyzed": analyzed,
+                })
             except Exception as e:
                 logger.error(
-                    f"Failed to analyze {selection.advertiser.page_name}: {e}",
+                    f"Failed to analyze {brand_name}: {e}",
                     exc_info=True,
                 )
                 console.print(
-                    f"[red]✗ Failed: {selection.advertiser.page_name} - {str(e)}[/]"
+                    f"[red]✗ Failed: {brand_name} - {str(e)}[/]"
                 )
+                funnel_rows.append({
+                    "brand": brand_name,
+                    "keyword_qualifying": brand_ad_counts.get(brand_name, 0),
+                    "deep_pool": deep_pool,
+                    "selector_in": selector_in,
+                    "selector_passed": selector_passed,
+                    "selector_skip": f"{selector_skipped} {selector_skip_reasons}",
+                    "analyzed": "ERROR",
+                })
+
+        # Print funnel summary table
+        if self._debug and funnel_rows:
+            from rich.table import Table as RichTable
+            ftable = RichTable(title="Ad Funnel Summary", show_lines=True)
+            ftable.add_column("Brand", style="cyan")
+            ftable.add_column("KW Qualifying", justify="right")
+            ftable.add_column("Deep Pool", justify="right")
+            ftable.add_column("Selector In", justify="right")
+            ftable.add_column("Selector Pass", justify="right")
+            ftable.add_column("Skip Reasons")
+            ftable.add_column("Analyzed", justify="right")
+            for row in funnel_rows:
+                ftable.add_row(
+                    row["brand"][:30],
+                    str(row["keyword_qualifying"]),
+                    str(row["deep_pool"]),
+                    str(row["selector_in"]),
+                    str(row["selector_passed"]),
+                    str(row["selector_skip"])[:60],
+                    str(row["analyzed"]),
+                )
+            console.print(ftable)
 
         # 5. Auto-generate market analysis PDF
         try:
@@ -638,12 +700,24 @@ class MarketPipeline:
                 selection_config = copy.deepcopy(self.config)
                 selection_config.setdefault("selection", {})["min_primary_text_words"] = market_min_words
 
+            # Use ALL page names present in deep_ads rather than just the initial
+            # keyword-scan pages. deep_ads is already filtered to this brand (by
+            # page_name match OR domain match), so every page_name in deep_ads is
+            # a valid page for this brand. Without this fix, domain-matched pages
+            # (e.g. "Glov Beauty", "Haircare Science" → glovbeauty.com) are in
+            # deep_ads but get silently dropped by select_ads_for_brand's page filter.
+            deep_page_names = list({ad.page_name for ad in deep_ads})
+            if self._debug:
+                logger.info(
+                    f"[FUNNEL:SELECTOR] brand={brand_name} deep_page_names={deep_page_names} "
+                    f"original_page_names={advertiser.all_page_names}"
+                )
             selection_result = select_ads_for_brand(
                 all_ads=deep_ads,
                 brand_name=brand_name,
                 limit=ads_per_brand,
                 config=selection_config,
-                all_page_names=advertiser.all_page_names or [brand_name],
+                all_page_names=deep_page_names if deep_page_names else (advertiser.all_page_names or [brand_name]),
             )
 
             if selection_result.selected:

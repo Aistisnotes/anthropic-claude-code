@@ -14,6 +14,7 @@ Connects all modules into a single flow:
 from __future__ import annotations
 
 import asyncio
+import copy
 import uuid
 from datetime import date, datetime
 from pathlib import Path
@@ -327,9 +328,54 @@ class Pipeline:
     ) -> PatternReport:
         """Execute all pipeline stages."""
 
-        # ── Stage 1: Scrape ──
+        # ── Stage 1A: Keyword scrape ──
         console.print("[cyan]Scraping Meta Ads Library...[/]")
         scraped_ads = await self.scraper.scrape(query)
+        logger.info(f"[FUNNEL:SCRAPER] Stage1A keyword='{query}' found={len(scraped_ads)}")
+
+        # ── Stage 1B: page_id deep scan ──
+        # The keyword search is incomplete — Meta only surfaces a subset of active ads.
+        # view_all_page_id returns the full ad library for a specific Facebook page.
+        # We use page_ids discovered from the keyword search results header.
+        found_page_ids = self.scraper.found_page_ids
+        if found_page_ids:
+            deep_cfg = copy.deepcopy(self.config)
+            deep_cfg.setdefault("scraper", {})["max_ads"] = 500
+            deep_scraper = MetaAdsScraper(deep_cfg)
+            if self.scraper.debug_dir:
+                deep_scraper.debug_dir = self.scraper.debug_dir
+
+            seen_ids = {ad.ad_id for ad in scraped_ads}
+            for page_id in found_page_ids:
+                try:
+                    # Don't pass expected_page_name — the page_id was discovered from
+                    # a brand-specific keyword search, so it IS the brand's page.
+                    # The early-exit filter (which checks page_name == brand) would
+                    # fire if the Facebook page display name differs from the user's
+                    # brand string, causing us to miss the brand's own ads.
+                    page_ads = await deep_scraper.scrape(
+                        query=query,
+                        page_id=page_id,
+                    )
+                    new_count = 0
+                    for ad in page_ads:
+                        if ad.ad_id not in seen_ids:
+                            scraped_ads.append(ad)
+                            seen_ids.add(ad.ad_id)
+                            new_count += 1
+                    if page_ads:
+                        logger.info(
+                            f"[FUNNEL:SCRAPER] Stage1B page_id={page_id} "
+                            f"total={len(page_ads)} new={new_count}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Stage 1B page_id={page_id} scan failed: {e}")
+
+            logger.info(
+                f"[FUNNEL:SCRAPER] Stage1B done page_ids={len(found_page_ids)} "
+                f"total_ads={len(scraped_ads)}"
+            )
+
         console.print(f"  [green]✓[/] Scraped {len(scraped_ads)} ads")
 
         for ad in scraped_ads:

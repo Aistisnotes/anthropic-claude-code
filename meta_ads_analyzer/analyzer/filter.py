@@ -63,9 +63,21 @@ class AdFilter:
             else:
                 included += 1
 
+        # Build reason breakdown for summary
+        reason_counts: dict[str, int] = {}
+        for c in results:
+            if c.status == AdStatus.FILTERED_OUT and c.filter_reason:
+                r = c.filter_reason.value
+                reason_counts[r] = reason_counts.get(r, 0) + 1
+
         logger.info(
             f"Filtering complete: {included} included, {filtered} filtered out "
             f"of {len(scraped_ads)} total"
+        )
+        logger.info(
+            f"[FUNNEL:FILTER] brand={brand} in={len(scraped_ads)} pass={included} "
+            f"fail={filtered} reasons={reason_counts} "
+            f"min_static_words={self.min_static_copy_words}"
         )
         return results
 
@@ -104,7 +116,7 @@ class AdFilter:
             if not download:
                 content.status = AdStatus.FILTERED_OUT
                 content.filter_reason = FilterReason.DOWNLOAD_FAILED
-                logger.debug(f"Ad {ad.ad_id}: filtered (video download failed)")
+                logger.info(f"[FUNNEL:FILTER] ad={ad.ad_id} type=VIDEO FAIL:download_failed")
                 return content
 
             # Check for voiceover transcript
@@ -135,21 +147,25 @@ class AdFilter:
                 content.transcript_confidence = transcript.confidence
                 content.word_count = transcript.word_count
                 content.status = AdStatus.TRANSCRIBED
-                logger.debug(
-                    f"Ad {ad.ad_id}: included (video with voiceover, "
-                    f"{transcript.word_count} words, confidence={transcript.confidence:.2f})"
+                logger.info(
+                    f"[FUNNEL:FILTER] ad={ad.ad_id} type=VIDEO PASS:transcript "
+                    f"words={transcript.word_count} conf={transcript.confidence:.2f}"
                 )
             elif has_video_text:
                 content.word_count = video_text_word_count
                 content.status = AdStatus.DOWNLOADED
                 logger.info(
-                    f"Ad {ad.ad_id}: included (video with text overlays, {video_text_word_count} words extracted via OCR)"
+                    f"[FUNNEL:FILTER] ad={ad.ad_id} type=VIDEO PASS:ocr_text words={video_text_word_count}"
                 )
             else:
                 content.status = AdStatus.FILTERED_OUT
                 content.filter_reason = FilterReason.LOW_QUALITY_TRANSCRIPT
-                logger.debug(
-                    f"Ad {ad.ad_id}: filtered (video has neither voiceover nor text overlays)"
+                tr_words = transcript.word_count if transcript else 0
+                tr_conf = f"{transcript.confidence:.2f}" if transcript else "none"
+                logger.info(
+                    f"[FUNNEL:FILTER] ad={ad.ad_id} type=VIDEO FAIL:no_transcript "
+                    f"transcript_words={tr_words} conf={tr_conf} "
+                    f"ocr_words={video_text_word_count} min_ocr={self.min_video_text_words}"
                 )
                 return content
 
@@ -162,13 +178,16 @@ class AdFilter:
             if word_count < self.min_static_copy_words:
                 content.status = AdStatus.FILTERED_OUT
                 content.filter_reason = FilterReason.SHORT_COPY
-                logger.debug(
-                    f"Ad {ad.ad_id}: filtered (static, {word_count} words "
-                    f"< {self.min_static_copy_words})"
+                logger.info(
+                    f"[FUNNEL:FILTER] ad={ad.ad_id} type=STATIC FAIL:short_copy "
+                    f"words={word_count} min={self.min_static_copy_words}"
                 )
                 return content
 
             content.status = AdStatus.DOWNLOADED
+            logger.info(
+                f"[FUNNEL:FILTER] ad={ad.ad_id} type=STATIC PASS words={word_count}"
+            )
 
         # --- CAROUSEL / UNKNOWN ---
         else:
@@ -182,11 +201,22 @@ class AdFilter:
                 content.transcript_confidence = transcript.confidence
                 content.word_count = max(word_count, transcript.word_count)
                 content.status = AdStatus.TRANSCRIBED
+                logger.info(
+                    f"[FUNNEL:FILTER] ad={ad.ad_id} type={ad_type.value} PASS:transcript "
+                    f"words={content.word_count}"
+                )
             elif word_count >= self.min_static_copy_words:
                 content.status = AdStatus.DOWNLOADED
+                logger.info(
+                    f"[FUNNEL:FILTER] ad={ad.ad_id} type={ad_type.value} PASS:text words={word_count}"
+                )
             else:
                 content.status = AdStatus.FILTERED_OUT
                 content.filter_reason = FilterReason.SHORT_COPY
+                logger.info(
+                    f"[FUNNEL:FILTER] ad={ad.ad_id} type={ad_type.value} FAIL:short_copy "
+                    f"words={word_count} min={self.min_static_copy_words}"
+                )
                 return content
 
         # --- DUPLICATE CHECK ---
