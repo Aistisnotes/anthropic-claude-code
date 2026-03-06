@@ -197,6 +197,148 @@ def generate_pdf_sync(
     )
 
 
+
+async def generate_market_pdf(
+    market_dir: Path,
+    keyword: str,
+    output_dir: Optional[Path] = None,
+) -> Path:
+    """Generate a standalone PDF from a market run's brand reports.
+
+    Reads all brand_report_*.json files in market_dir and renders them
+    into a single multi-brand analysis PDF using the market_report.html template.
+
+    Args:
+        market_dir: Directory containing brand_report_*.json files
+        keyword: The market research keyword
+        output_dir: Directory to save the PDF (defaults to ~/Desktop/reports/)
+
+    Returns:
+        Path to the generated PDF file
+    """
+    from playwright.async_api import async_playwright
+
+    market_dir = Path(market_dir)
+    if not market_dir.exists():
+        raise FileNotFoundError(f"Market directory not found: {market_dir}")
+
+    # Glob brand report files, sorted by mtime
+    report_files = sorted(
+        market_dir.glob("brand_report_*.json"),
+        key=lambda p: p.stat().st_mtime,
+    )
+    if not report_files:
+        raise FileNotFoundError(f"No brand_report_*.json files found in {market_dir}")
+
+    # Extract brand data from each report
+    brands = []
+    for report_file in report_files:
+        data = _load_json(report_file)
+        pr = data.get("pattern_report", {})
+
+        what_not_to_do_raw = pr.get("what_not_to_do", [])
+        # Handle both list and string formats
+        if isinstance(what_not_to_do_raw, list):
+            what_not_to_do_list = what_not_to_do_raw
+            what_not_to_do_str = []
+        else:
+            what_not_to_do_list = []
+            what_not_to_do_str = what_not_to_do_raw
+
+        brands.append({
+            "brand_name": data.get("advertiser", {}).get("page_name", "Unknown"),
+            "ad_count": data.get("advertiser", {}).get("ad_count", 0),
+            "all_page_names": data.get("advertiser", {}).get("all_page_names", []),
+            "ads_analyzed": pr.get("total_ads_analyzed", 0),
+            "competitive_verdict": pr.get("competitive_verdict", ""),
+            "root_causes": pr.get("root_cause_patterns", [])[:4],
+            "mechanisms": pr.get("mechanism_patterns", [])[:4],
+            "pain_points": pr.get("common_pain_points", [])[:5],
+            "hook_types": pr.get("hook_patterns", [])[:5],
+            "loopholes": pr.get("loopholes", [])[:5],
+            "key_insights": pr.get("key_insights", []),
+            "recommendations": pr.get("recommendations", []),
+            "what_not_to_do": what_not_to_do_str,
+            "what_not_to_do_list": what_not_to_do_list,
+        })
+
+    # Build output path
+    if output_dir is None:
+        output_dir = _DEFAULT_OUTPUT_DIR
+    output_dir = Path(output_dir).expanduser()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    date_str = datetime.now().strftime("%B %d, %Y")
+    date_slug = datetime.now().strftime("%Y%m%d")
+    pdf_path = output_dir / f"{_slugify(keyword)}_{date_slug}_market_analysis.pdf"
+
+    # Render HTML template
+    logger.info(f"Rendering market report HTML for {len(brands)} brands...")
+    env = Environment(
+        loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+        autoescape=select_autoescape(["html"]),
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+    template = env.get_template("market_report.html")
+    html_content = template.render(
+        keyword=keyword,
+        date_str=date_str,
+        brands=brands,
+        market_dir_name=market_dir.name,
+    )
+
+    # Write to temp file and render with Playwright
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".html", delete=False, encoding="utf-8"
+    ) as tmp:
+        tmp.write(html_content)
+        tmp_path = Path(tmp.name)
+
+    logger.info("Generating market PDF with Playwright...")
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+            await page.pdf(
+                path=str(pdf_path),
+                format="A4",
+                print_background=True,
+                margin={
+                    "top": "18mm",
+                    "bottom": "18mm",
+                    "left": "16mm",
+                    "right": "16mm",
+                },
+            )
+            await browser.close()
+    except Exception as e:
+        raise RuntimeError(f"Market PDF generation failed: {e}") from e
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    logger.info(f"Market PDF saved: {pdf_path}")
+    return pdf_path
+
+
+def generate_market_pdf_sync(
+    market_dir: Path,
+    keyword: str,
+    output_dir: Optional[Path] = None,
+) -> Path:
+    """Synchronous wrapper around generate_market_pdf for use in sync contexts."""
+    import asyncio
+
+    return asyncio.run(
+        generate_market_pdf(
+            market_dir=market_dir,
+            keyword=keyword,
+            output_dir=output_dir,
+        )
+    )
+
+
 async def generate_blue_ocean_pdf(
     blue_ocean_doc,  # BlueOceanResult
     output_dir: Optional[Path] = None,

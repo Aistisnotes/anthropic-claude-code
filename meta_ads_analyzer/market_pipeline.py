@@ -275,7 +275,22 @@ class MarketPipeline:
                     f"[red]✗ Failed: {selection.advertiser.page_name} - {str(e)}[/]"
                 )
 
-        # 5. Return result
+        # 5. Auto-generate market analysis PDF
+        try:
+            from meta_ads_analyzer.reporter.pdf_generator import generate_market_pdf
+            import os
+            pdf_out_dir = Path(os.environ.get("PDF_OUTPUT_DIR", str(Path.home() / "Desktop" / "reports")))
+            pdf_path = await generate_market_pdf(
+                market_dir=self.market_subdir,
+                keyword=keyword,
+                output_dir=pdf_out_dir,
+            )
+            logger.info(f"Market PDF saved: {pdf_path}")
+            print(f"✓ PDF saved: {pdf_path}")
+        except Exception as e:
+            logger.warning(f"Market PDF generation failed (non-critical): {e}")
+
+        # 6. Return result
         return MarketResult(
             keyword=keyword,
             country=scan_result.country,

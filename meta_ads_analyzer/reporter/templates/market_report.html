@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ keyword | title }} — Market Analysis</title>
+<style>
+  /* ── Reset & Base ─────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1a1a1a;
+    background: #ffffff;
+    line-height: 1.6;
+  }
+
+  /* ── Color System ─────────────────────────────────────────────── */
+  :root {
+    --pink:      #e91e8c;
+    --pink-light: #fce4ec;
+    --pink-mid:  #f48fb1;
+    --yellow:    #fff8e1;
+    --yellow-border: #ffc107;
+    --green:     #e8f5e9;
+    --green-border: #4caf50;
+    --red:       #ffebee;
+    --red-border: #ef5350;
+    --gray-bg:   #f8f8f8;
+    --gray-line: #e0e0e0;
+    --text-muted: #666;
+    --text-light: #888;
+  }
+
+  /* ── Page Setup ───────────────────────────────────────────────── */
+  @page {
+    size: A4;
+    margin: 14mm 15mm;
+  }
+  @page :first {
+    margin: 0;
+  }
+
+  /* ── Cover Page ───────────────────────────────────────────────── */
+  .cover {
+    page-break-after: always;
+    break-after: always;
+    height: 297mm;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    padding: 36px 44px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover-top-bar {
+    width: 100%;
+    height: 6px;
+    background: linear-gradient(90deg, var(--pink) 0%, #f06292 100%);
+    border-radius: 3px;
+    margin-bottom: 32px;
+  }
+  .cover-icon { font-size: 48px; margin-bottom: 14px; line-height: 1; }
+  .cover-title {
+    font-size: 34px;
+    font-weight: 800;
+    color: #111;
+    line-height: 1.15;
+    margin-bottom: 10px;
+    letter-spacing: -0.5px;
+  }
+  .cover-title span { color: var(--pink); }
+  .cover-subtitle {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 3px;
+  }
+  .cover-meta {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .cover-meta-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 13px;
+  }
+  .cover-meta-label { font-weight: 700; color: #444; min-width: 140px; }
+  .cover-meta-value { color: #222; }
+  .cover-brand-list {
+    margin-top: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cover-brand-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    background: var(--gray-bg);
+    border-radius: 7px;
+    border: 1px solid var(--gray-line);
+  }
+  .cover-brand-num {
+    width: 24px;
+    height: 24px;
+    background: var(--pink);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .cover-brand-name { font-size: 13px; font-weight: 700; color: #222; flex: 1; }
+  .cover-brand-count { font-size: 11px; color: var(--text-muted); }
+  .cover-bottom {
+    margin-top: auto;
+    border-top: 1px solid var(--gray-line);
+    padding-top: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-light);
+  }
+  .cover-pill {
+    background: var(--gray-bg);
+    border: 1px solid var(--gray-line);
+    border-radius: 16px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #555;
+  }
+
+  /* ── Brand Section ────────────────────────────────────────────── */
+  .brand-section {
+    page-break-before: always;
+    break-before: always;
+  }
+  .brand-section:first-of-type {
+    page-break-before: always;
+    break-before: always;
+  }
+  .brand-header-bar {
+    background: linear-gradient(90deg, var(--pink) 0%, #f06292 100%);
+    color: white;
+    padding: 16px 20px 14px;
+    border-radius: 7px 7px 0 0;
+    margin-bottom: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .brand-header-left { flex: 1; }
+  .brand-num-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    opacity: 0.85;
+    margin-bottom: 4px;
+  }
+  .brand-header-name {
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: -0.3px;
+    line-height: 1.2;
+  }
+  .brand-header-aliases {
+    font-size: 11px;
+    opacity: 0.8;
+    margin-top: 4px;
+    font-style: italic;
+  }
+  .brand-header-stats {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .brand-stat-pill {
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 14px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .brand-body {
+    border: 1px solid var(--gray-line);
+    border-top: none;
+    border-radius: 0 0 7px 7px;
+    padding: 18px 20px;
+    margin-bottom: 24px;
+  }
+
+  /* ── Section Elements ─────────────────────────────────────────── */
+  .section { margin-bottom: 18px; }
+  .section-header {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--pink);
+    border-bottom: 2px solid var(--pink);
+    padding-bottom: 5px;
+    margin-bottom: 10px;
+    letter-spacing: -0.2px;
+    text-transform: uppercase;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  .subsection-label {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    margin-top: 12px;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* ── Verdict Box ──────────────────────────────────────────────── */
+  .verdict-box {
+    background: var(--pink-light);
+    border-left: 4px solid var(--pink);
+    border-radius: 5px;
+    padding: 11px 15px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #222;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .verdict-label {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--pink);
+    margin-bottom: 5px;
+  }
+
+  /* ── Two-Column Grid ──────────────────────────────────────────── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .three-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  /* ── Pattern Cards ────────────────────────────────────────────── */
+  .pattern-card {
+    background: var(--gray-bg);
+    border: 1px solid var(--gray-line);
+    border-radius: 6px;
+    padding: 10px 13px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .pattern-card-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 4px;
+    line-height: 1.35;
+  }
+  .pattern-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 5px;
+  }
+  .freq-badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    background: var(--pink-light);
+    color: var(--pink);
+    border: 1px solid var(--pink-mid);
+  }
+  .depth-badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    background: var(--gray-bg);
+    color: #555;
+    border: 1px solid var(--gray-line);
+  }
+
+  /* ── Pain Points / Hook Types ─────────────────────────────────── */
+  .item-list { list-style: none; padding: 0; margin: 0; }
+  .item-list li {
+    padding: 6px 10px;
+    border-left: 3px solid var(--pink-mid);
+    margin-bottom: 5px;
+    background: #fafafa;
+    border-radius: 0 4px 4px 0;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: #333;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .item-list li .item-freq {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    float: right;
+    margin-left: 8px;
+  }
+  .item-list li .item-note {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: block;
+    margin-top: 2px;
+    font-style: italic;
+  }
+
+  /* ── Loophole Cards ───────────────────────────────────────────── */
+  .loophole-card {
+    border: 1px solid var(--gray-line);
+    border-left: 5px solid var(--pink);
+    border-radius: 6px;
+    padding: 13px 16px;
+    margin-bottom: 10px;
+    background: #fff;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .loophole-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    gap: 10px;
+  }
+  .loophole-title-block { flex: 1; }
+  .loophole-title {
+    font-size: 13.5px;
+    font-weight: 800;
+    color: #111;
+    line-height: 1.3;
+  }
+  .loophole-rank-num {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+  .score-badge {
+    background: var(--pink);
+    color: white;
+    border-radius: 14px;
+    padding: 4px 11px;
+    font-size: 13px;
+    font-weight: 800;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .loophole-field-label {
+    font-size: 9.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 3px;
+    margin-top: 8px;
+  }
+  .loophole-gap-text { font-size: 12.5px; line-height: 1.55; color: #333; }
+  .loophole-strategy-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+    margin-top: 7px;
+  }
+  .strategy-cell {
+    background: var(--gray-bg);
+    border-radius: 4px;
+    padding: 7px 9px;
+  }
+  .strategy-cell-label {
+    font-size: 9.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+  .strategy-cell-value { font-size: 11.5px; color: #222; line-height: 1.4; }
+  .hooks-inline { font-size: 11.5px; color: #333; line-height: 1.5; }
+
+  /* ── Insights / Recommendations ──────────────────────────────── */
+  .bullet-list { list-style: none; padding: 0; margin: 0; }
+  .bullet-list li {
+    padding: 5px 10px 5px 22px;
+    position: relative;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: #333;
+    margin-bottom: 4px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .bullet-list li::before {
+    content: "›";
+    position: absolute;
+    left: 8px;
+    color: var(--pink);
+    font-weight: 900;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .callout-green {
+    background: var(--green);
+    border-left: 4px solid var(--green-border);
+    border-radius: 5px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .callout-green-title {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #2e7d32;
+    margin-bottom: 5px;
+  }
+  .callout-red {
+    background: var(--red);
+    border-left: 4px solid var(--red-border);
+    border-radius: 5px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .callout-red-title {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #c62828;
+    margin-bottom: 5px;
+  }
+
+  /* ── Tables ───────────────────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+  thead th {
+    background: var(--gray-bg);
+    border: 1px solid var(--gray-line);
+    padding: 7px 9px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: #444;
+  }
+  tbody td {
+    border: 1px solid var(--gray-line);
+    padding: 7px 9px;
+    vertical-align: top;
+    line-height: 1.4;
+  }
+  tbody tr { page-break-inside: avoid; break-inside: avoid; }
+  tbody tr:nth-child(even) td { background: #fafafa; }
+
+  /* ── Divider ──────────────────────────────────────────────────── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--gray-line);
+    margin: 16px 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════
+     COVER PAGE
+═══════════════════════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-top-bar"></div>
+  <div class="cover-icon">📊</div>
+  <div class="cover-title">
+    <span>{{ keyword | title }}</span><br>Market Analysis
+  </div>
+  <div class="cover-subtitle">Competitive Ad Intelligence Report</div>
+
+  <div class="cover-meta">
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Keyword</span>
+      <span class="cover-meta-value">{{ keyword }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Generated</span>
+      <span class="cover-meta-value">{{ date_str }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Brands Analyzed</span>
+      <span class="cover-meta-value">{{ brands | length }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Report Directory</span>
+      <span class="cover-meta-value" style="font-size:11px; color: var(--text-muted);">{{ market_dir_name }}</span>
+    </div>
+  </div>
+
+  <div class="cover-brand-list">
+    {% for brand in brands %}
+    <div class="cover-brand-row">
+      <div class="cover-brand-num">{{ loop.index }}</div>
+      <div class="cover-brand-name">{{ brand.brand_name }}</div>
+      <div class="cover-brand-count">{{ brand.ad_count }} ads &middot; {{ brand.ads_analyzed }} analyzed</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="cover-bottom">
+    <span>Confidential — Internal Use Only</span>
+    <span class="cover-pill">Meta Ad Library Intelligence</span>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     BRAND SECTIONS
+═══════════════════════════════════════════════════════════════════ -->
+{% for brand in brands %}
+<div class="brand-section">
+
+  <!-- Brand Header Bar -->
+  <div class="brand-header-bar">
+    <div class="brand-header-left">
+      <div class="brand-num-label">Brand {{ loop.index }} of {{ brands | length }}</div>
+      <div class="brand-header-name">{{ brand.brand_name }}</div>
+      {% if brand.all_page_names and brand.all_page_names | length > 1 %}
+      <div class="brand-header-aliases">
+        Also: {{ brand.all_page_names[1:] | join(", ") }}
+      </div>
+      {% endif %}
+    </div>
+    <div class="brand-header-stats">
+      <span class="brand-stat-pill">{{ brand.ad_count }} total ads</span>
+      <span class="brand-stat-pill">{{ brand.ads_analyzed }} analyzed</span>
+    </div>
+  </div>
+
+  <div class="brand-body">
+
+    <!-- Competitive Verdict -->
+    {% if brand.competitive_verdict %}
+    <div class="section">
+      <div class="verdict-box">
+        <div class="verdict-label">Competitive Verdict</div>
+        {{ brand.competitive_verdict }}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Root Causes & Mechanisms (2-col) -->
+    {% if brand.root_causes or brand.mechanisms %}
+    <div class="two-col">
+      {% if brand.root_causes %}
+      <div>
+        <div class="section-header">Root Cause Patterns</div>
+        {% for rc in brand.root_causes %}
+        <div class="pattern-card" style="margin-bottom:7px;">
+          <div class="pattern-card-title">{{ rc.root_cause }}</div>
+          <div class="pattern-meta">
+            {% if rc.frequency %}<span class="freq-badge">{{ rc.frequency }}</span>{% endif %}
+            {% if rc.depth %}<span class="depth-badge">{{ rc.depth }}</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if brand.mechanisms %}
+      <div>
+        <div class="section-header">Mechanism Patterns</div>
+        {% for mech in brand.mechanisms %}
+        <div class="pattern-card" style="margin-bottom:7px;">
+          <div class="pattern-card-title">{{ mech.mechanism }}</div>
+          <div class="pattern-meta">
+            {% if mech.frequency %}<span class="freq-badge">{{ mech.frequency }}</span>{% endif %}
+            {% if mech.depth %}<span class="depth-badge">{{ mech.depth }}</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Pain Points & Hook Types (2-col) -->
+    {% if brand.pain_points or brand.hook_types %}
+    <div class="two-col">
+      {% if brand.pain_points %}
+      <div>
+        <div class="section-header">Common Pain Points</div>
+        <ul class="item-list">
+          {% for pp in brand.pain_points %}
+          <li>
+            {% if pp.frequency %}<span class="item-freq">{{ pp.frequency }}</span>{% endif %}
+            {{ pp.pain_point }}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if brand.hook_types %}
+      <div>
+        <div class="section-header">Hook Types</div>
+        <ul class="item-list">
+          {% for ht in brand.hook_types %}
+          <li>
+            {% if ht.frequency %}<span class="item-freq">{{ ht.frequency }}</span>{% endif %}
+            {{ ht.hook_type }}
+            {% if ht.effectiveness_notes %}
+            <span class="item-note">{{ ht.effectiveness_notes }}</span>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Loopholes -->
+    {% if brand.loopholes %}
+    <div class="section">
+      <div class="section-header">Loopholes &amp; Opportunities</div>
+      {% for lh in brand.loopholes %}
+      <div class="loophole-card">
+        <div class="loophole-header">
+          <div class="loophole-title-block">
+            <div class="loophole-rank-num">Rank #{{ lh.rank if lh.rank else loop.index }}</div>
+            <div class="loophole-title">{{ lh.title }}</div>
+          </div>
+          {% if lh.score %}
+          <div class="score-badge">{{ lh.score }}/10</div>
+          {% endif %}
+        </div>
+
+        {% if lh.gap %}
+        <div class="loophole-field-label">The Gap</div>
+        <div class="loophole-gap-text">{{ lh.gap }}</div>
+        {% endif %}
+
+        {% if lh.effort or lh.execution_hooks %}
+        <div class="loophole-strategy-grid">
+          {% if lh.effort %}
+          <div class="strategy-cell">
+            <div class="strategy-cell-label">Effort</div>
+            <div class="strategy-cell-value">{{ lh.effort }}</div>
+          </div>
+          {% endif %}
+          {% if lh.execution_hooks %}
+          <div class="strategy-cell">
+            <div class="strategy-cell-label">Execution Hooks</div>
+            <div class="strategy-cell-value hooks-inline">
+              {% if lh.execution_hooks is string %}
+                {{ lh.execution_hooks }}
+              {% else %}
+                {{ lh.execution_hooks | join(" · ") }}
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Key Insights -->
+    {% if brand.key_insights %}
+    <div class="section">
+      <div class="callout-green">
+        <div class="callout-green-title">Key Insights</div>
+        <ul class="bullet-list">
+          {% for insight in brand.key_insights %}
+          <li>{{ insight }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Recommendations & What Not To Do (2-col) -->
+    {% if brand.recommendations or brand.what_not_to_do or brand.what_not_to_do_list %}
+    <div class="two-col">
+      {% if brand.recommendations %}
+      <div>
+        <div class="section-header">Recommendations</div>
+        <ul class="bullet-list">
+          {% for rec in brand.recommendations %}
+          <li>{{ rec }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% set wntd = brand.what_not_to_do_list if brand.what_not_to_do_list else brand.what_not_to_do %}
+      {% if wntd %}
+      <div>
+        <div class="callout-red">
+          <div class="callout-red-title">What Not To Do</div>
+          <ul class="bullet-list">
+            {% for item in wntd %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+  </div><!-- /brand-body -->
+</div><!-- /brand-section -->
+{% endfor %}
+
+</body>
+</html>
