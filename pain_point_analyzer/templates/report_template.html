@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ report.product.name }} — Pain Point Analysis</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1a1a1a;
+    background: #ffffff;
+    line-height: 1.6;
+  }
+
+  :root {
+    --primary: #2563eb;
+    --primary-light: #dbeafe;
+    --primary-mid: #93c5fd;
+    --green: #e8f5e9;
+    --green-border: #4caf50;
+    --yellow: #fff8e1;
+    --yellow-border: #ffc107;
+    --red: #ffebee;
+    --red-border: #ef5350;
+    --gray-bg: #f8f8f8;
+    --gray-line: #e0e0e0;
+    --text-muted: #666;
+    --text-light: #888;
+  }
+
+  @page { size: A4; margin: 14mm 15mm; }
+  @page :first { margin: 0; }
+
+  /* Cover */
+  .cover {
+    page-break-after: always;
+    height: 297mm;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    padding: 36px 44px;
+    position: relative;
+  }
+  .cover-top-bar {
+    width: 100%; height: 6px;
+    background: linear-gradient(90deg, var(--primary) 0%, #60a5fa 100%);
+    border-radius: 3px; margin-bottom: 32px;
+  }
+  .cover-title {
+    font-size: 32px; font-weight: 800; color: #111;
+    line-height: 1.15; margin-bottom: 10px;
+  }
+  .cover-title span { color: var(--primary); }
+  .cover-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 3px; }
+  .cover-meta { margin-top: 24px; display: flex; flex-direction: column; gap: 7px; }
+  .cover-meta-row { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .cover-meta-label { font-weight: 700; color: #444; min-width: 140px; }
+  .cover-meta-value { color: #222; }
+  .cover-badge {
+    display: inline-block; margin-top: 24px; padding: 9px 18px;
+    background: var(--primary); color: white; border-radius: 24px;
+    font-size: 13px; font-weight: 700;
+  }
+  .cover-bottom {
+    margin-top: auto; border-top: 1px solid var(--gray-line);
+    padding-top: 14px; display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--text-light);
+  }
+
+  /* Sections */
+  .section { margin-bottom: 20px; }
+  .section-header {
+    font-size: 19px; font-weight: 800; color: var(--primary);
+    border-bottom: 2px solid var(--primary); padding-bottom: 6px;
+    margin-bottom: 12px; page-break-after: avoid;
+  }
+  .section-num { color: var(--primary); margin-right: 4px; }
+  .subsection-header {
+    font-size: 11px; font-weight: 800; color: var(--text-muted);
+    margin-bottom: 8px; margin-top: 14px; text-transform: uppercase;
+    letter-spacing: 0.5px; page-break-after: avoid;
+  }
+
+  /* Callouts */
+  .callout {
+    border-radius: 6px; padding: 11px 15px; margin-bottom: 10px;
+    page-break-inside: avoid;
+  }
+  .callout-title {
+    font-size: 11px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.4px; margin-bottom: 5px;
+  }
+  .callout p, .callout li { font-size: 13px; line-height: 1.6; }
+  .callout ul { padding-left: 18px; }
+  .callout-blue { background: var(--primary-light); border-left: 4px solid var(--primary); }
+  .callout-blue .callout-title { color: var(--primary); }
+  .callout-green { background: var(--green); border-left: 4px solid var(--green-border); }
+  .callout-green .callout-title { color: #2e7d32; }
+  .callout-yellow { background: var(--yellow); border-left: 4px solid var(--yellow-border); }
+  .callout-yellow .callout-title { color: #b7840a; }
+  .callout-red { background: var(--red); border-left: 4px solid var(--red-border); }
+  .callout-red .callout-title { color: #c62828; }
+
+  /* Tables */
+  table {
+    width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px;
+  }
+  thead th {
+    background: var(--gray-bg); border: 1px solid var(--gray-line);
+    padding: 8px 10px; text-align: left; font-weight: 700;
+    font-size: 11px; text-transform: uppercase; color: #444;
+  }
+  tbody td {
+    border: 1px solid var(--gray-line); padding: 8px 10px;
+    vertical-align: top; line-height: 1.45;
+  }
+  tbody tr:nth-child(even) td { background: #fafafa; }
+  .row-highlight td { background: var(--primary-light) !important; font-weight: 600; }
+
+  /* Cards */
+  .card {
+    border: 1px solid var(--gray-line); border-left: 5px solid var(--primary);
+    border-radius: 7px; padding: 16px 20px; margin-bottom: 14px;
+    background: #fff; page-break-inside: avoid;
+  }
+  .card-title { font-size: 15px; font-weight: 800; color: #111; margin-bottom: 6px; }
+  .card-subtitle { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; }
+
+  /* Strategy grid */
+  .strategy-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;
+  }
+  .strategy-cell {
+    background: var(--gray-bg); border-radius: 5px; padding: 8px 10px;
+  }
+  .strategy-cell-label {
+    font-size: 10px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.4px; color: var(--text-muted); margin-bottom: 3px;
+  }
+  .strategy-cell-value { font-size: 12px; color: #222; line-height: 1.45; }
+
+  /* Hooks */
+  .hooks-list { padding-left: 0; list-style: none; margin: 0; }
+  .hooks-list li {
+    font-size: 12px; padding: 5px 9px;
+    border-left: 3px solid var(--primary-mid); margin-bottom: 4px;
+    background: #fafafa; border-radius: 0 4px 4px 0; line-height: 1.45;
+  }
+
+  /* Tags */
+  .tag {
+    display: inline-block; border-radius: 10px; padding: 2px 9px;
+    font-size: 10.5px; font-weight: 700; border: 1px solid; margin-right: 4px;
+  }
+  .tag-strong { background: var(--green); color: #2e7d32; border-color: var(--green-border); }
+  .tag-moderate { background: var(--yellow); color: #b7840a; border-color: var(--yellow-border); }
+  .tag-weak { background: var(--red); color: #c62828; border-color: var(--red-border); }
+  .tag-blue { background: var(--primary-light); color: var(--primary); border-color: var(--primary-mid); }
+
+  .page-break { page-break-before: always; }
+  .text-muted { color: var(--text-muted); }
+  hr { border: none; border-top: 1px solid var(--gray-line); margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <div class="cover-top-bar"></div>
+  <div class="cover-title">
+    {{ report.product.name }}<br>
+    <span>Pain Point Analysis</span>
+  </div>
+  <div class="cover-subtitle"><strong>Brand:</strong> {{ report.product.brand }}</div>
+  <div class="cover-subtitle"><strong>Generated:</strong> {{ generated_date }}</div>
+
+  <div class="cover-meta">
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Ingredients Found</span>
+      <span class="cover-meta-value">{{ report.product.ingredients | length }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Pain Points Discovered</span>
+      <span class="cover-meta-value">{{ report.all_pain_points | length }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Top Pain Points Analyzed</span>
+      <span class="cover-meta-value">{{ report.top_deep_dives | length }}</span>
+    </div>
+  </div>
+
+  {% if report.top_deep_dives %}
+  <div class="cover-badge">
+    #1 Opportunity: {{ report.top_deep_dives[0].pain_point }}
+    (Trend Score: {{ report.top_deep_dives[0].trend_score }})
+  </div>
+  {% endif %}
+
+  <div class="cover-bottom">
+    <span>Pain Point Analyzer Report &middot; {{ generated_date }}</span>
+    <span>{{ report.product.brand }}</span>
+  </div>
+</div>
+
+<!-- 1. PRODUCT SUMMARY -->
+<div class="section">
+  <div class="section-header"><span class="section-num">1.</span> Product Summary</div>
+
+  {% if report.product.description %}
+  <p style="font-size:13px;margin-bottom:12px;">{{ report.product.description }}</p>
+  {% endif %}
+
+  <table>
+    <thead>
+      <tr>
+        <th>Ingredient</th>
+        <th>Amount</th>
+        <th>Sources</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ing in report.product.ingredients %}
+      <tr>
+        <td><strong>{{ ing.name }}</strong></td>
+        <td>{{ ing.amount or '—' }} {{ ing.unit or '' }}</td>
+        <td style="font-size:11px;">{{ ing.sources | join(', ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 2. ALL PAIN POINTS -->
+<div class="section">
+  <div class="section-header"><span class="section-num">2.</span> Pain Points Discovered ({{ report.all_pain_points | length }})</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Pain Point</th>
+        <th>Category</th>
+        <th># Ingredients</th>
+        <th>Supporting Ingredients</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for pp in report.all_pain_points %}
+      <tr {% if pp.name in report.top_deep_dives | map(attribute='pain_point') | list %}class="row-highlight"{% endif %}>
+        <td><strong>{{ pp.name }}</strong></td>
+        <td>{{ pp.category }}</td>
+        <td>{{ pp.ingredient_count }}</td>
+        <td style="font-size:11px;">{{ pp.supporting_ingredients | join(', ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 3. GOOGLE TRENDS -->
+<div class="section">
+  <div class="section-header"><span class="section-num">3.</span> Google Trends Validation</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Rank</th>
+        <th>Pain Point</th>
+        <th>Best Keyword</th>
+        <th>Score</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in report.trends %}
+      <tr {% if t.is_top %}class="row-highlight"{% endif %}>
+        <td>{{ loop.index }}</td>
+        <td><strong>{{ t.pain_point }}</strong></td>
+        <td>{{ t.best_keyword }}</td>
+        <td>{{ t.best_score }}</td>
+        <td>{% if t.is_top %}<span class="tag tag-blue">TOP {{ report.top_deep_dives | length }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 4. TOP PAIN POINTS DEEP DIVE -->
+{% for dive in report.top_deep_dives %}
+<div class="section page-break">
+  <div class="section-header">
+    <span class="section-num">4.{{ loop.index }}.</span>
+    {{ dive.pain_point }} — Deep Dive
+  </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <span class="tag tag-blue">Trend Score: {{ dive.trend_score }}</span>
+    {% if dive.science %}
+    <span class="tag tag-{{ dive.science.overall_evidence }}">{{ dive.science.overall_evidence | upper }} EVIDENCE</span>
+    {% endif %}
+    <span class="tag tag-blue">{{ dive.supporting_ingredients | length }} ingredients</span>
+  </div>
+
+  <!-- Science -->
+  {% if dive.science %}
+  <div class="subsection-header">Scientific Evidence</div>
+  <div class="callout callout-blue">
+    <div class="callout-title">Summary</div>
+    <p>{{ dive.science.summary }}</p>
+  </div>
+
+  {% for ev in dive.science.ingredient_evidence %}
+  <div class="card">
+    <div class="card-title">{{ ev.ingredient }}</div>
+    <div class="card-subtitle">
+      Evidence: <span class="tag tag-{{ ev.strength }}">{{ ev.strength | upper }}</span>
+      {% if ev.optimal_dosage %}| Optimal Dosage: {{ ev.optimal_dosage }}{% endif %}
+    </div>
+    <p style="font-size:12.5px;margin-bottom:8px;">{{ ev.mechanism }}</p>
+
+    {% if ev.studies %}
+    <div class="subsection-header">Key Studies</div>
+    {% for s in ev.studies %}
+    <div style="background:var(--gray-bg);border-radius:4px;padding:6px 10px;margin-bottom:4px;font-size:12px;">
+      <strong>{{ s.description }}</strong><br>
+      <span class="text-muted">Dosage: {{ s.dosage }} | Duration: {{ s.duration }} | Effect: {{ s.effect_size }}</span>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if ev.contraindications %}
+    <div class="callout callout-yellow" style="margin-top:8px;">
+      <div class="callout-title">Contraindications</div>
+      <ul>
+        {% for c in ev.contraindications %}
+        <li>{{ c }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if dive.science.synergies %}
+  <div class="subsection-header">Ingredient Synergies</div>
+  {% for syn in dive.science.synergies %}
+  <div class="callout callout-green">
+    <div class="callout-title">{{ syn.ingredients | join(' + ') }}</div>
+    <p>{{ syn.description }}</p>
+    <p class="text-muted" style="font-size:11px;margin-top:4px;">Mechanism: {{ syn.mechanism }}</p>
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% endif %}
+
+  <!-- Positioning -->
+  {% if dive.positioning %}
+  <div class="subsection-header" style="margin-top:20px;">Root Cause + Mechanism Positioning</div>
+
+  <div class="strategy-grid">
+    <div class="strategy-cell">
+      <div class="strategy-cell-label">Root Cause (Surface)</div>
+      <div class="strategy-cell-value">{{ dive.positioning.root_cause.surface }}</div>
+    </div>
+    <div class="strategy-cell">
+      <div class="strategy-cell-label">Root Cause (Cellular)</div>
+      <div class="strategy-cell-value">{{ dive.positioning.root_cause.cellular }}</div>
+    </div>
+    <div class="strategy-cell" style="grid-column:1/-1;">
+      <div class="strategy-cell-label">Root Cause (Molecular)</div>
+      <div class="strategy-cell-value">{{ dive.positioning.root_cause.molecular }}</div>
+    </div>
+    <div class="strategy-cell" style="grid-column:1/-1;">
+      <div class="strategy-cell-label">Mechanism</div>
+      <div class="strategy-cell-value">{{ dive.positioning.mechanism }}</div>
+    </div>
+  </div>
+
+  <div class="subsection-header">Avatar</div>
+  <div class="strategy-grid">
+    <div class="strategy-cell">
+      <div class="strategy-cell-label">Age</div>
+      <div class="strategy-cell-value">{{ dive.positioning.avatar.age }}</div>
+    </div>
+    <div class="strategy-cell">
+      <div class="strategy-cell-label">Gender</div>
+      <div class="strategy-cell-value">{{ dive.positioning.avatar.gender }}</div>
+    </div>
+    <div class="strategy-cell" style="grid-column:1/-1;">
+      <div class="strategy-cell-label">Lifestyle</div>
+      <div class="strategy-cell-value">{{ dive.positioning.avatar.lifestyle }}</div>
+    </div>
+    {% if dive.positioning.avatar.tried_before %}
+    <div class="strategy-cell" style="grid-column:1/-1;">
+      <div class="strategy-cell-label">What They've Tried Before</div>
+      <div class="strategy-cell-value">{{ dive.positioning.avatar.tried_before | join(', ') }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if dive.positioning.daily_symptoms %}
+  <div class="subsection-header">Daily Symptoms</div>
+  <ul style="padding-left:18px;">
+    {% for s in dive.positioning.daily_symptoms %}
+    <li style="font-size:12.5px;margin-bottom:3px;">{{ s }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if dive.positioning.mass_desire %}
+  <div class="callout callout-blue" style="margin-top:12px;">
+    <div class="callout-title">Mass Desire</div>
+    <p style="font-weight:700;">{{ dive.positioning.mass_desire }}</p>
+  </div>
+  {% endif %}
+
+  {% if dive.positioning.hooks %}
+  <div class="subsection-header">Hook Examples</div>
+  <ul class="hooks-list">
+    {% for h in dive.positioning.hooks %}
+    <li>"{{ h }}"</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+</div>
+{% endfor %}
+
+<!-- 5. SYNERGY MAP -->
+{% if report.synergy_map %}
+<div class="section">
+  <div class="section-header"><span class="section-num">5.</span> Ingredient Synergy Map</div>
+  {% for syn in report.synergy_map %}
+  <div class="card">
+    <div class="card-title">{{ syn.ingredients | join(' + ') }}</div>
+    <div class="card-subtitle">Pain Point: {{ syn.pain_point }}</div>
+    <p style="font-size:12.5px;">{{ syn.description }}</p>
+    <p class="text-muted" style="font-size:11px;margin-top:4px;">{{ syn.mechanism }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Footer -->
+<div style="margin-top:24px;border-top:1px solid var(--gray-line);padding-top:10px;display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-light);">
+  <span>{{ report.product.name }} &middot; Pain Point Analysis &middot; {{ generated_date }}</span>
+  <span>{{ report.product.ingredients | length }} Ingredients &middot; {{ report.all_pain_points | length }} Pain Points &middot; {{ report.top_deep_dives | length }} Deep Dives</span>
+</div>
+
+</body>
+</html>

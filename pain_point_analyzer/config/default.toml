@@ -1,0 +1,31 @@
+[scraper]
+# Browser headless mode
+headless = true
+# Page load timeout (seconds)
+page_timeout = 60
+# Screenshot quality (0-100)
+screenshot_quality = 90
+
+[analyzer]
+# Claude model for analysis and vision
+model = "claude-sonnet-4-20250514"
+# Temperature for analysis
+temperature = 0.3
+# Max retries on API failure
+max_retries = 3
+
+[trends]
+# Geographic region for Google Trends
+geo = "US"
+# Timeframe for trends data
+timeframe = "today 5-y"
+# Pause between API calls (seconds) to avoid rate limits
+api_pause = 2.0
+
+[reporting]
+# Output directory
+output_dir = "output"
+
+[pipeline]
+# Top N pain points to deep-dive
+top_pain_points = 3
