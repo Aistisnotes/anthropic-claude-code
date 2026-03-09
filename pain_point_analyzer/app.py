@@ -32,6 +32,15 @@ REPORTS_INDEX = REPORTS_DIR / "reports_index.json"
 # Add project root to path
 sys.path.insert(0, str(PROJECT_ROOT.parent))
 
+# Load .env file if present (so users don't need to export ANTHROPIC_API_KEY every time)
+_env_file = PROJECT_ROOT / ".env"
+if _env_file.exists():
+    for line in _env_file.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
 
 def _load_config() -> dict:
     with open(CONFIG_PATH, "rb") as f:
