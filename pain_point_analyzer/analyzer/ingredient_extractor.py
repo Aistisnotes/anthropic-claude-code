@@ -110,10 +110,12 @@ class IngredientExtractor:
                     if progress_cb:
                         progress_cb(f"Searching: {name}...")
                     try:
-                        text = await strategy(page)
+                        text = await asyncio.wait_for(strategy(page), timeout=30.0)
                         if text and text.strip():
                             all_text_parts[name] = text.strip()
                             logger.info(f"Strategy '{name}' found {len(text)} chars")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Strategy '{name}' timed out after 30s")
                     except Exception as e:
                         logger.warning(f"Strategy '{name}' failed: {e}")
 
@@ -298,6 +300,8 @@ class IngredientExtractor:
 
     async def _extract_faq_content(self, page: Page) -> str:
         """Extract FAQ sections that often contain ingredient info."""
+        import asyncio as _asyncio
+
         selectors = [
             ".faq", "#faq", '[class*="faq"]', '[class*="FAQ"]',
             '[class*="accordion"]', '[class*="question"]',
@@ -309,9 +313,9 @@ class IngredientExtractor:
                     '[class*="question"]']:
             try:
                 elements = await page.query_selector_all(sel)
-                for el in elements:
+                for el in elements[:10]:  # limit to avoid runaway clicks
                     try:
-                        await el.click()
+                        await _asyncio.wait_for(el.click(), timeout=3.0)
                         await page.wait_for_timeout(300)
                     except Exception:
                         pass
@@ -321,7 +325,7 @@ class IngredientExtractor:
         for sel in selectors:
             try:
                 elements = await page.query_selector_all(sel)
-                for el in elements:
+                for el in elements[:10]:  # limit elements
                     text = await el.inner_text()
                     if text and len(text.strip()) > 20:
                         parts.append(text.strip())
