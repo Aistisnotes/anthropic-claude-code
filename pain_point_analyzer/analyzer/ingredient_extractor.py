@@ -115,11 +115,15 @@ class IngredientExtractor:
                 # Try networkidle first, fall back to domcontentloaded for sites
                 # with persistent network connections (e.g., Shopify analytics)
                 try:
-                    await page.goto(url, wait_until="networkidle", timeout=30000)
-                except Exception:
-                    logger.info("networkidle timed out, retrying with domcontentloaded")
-                    await page.goto(url, wait_until="domcontentloaded", timeout=self.page_timeout)
-                await page.wait_for_timeout(3000)  # let JS render content
+                    await page.goto(url, wait_until="networkidle", timeout=45000)
+                except Exception as e:
+                    logger.info(f"networkidle timed out ({e}), retrying with domcontentloaded")
+                    try:
+                        await page.goto(url, wait_until="domcontentloaded", timeout=self.page_timeout)
+                    except Exception as e2:
+                        logger.error(f"Page load failed entirely: {e2}")
+                        return result
+                await page.wait_for_timeout(5000)  # let JS render content
 
                 # Strategies ordered by speed/reliability.
                 # Fast text-based strategies run first; slow interactive
@@ -191,12 +195,34 @@ class IngredientExtractor:
                     progress_cb("Extracting product info...")
                 result.product = await self._extract_product_info(page, all_text_parts)
 
+                # If we still have very little text, grab the entire page body as fallback
+                total_text = sum(len(v) for v in all_text_parts.values())
+                if total_text < 200:
+                    logger.info(f"Only {total_text} chars from strategies — grabbing full page text")
+                    if progress_cb:
+                        progress_cb("Grabbing full page text as fallback...")
+                    try:
+                        full_body = await page.evaluate(
+                            "() => document.body ? (document.body.innerText || document.body.textContent || '') : ''"
+                        )
+                        if full_body and len(full_body.strip()) > 50:
+                            # Truncate to avoid sending massive pages
+                            all_text_parts["full_page_text"] = full_body[:15000]
+                            logger.info(f"Full page text: {len(full_body)} chars")
+                    except Exception as e:
+                        logger.warning(f"Full page text extraction failed: {e}")
+
                 # Image analysis with Claude vision
                 if progress_cb:
                     progress_cb("Analyzing product images with vision...")
                 image_text = await self._extract_from_images(page)
                 if image_text:
                     all_text_parts["images_vision"] = image_text
+
+                logger.info(
+                    f"Total extraction sources: {list(all_text_parts.keys())}, "
+                    f"total chars: {sum(len(v) for v in all_text_parts.values())}"
+                )
 
                 # Send combined text to Claude for ingredient parsing
                 if progress_cb:
