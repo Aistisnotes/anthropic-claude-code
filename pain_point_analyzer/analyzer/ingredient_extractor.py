@@ -252,7 +252,7 @@ class IngredientExtractor:
                     if (lower.includes('ingredient') || lower.includes('supplement fact') ||
                         lower.includes('nutrition fact') || lower.includes('other ingredients') ||
                         lower.includes('active ingredients') || lower.includes('proprietary blend') ||
-                        lower.includes('key ingredients') || lower.includes('what\'s inside') ||
+                        lower.includes('key ingredients') || lower.includes("what's inside") ||
                         lower.includes('formula contains') || lower.includes('each serving contains')) {
                         capturing = true;
                         results.push(line);
