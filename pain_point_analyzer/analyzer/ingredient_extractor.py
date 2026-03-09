@@ -14,6 +14,7 @@ Strategies:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -337,8 +338,6 @@ class IngredientExtractor:
 
     async def _extract_faq_content(self, page: Page) -> str:
         """Extract FAQ sections that often contain ingredient info."""
-        import asyncio as _asyncio
-
         selectors = [
             ".faq", "#faq", '[class*="faq"]', '[class*="FAQ"]',
             '[class*="accordion"]', '[class*="question"]',
@@ -352,7 +351,7 @@ class IngredientExtractor:
                 elements = await page.query_selector_all(sel)
                 for el in elements[:10]:  # limit to avoid runaway clicks
                     try:
-                        await _asyncio.wait_for(el.click(), timeout=3.0)
+                        await asyncio.wait_for(el.click(), timeout=3.0)
                         await page.wait_for_timeout(300)
                     except Exception:
                         pass
@@ -372,8 +371,6 @@ class IngredientExtractor:
 
     async def _extract_tab_content(self, page: Page) -> str:
         """Click tabs (Ingredients, Details, More Info) and extract content."""
-        import asyncio as _asyncio
-
         # Use specific selectors first; broad ones like [class*="tab"] match too
         # many elements on Shopify pages and cause multi-minute hangs.
         tab_selectors = [
@@ -400,7 +397,7 @@ class IngredientExtractor:
                     if any(kw in text for kw in tab_keywords):
                         clicked_texts.add(text)
                         try:
-                            await _asyncio.wait_for(tab.click(), timeout=3.0)
+                            await asyncio.wait_for(tab.click(), timeout=3.0)
                             await page.wait_for_timeout(500)
                             body = await page.evaluate("() => document.body.innerText")
                             parts.append(f"[After clicking tab: {text}]\n{body[:3000]}")
