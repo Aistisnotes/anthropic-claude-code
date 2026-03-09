@@ -94,8 +94,10 @@ class ValidationResult:
 async def _get_ad_count(keyword: str, headless: bool = True) -> int:
     """Search Meta Ad Library for a keyword and return the total ad count.
 
-    Extracts the count from the results header text like
-    "Showing results for 12,345 ads" or similar patterns Meta uses.
+    Uses multiple strategies:
+    1. Extract from embedded JSON data in script tags (most reliable)
+    2. Parse the visible "X results" / "X ads" text from the page
+    3. Count visible ad card links as a minimum floor
     """
     from playwright.async_api import async_playwright
 
@@ -111,7 +113,11 @@ async def _get_ad_count(keyword: str, headless: bool = True) -> int:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=headless,
-                args=["--disable-blink-features=AutomationControlled"],
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                ],
             )
             context = await browser.new_context(
                 viewport={"width": 1920, "height": 1080},
@@ -124,8 +130,10 @@ async def _get_ad_count(keyword: str, headless: bool = True) -> int:
             page = await context.new_page()
 
             try:
-                await page.goto(url, wait_until="networkidle", timeout=30000)
-                await asyncio.sleep(3)
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                # Wait for body to exist
+                await page.wait_for_selector("body", timeout=10000)
+                await asyncio.sleep(5)
 
                 # Dismiss cookie/login dialogs
                 for selector in [
@@ -136,57 +144,96 @@ async def _get_ad_count(keyword: str, headless: bool = True) -> int:
                     'button:has-text("Decline optional cookies")',
                     '[aria-label="Close"]',
                 ]:
-                    btn = page.locator(selector)
-                    if await btn.count() > 0:
-                        await btn.first.click()
-                        await asyncio.sleep(1)
-                        break
+                    try:
+                        btn = page.locator(selector)
+                        if await btn.count() > 0:
+                            await btn.first.click()
+                            await asyncio.sleep(1)
+                            break
+                    except Exception:
+                        pass
 
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)
 
-                # Extract ad count from the page
-                # Meta typically shows something like:
-                #   "Showing results for 12,345 ads about..."
-                #   "12,345 results"
-                #   or a count in the page header area
+                # Strategy 1: Extract total_count from embedded JSON in script tags
+                # Meta embeds Relay-style JSON with total ad counts
                 ad_count = await page.evaluate(
                     r"""
                     () => {
-                        const bodyText = document.body.innerText || '';
+                        let bestCount = 0;
 
-                        // Pattern 1: "X results" or "Showing X results"
-                        // Pattern 2: "About X ads" / "X ads"
-                        // Pattern 3: "Showing results for X ads"
-                        const patterns = [
-                            /(?:showing\s+)?(?:results?\s+for\s+)?(\d[\d,]+)\s+(?:ads?|results?)/i,
-                            /(?:about\s+)?(\d[\d,]+)\s+ads?/i,
-                            /(\d[\d,]+)\s+(?:total\s+)?(?:active\s+)?(?:ads?|results?)/i,
-                        ];
-
-                        for (const pattern of patterns) {
-                            const match = bodyText.match(pattern);
-                            if (match) {
-                                const numStr = match[1].replace(/,/g, '');
-                                const num = parseInt(numStr, 10);
-                                if (!isNaN(num) && num > 0) {
-                                    return num;
+                        // Strategy 1: Parse embedded JSON in script tags
+                        // Meta embeds data like "total_count":12345 or
+                        // "count":12345 in script[type="application/json"]
+                        // and script[data-sjs] tags
+                        const scripts = document.querySelectorAll(
+                            'script[type="application/json"], script[data-sjs]'
+                        );
+                        for (const script of scripts) {
+                            const text = script.textContent || '';
+                            // Look for total_count patterns
+                            const countPatterns = [
+                                /"total_count"\s*:\s*(\d+)/g,
+                                /"count"\s*:\s*(\d+)/g,
+                                /"numResults"\s*:\s*(\d+)/g,
+                                /"collated_total"\s*:\s*(\d+)/g,
+                            ];
+                            for (const pattern of countPatterns) {
+                                let m;
+                                while ((m = pattern.exec(text)) !== null) {
+                                    const num = parseInt(m[1], 10);
+                                    if (num > bestCount) {
+                                        bestCount = num;
+                                    }
                                 }
                             }
                         }
 
-                        // Fallback: count ad cards visible on page as a minimum estimate
-                        // Each ad card typically has a link with /ads/library/?id=XXXXXX
+                        if (bestCount > 0) return bestCount;
+
+                        // Strategy 2: Also check ALL script tags (not just typed ones)
+                        const allScripts = document.querySelectorAll('script');
+                        for (const script of allScripts) {
+                            const text = script.textContent || '';
+                            if (text.length < 100) continue;
+                            const m = text.match(/"total_count"\s*:\s*(\d+)/);
+                            if (m) {
+                                const num = parseInt(m[1], 10);
+                                if (num > bestCount) bestCount = num;
+                            }
+                        }
+
+                        if (bestCount > 0) return bestCount;
+
+                        // Strategy 3: Parse visible page text
+                        const body = document.body;
+                        if (body) {
+                            const bodyText = body.innerText || body.textContent || '';
+
+                            const patterns = [
+                                /(?:showing\s+)?(?:results?\s+for\s+)?(\d[\d,]+)\s+(?:ads?|results?)/i,
+                                /(?:about\s+)?(\d[\d,]+)\s+ads?/i,
+                                /(\d[\d,]+)\s+(?:total\s+)?(?:active\s+)?(?:ads?|results?)/i,
+                            ];
+
+                            for (const pattern of patterns) {
+                                const match = bodyText.match(pattern);
+                                if (match) {
+                                    const numStr = match[1].replace(/,/g, '');
+                                    const num = parseInt(numStr, 10);
+                                    if (!isNaN(num) && num > bestCount) {
+                                        bestCount = num;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (bestCount > 0) return bestCount;
+
+                        // Strategy 4: Count unique ad card IDs as minimum floor
                         const adLinks = document.querySelectorAll(
                             'a[href*="/ads/library/"]'
                         );
-                        let adCardCount = 0;
-                        for (const link of adLinks) {
-                            const href = link.href || link.getAttribute('href') || '';
-                            if (/(?:id=|library\/)\d{10,}/.test(href)) {
-                                adCardCount++;
-                            }
-                        }
-                        // Deduplicate (multiple links per card)
                         const uniqueIds = new Set();
                         for (const link of adLinks) {
                             const href = link.href || link.getAttribute('href') || '';
