@@ -11,7 +11,10 @@ import asyncio
 import json
 import os
 import sys
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 from datetime import datetime
 from pathlib import Path
 
