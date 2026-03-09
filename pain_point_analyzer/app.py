@@ -8,6 +8,7 @@ root cause + mechanism positioning for the top 3 pain points.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 try:
@@ -23,6 +24,9 @@ PROJECT_ROOT = Path(__file__).parent
 CONFIG_PATH = PROJECT_ROOT / "config" / "default.toml"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+REPORTS_DIR = OUTPUT_DIR / "reports"
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+REPORTS_INDEX = REPORTS_DIR / "reports_index.json"
 
 # Add project root to path
 sys.path.insert(0, str(PROJECT_ROOT.parent))
@@ -385,6 +389,142 @@ def _show_results(report: dict):
 
 
 
+# ── Reports index ─────────────────────────────────────────────────────────────
+def _load_reports_index() -> list[dict]:
+    """Load the reports index JSON file."""
+    if REPORTS_INDEX.exists():
+        try:
+            return json.loads(REPORTS_INDEX.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return []
+
+
+def _save_reports_index(index: list[dict]) -> None:
+    """Save the reports index JSON file."""
+    REPORTS_INDEX.write_text(
+        json.dumps(index, indent=2, default=str), encoding="utf-8"
+    )
+
+
+def _add_to_reports_index(report: dict, pdf_path: str) -> None:
+    """Add a completed report to the reports index."""
+    from datetime import datetime
+
+    index = _load_reports_index()
+
+    # Copy PDF to reports directory
+    src = Path(pdf_path)
+    if src.exists():
+        dst = REPORTS_DIR / src.name
+        if src != dst:
+            dst.write_bytes(src.read_bytes())
+        pdf_in_reports = str(dst)
+    else:
+        pdf_in_reports = pdf_path
+
+    top_pain_points = [d["pain_point"] for d in report.get("top_deep_dives", [])]
+
+    entry = {
+        "id": datetime.utcnow().strftime("%Y%m%d_%H%M%S"),
+        "product_name": report.get("product", {}).get("name", "Unknown"),
+        "brand_name": report.get("product", {}).get("brand", ""),
+        "date": datetime.utcnow().isoformat(),
+        "pain_points_count": len(report.get("all_pain_points", [])),
+        "top_pain_points": top_pain_points,
+        "pdf_path": pdf_in_reports,
+    }
+
+    index.insert(0, entry)
+    _save_reports_index(index)
+
+
+def _show_reports_tab():
+    """Display the Reports tab content."""
+    from datetime import datetime
+
+    st.markdown("## Reports")
+    st.markdown("All generated analysis reports.")
+
+    index = _load_reports_index()
+
+    # Also scan for orphan PDFs not in index
+    existing_pdfs = {e["pdf_path"] for e in index}
+    for pdf_file in sorted(REPORTS_DIR.glob("*.pdf"), reverse=True):
+        if str(pdf_file) not in existing_pdfs:
+            # Add orphan PDF with basic metadata
+            index.append({
+                "id": pdf_file.stem,
+                "product_name": pdf_file.stem.replace("_", " "),
+                "brand_name": "",
+                "date": datetime.fromtimestamp(pdf_file.stat().st_mtime).isoformat(),
+                "pain_points_count": 0,
+                "top_pain_points": [],
+                "pdf_path": str(pdf_file),
+            })
+
+    # Sort by date descending
+    index.sort(key=lambda x: x.get("date", ""), reverse=True)
+
+    if not index:
+        st.info("No reports generated yet. Run an analysis to create your first report.")
+        return
+
+    for i, entry in enumerate(index):
+        pdf_path = Path(entry.get("pdf_path", ""))
+        pdf_exists = pdf_path.exists()
+
+        # Parse date
+        try:
+            dt = datetime.fromisoformat(entry["date"])
+            date_str = dt.strftime("%B %d, %Y at %H:%M")
+        except (ValueError, KeyError):
+            date_str = entry.get("date", "Unknown date")
+
+        with st.container():
+            col1, col2, col3 = st.columns([4, 1, 1])
+
+            with col1:
+                product = entry.get("product_name", "Unknown")
+                brand = entry.get("brand_name", "")
+                brand_str = f" — {brand}" if brand else ""
+                st.markdown(f"**{product}**{brand_str}")
+                st.caption(f"{date_str} | {entry.get('pain_points_count', 0)} pain points")
+
+                top_pps = entry.get("top_pain_points", [])
+                if top_pps:
+                    st.markdown(
+                        "Top 3: " + ", ".join(f"**{pp}**" for pp in top_pps[:3])
+                    )
+
+            with col2:
+                if pdf_exists:
+                    with open(pdf_path, "rb") as f:
+                        st.download_button(
+                            label="Parsipust PDF",
+                            data=f.read(),
+                            file_name=pdf_path.name,
+                            mime="application/pdf",
+                            key=f"dl_{i}",
+                            use_container_width=True,
+                        )
+
+            with col3:
+                if st.button("Delete", key=f"del_{i}", use_container_width=True):
+                    # Remove PDF file
+                    if pdf_exists:
+                        pdf_path.unlink(missing_ok=True)
+                    # Remove from index
+                    updated = [
+                        e for e in _load_reports_index()
+                        if e.get("id") != entry.get("id")
+                    ]
+                    _save_reports_index(updated)
+                    st.rerun()
+
+            st.markdown("---")
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     st.set_page_config(
@@ -397,11 +537,6 @@ def main():
         return
 
     st.title("Pain Point Analyzer")
-    st.markdown(
-        "Analyze any supplement product page to discover the top pain points "
-        "by search volume, validate with scientific research, and build "
-        "root cause + mechanism positioning."
-    )
 
     config = _load_config()
 
@@ -411,133 +546,149 @@ def main():
     if "running" not in st.session_state:
         st.session_state["running"] = False
 
-    # ── Input modes ─────────────────────────────────────────────────────────
-    input_mode = st.radio(
-        "Input method",
-        ["Scrape from URL", "Paste Ingredients"],
-        horizontal=True,
-    )
+    # ── Tabs ─────────────────────────────────────────────────────────────────
+    tab_analyzer, tab_reports = st.tabs(["Analyzer", "Reports"])
 
-    if input_mode == "Scrape from URL":
-        with st.form("analyze_form"):
-            url = st.text_input(
-                "Product Page URL",
-                placeholder="https://www.example.com/products/supplement",
-            )
-            submitted = st.form_submit_button("Analyze", use_container_width=True)
+    with tab_reports:
+        _show_reports_tab()
 
-        # Manual ingredient input section (shown when auto-extraction finds too few)
-        if st.session_state.get("needs_manual_input"):
-            extraction = st.session_state.get("extraction")
-            st.warning(
-                f"Auto-extraction found only {len(extraction.ingredients)} "
-                "ingredient(s). Please provide ingredients manually."
-            )
+    with tab_analyzer:
+        st.markdown(
+            "Analyze any supplement product page to discover the top pain points, "
+            "validate demand via Meta Ad Library, run scientific research, and build "
+            "root cause + mechanism positioning."
+        )
 
-            if extraction.ingredients:
-                st.markdown("**Found so far:**")
-                for ing in extraction.ingredients:
-                    st.markdown(f"- {ing.name}")
+        # ── Input modes ─────────────────────────────────────────────────────
+        input_mode = st.radio(
+            "Input method",
+            ["Scrape from URL", "Paste Ingredients"],
+            horizontal=True,
+        )
 
-            manual_text = st.text_area(
-                "Paste ingredient list here",
-                height=150,
-                placeholder="Aged Garlic Extract 600mg\nS-allylcysteine 1.2mg\n...",
-            )
-            if st.button("Submit Text"):
-                from pain_point_analyzer.analyzer.ingredient_extractor import (
-                    IngredientExtractor,
-                    merge_ingredients,
+        if input_mode == "Scrape from URL":
+            with st.form("analyze_form"):
+                url = st.text_input(
+                    "Product Page URL",
+                    placeholder="https://www.example.com/products/supplement",
                 )
-                extractor = IngredientExtractor(config)
-                manual_ings = asyncio.run(extractor.extract_from_text(manual_text))
-                extraction.ingredients = merge_ingredients(
-                    extraction.ingredients, manual_ings
+                submitted = st.form_submit_button("Analyze", use_container_width=True)
+
+            # Manual ingredient input section
+            if st.session_state.get("needs_manual_input"):
+                extraction = st.session_state.get("extraction")
+                st.warning(
+                    f"Auto-extraction found only {len(extraction.ingredients)} "
+                    "ingredient(s). Please provide ingredients manually."
                 )
+
+                if extraction.ingredients:
+                    st.markdown("**Found so far:**")
+                    for ing in extraction.ingredients:
+                        st.markdown(f"- {ing.name}")
+
+                manual_text = st.text_area(
+                    "Paste ingredient list here",
+                    height=150,
+                    placeholder="Aged Garlic Extract 600mg\nS-allylcysteine 1.2mg\n...",
+                )
+                if st.button("Submit Text"):
+                    from pain_point_analyzer.analyzer.ingredient_extractor import (
+                        IngredientExtractor,
+                        merge_ingredients,
+                    )
+                    extractor = IngredientExtractor(config)
+                    manual_ings = asyncio.run(extractor.extract_from_text(manual_text))
+                    extraction.ingredients = merge_ingredients(
+                        extraction.ingredients, manual_ings
+                    )
+                    st.session_state["needs_manual_input"] = False
+                    st.session_state["pipeline_paused"] = False
+                    st.rerun()
+
+            # Resume pipeline after manual input
+            if (
+                st.session_state.get("pipeline_paused") is False
+                and st.session_state.get("extraction")
+                and not st.session_state.get("report")
+            ):
+                extraction = st.session_state["extraction"]
+                url = st.session_state.get("last_url", "")
+                status = st.empty()
+
+                def update(msg, pct=None):
+                    if pct is not None:
+                        status.progress(pct, text=msg)
+                    else:
+                        status.text(msg)
+
+                report = asyncio.run(
+                    _run_remaining_pipeline(extraction, config, url, update)
+                )
+                if report:
+                    _add_to_reports_index(report, report.get("_pdf_path", ""))
+                    st.session_state["report"] = report
+                    st.rerun()
+
+            # Run URL-based pipeline
+            if submitted and url:
+                st.session_state["report"] = None
                 st.session_state["needs_manual_input"] = False
-                st.session_state["pipeline_paused"] = False
-                st.rerun()
+                st.session_state["pipeline_paused"] = None
+                st.session_state["last_url"] = url
 
-        # Resume pipeline after manual input
-        if (
-            st.session_state.get("pipeline_paused") is False
-            and st.session_state.get("extraction")
-            and not st.session_state.get("report")
-        ):
-            extraction = st.session_state["extraction"]
-            url = st.session_state.get("last_url", "")
-            status = st.empty()
+                status = st.empty()
+                report = asyncio.run(_run_pipeline(url, config, status))
 
-            def update(msg, pct=None):
-                if pct is not None:
-                    status.progress(pct, text=msg)
-                else:
-                    status.text(msg)
+                if report:
+                    _add_to_reports_index(report, report.get("_pdf_path", ""))
+                    st.session_state["report"] = report
+                    st.rerun()
 
-            report = asyncio.run(
-                _run_remaining_pipeline(extraction, config, url, update)
-            )
-            if report:
-                st.session_state["report"] = report
-                st.rerun()
-
-        # Run URL-based pipeline
-        if submitted and url:
-            st.session_state["report"] = None
-            st.session_state["needs_manual_input"] = False
-            st.session_state["pipeline_paused"] = None
-            st.session_state["last_url"] = url
-
-            status = st.empty()
-            report = asyncio.run(_run_pipeline(url, config, status))
-
-            if report:
-                st.session_state["report"] = report
-                st.rerun()
-
-    else:  # Paste Ingredients
-        with st.form("text_form"):
-            product_name = st.text_input(
-                "Product Name",
-                placeholder="Aged Garlic Extract 7500mg",
-            )
-            brand_name = st.text_input(
-                "Brand Name",
-                placeholder="Elare",
-            )
-            ingredient_text = st.text_area(
-                "Paste ingredient list",
-                height=200,
-                placeholder=(
-                    "Aged Garlic Extract (bulb) 7500mg\n"
-                    "S-allylcysteine (SAC) 3.6mg\n"
-                    "Allicin 5mg\n"
-                    "..."
-                ),
-            )
-            text_submitted = st.form_submit_button(
-                "Analyze", use_container_width=True
-            )
-
-        if text_submitted and ingredient_text.strip():
-            st.session_state["report"] = None
-            status = st.empty()
-            report = asyncio.run(
-                _run_pipeline_from_text(
-                    product_name or "Unknown Product",
-                    brand_name or "",
-                    ingredient_text,
-                    config,
-                    status,
+        else:  # Paste Ingredients
+            with st.form("text_form"):
+                product_name = st.text_input(
+                    "Product Name",
+                    placeholder="Aged Garlic Extract 7500mg",
                 )
-            )
-            if report:
-                st.session_state["report"] = report
-                st.rerun()
+                brand_name = st.text_input(
+                    "Brand Name",
+                    placeholder="Elare",
+                )
+                ingredient_text = st.text_area(
+                    "Paste ingredient list",
+                    height=200,
+                    placeholder=(
+                        "Aged Garlic Extract (bulb) 7500mg\n"
+                        "S-allylcysteine (SAC) 3.6mg\n"
+                        "Allicin 5mg\n"
+                        "..."
+                    ),
+                )
+                text_submitted = st.form_submit_button(
+                    "Analyze", use_container_width=True
+                )
 
-    # Show results
-    if st.session_state.get("report"):
-        _show_results(st.session_state["report"])
+            if text_submitted and ingredient_text.strip():
+                st.session_state["report"] = None
+                status = st.empty()
+                report = asyncio.run(
+                    _run_pipeline_from_text(
+                        product_name or "Unknown Product",
+                        brand_name or "",
+                        ingredient_text,
+                        config,
+                        status,
+                    )
+                )
+                if report:
+                    _add_to_reports_index(report, report.get("_pdf_path", ""))
+                    st.session_state["report"] = report
+                    st.rerun()
+
+        # Show results
+        if st.session_state.get("report"):
+            _show_results(st.session_state["report"])
 
 
 if __name__ == "__main__":
