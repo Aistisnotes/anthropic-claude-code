@@ -445,14 +445,16 @@ def _add_to_reports_index(report: dict, pdf_path: str) -> None:
     index = _load_reports_index()
 
     # Copy PDF to reports directory
-    src = Path(pdf_path)
-    if src.exists():
-        dst = REPORTS_DIR / src.name
-        if src != dst:
-            dst.write_bytes(src.read_bytes())
-        pdf_in_reports = str(dst)
-    else:
-        pdf_in_reports = pdf_path
+    pdf_in_reports = ""
+    if pdf_path:
+        src = Path(pdf_path)
+        if src.exists():
+            dst = REPORTS_DIR / src.name
+            if src != dst:
+                dst.write_bytes(src.read_bytes())
+            pdf_in_reports = str(dst)
+        else:
+            pdf_in_reports = pdf_path
 
     top_pain_points = [d["pain_point"] for d in report.get("top_deep_dives", [])]
 
@@ -669,7 +671,7 @@ def main():
                     _run_remaining_pipeline(extraction, config, url, update)
                 )
                 if report:
-                    _add_to_reports_index(report, report.get("_pdf_path", ""))
+                    _add_to_reports_index(report, report.get("_pdf_path") or "")
                     st.session_state["report"] = report
                     st.rerun()
 
@@ -684,7 +686,7 @@ def main():
                 report = asyncio.run(_run_pipeline(url, config, status))
 
                 if report:
-                    _add_to_reports_index(report, report.get("_pdf_path", ""))
+                    _add_to_reports_index(report, report.get("_pdf_path") or "")
                     st.session_state["report"] = report
                     st.rerun()
 
@@ -725,7 +727,7 @@ def main():
                     )
                 )
                 if report:
-                    _add_to_reports_index(report, report.get("_pdf_path", ""))
+                    _add_to_reports_index(report, report.get("_pdf_path") or "")
                     st.session_state["report"] = report
                     st.rerun()
 
