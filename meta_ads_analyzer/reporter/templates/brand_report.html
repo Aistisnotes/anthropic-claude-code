@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ brand.brand_name }} — Brand Intelligence Report</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 13.5px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1a1a1a; background: #ffffff; line-height: 1.55;
+  }
+  :root {
+    --pink: #e91e8c; --pink-light: #fce4ec; --pink-mid: #f48fb1;
+    --yellow: #fff8e1; --yellow-border: #ffc107; --yellow-dark: #f57f17;
+    --green: #e8f5e9; --green-border: #4caf50; --green-dark: #2e7d32;
+    --blue: #e3f2fd; --blue-border: #1565c0;
+    --red: #ffebee; --red-border: #ef5350; --red-dark: #c62828;
+    --purple: #f3e5f5; --purple-border: #7b1fa2;
+    --gray-bg: #f8f8f8; --gray-line: #e0e0e0;
+    --text-muted: #666; --text-light: #999;
+    --strong-bg: #1b5e20; --valuable-bg: #1565c0;
+    --directional-bg: #e65100; --test-bg: #37474f;
+  }
+  @page { size: A4; margin: 14mm 15mm; }
+  @page :first { margin: 0; }
+
+  /* ── Cover ── */
+  .cover {
+    page-break-after: always; break-after: always;
+    height: 297mm; background: #ffffff;
+    display: flex; flex-direction: column;
+    padding: 36px 44px; position: relative; overflow: hidden;
+  }
+  .cover-accent {
+    width: 100%; height: 6px;
+    background: linear-gradient(90deg, var(--pink) 0%, #f06292 100%);
+    border-radius: 3px; margin-bottom: 32px;
+  }
+  .cover-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--pink); margin-bottom: 10px; }
+  .cover-title { font-size: 38px; font-weight: 900; color: #111; line-height: 1.1; margin-bottom: 8px; letter-spacing: -0.8px; }
+  .cover-subtitle { font-size: 16px; color: var(--text-muted); margin-bottom: 28px; font-weight: 400; }
+  .cover-meta { display: flex; flex-direction: column; gap: 9px; margin-bottom: 32px; }
+  .cover-meta-row { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+  .cover-meta-label { font-weight: 700; color: #444; min-width: 150px; }
+  .cover-meta-value { color: #222; }
+  .cover-verdict-box {
+    background: var(--pink-light); border-left: 5px solid var(--pink);
+    border-radius: 6px; padding: 14px 18px; margin-top: 8px;
+    font-size: 13px; line-height: 1.65; color: #222;
+  }
+  .cover-verdict-label { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--pink); margin-bottom: 6px; }
+  .cover-bottom {
+    margin-top: auto; border-top: 1px solid var(--gray-line);
+    padding-top: 14px; display: flex; justify-content: space-between;
+    align-items: center; font-size: 11px; color: var(--text-light);
+  }
+  .cover-pill { background: var(--gray-bg); border: 1px solid var(--gray-line); border-radius: 16px; padding: 3px 10px; font-size: 11px; font-weight: 600; color: #555; }
+
+  /* ── Page content ── */
+  .page { padding: 0; }
+  .page-break { page-break-before: always; break-before: always; }
+
+  /* ── Section headers ── */
+  .section { margin-bottom: 18px; }
+  .section-header {
+    font-size: 11px; font-weight: 800; color: var(--pink);
+    border-bottom: 2px solid var(--pink); padding-bottom: 4px; margin-bottom: 10px;
+    letter-spacing: 0.2px; text-transform: uppercase;
+    page-break-after: avoid; break-after: avoid;
+  }
+  .chapter-header {
+    background: #111; color: white; padding: 20px 24px 18px;
+    border-radius: 7px; margin-bottom: 18px; margin-top: 4px;
+    page-break-after: avoid; break-after: avoid;
+  }
+  .chapter-label { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.55; margin-bottom: 5px; }
+  .chapter-title { font-size: 20px; font-weight: 900; letter-spacing: -0.2px; }
+  .chapter-sub { font-size: 12px; opacity: 0.7; margin-top: 5px; }
+
+  /* ── Badges ── */
+  .signal-badge {
+    display: inline-block; padding: 1px 6px; border-radius: 10px;
+    font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; color: white; margin-left: 5px; vertical-align: middle;
+  }
+  .signal-strong { background: var(--strong-bg); }
+  .signal-valuable { background: var(--valuable-bg); }
+  .signal-directional { background: var(--directional-bg); }
+  .signal-test { background: var(--test-bg); }
+  .freq-badge { display: inline-block; padding: 1px 7px; border-radius: 8px; font-size: 10px; font-weight: 700; background: var(--pink-light); color: var(--pink); border: 1px solid var(--pink-mid); }
+  .depth-badge { display: inline-block; padding: 1px 7px; border-radius: 8px; font-size: 10px; font-weight: 700; background: var(--gray-bg); color: #555; border: 1px solid var(--gray-line); }
+
+  /* ── Verdict box ── */
+  .verdict-box { background: var(--pink-light); border-left: 4px solid var(--pink); border-radius: 5px; padding: 11px 15px; margin-bottom: 14px; font-size: 12.5px; line-height: 1.6; color: #222; page-break-inside: avoid; break-inside: avoid; }
+  .verdict-label { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--pink); margin-bottom: 5px; }
+
+  /* ── Deep cards ── */
+  .deep-card { border: 1px solid var(--gray-line); border-radius: 7px; padding: 13px 15px; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid; }
+  .deep-card-title { font-size: 13px; font-weight: 800; color: #111; margin-bottom: 8px; line-height: 1.3; }
+  .deep-field { margin-bottom: 8px; }
+  .deep-field-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 2px; }
+  .deep-field-value { font-size: 12px; line-height: 1.55; color: #333; }
+  .deep-field-value.science { background: var(--blue); border-radius: 4px; padding: 7px 9px; font-size: 11.5px; color: #1a237e; border-left: 3px solid var(--blue-border); }
+  .deep-field-value.gap { background: var(--yellow); border-radius: 4px; padding: 7px 9px; font-size: 11.5px; color: #4a2000; border-left: 3px solid var(--yellow-border); }
+  .ingredient-pill { display: inline-block; background: var(--purple); border: 1px solid var(--purple-border); border-radius: 10px; padding: 1px 7px; font-size: 10px; font-weight: 600; color: #4a148c; margin: 2px 3px 2px 0; }
+
+  /* ── Concept cards ── */
+  .concept-card { border: 1px solid var(--gray-line); border-left: 4px solid #7b1fa2; border-radius: 6px; padding: 11px 14px; margin-bottom: 10px; page-break-inside: avoid; break-inside: avoid; }
+  .concept-name { font-size: 12.5px; font-weight: 800; color: #4a148c; margin-bottom: 6px; line-height: 1.3; }
+
+  /* ── Avatar cards ── */
+  .avatar-card { background: var(--gray-bg); border: 1px solid var(--gray-line); border-radius: 6px; padding: 10px 13px; margin-bottom: 8px; page-break-inside: avoid; break-inside: avoid; }
+  .avatar-text { font-size: 12px; line-height: 1.5; color: #333; }
+  .avatar-msg { font-size: 11px; color: var(--text-muted); margin-top: 5px; font-style: italic; line-height: 1.4; }
+
+  /* ── Loophole cards ── */
+  .loophole-card { border: 1px solid var(--gray-line); border-left: 5px solid var(--pink); border-radius: 6px; padding: 13px 16px; margin-bottom: 12px; background: #fff; page-break-inside: avoid; break-inside: avoid; }
+  .loophole-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 10px; }
+  .loophole-title-block { flex: 1; }
+  .loophole-rank-num { font-size: 10px; font-weight: 700; color: var(--text-muted); margin-bottom: 2px; }
+  .loophole-title { font-size: 13.5px; font-weight: 800; color: #111; line-height: 1.3; }
+  .score-badge { background: var(--pink); color: white; border-radius: 14px; padding: 4px 11px; font-size: 13px; font-weight: 800; white-space: nowrap; flex-shrink: 0; }
+  .loophole-field-label { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 3px; margin-top: 9px; }
+  .loophole-gap-text { font-size: 12px; line-height: 1.55; color: #333; }
+  .loophole-science { background: var(--blue); border-left: 3px solid var(--blue-border); border-radius: 4px; padding: 8px 10px; font-size: 11.5px; line-height: 1.5; color: #1a237e; margin-top: 3px; }
+  .loophole-strategy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+  .strategy-cell { background: var(--gray-bg); border-radius: 4px; padding: 7px 9px; }
+  .strategy-cell-label { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); margin-bottom: 2px; }
+  .strategy-cell-value { font-size: 11.5px; color: #222; line-height: 1.4; }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 10px; }
+  thead th { background: var(--gray-bg); border: 1px solid var(--gray-line); padding: 7px 9px; text-align: left; font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; color: #444; }
+  tbody td { border: 1px solid var(--gray-line); padding: 6px 9px; vertical-align: top; line-height: 1.4; }
+  tbody tr { page-break-inside: avoid; break-inside: avoid; }
+  tbody tr:nth-child(even) td { background: #fafafa; }
+  .matrix-cell { text-align: center; font-weight: 700; font-size: 11px; }
+
+  /* ── Callouts ── */
+  .callout-yellow { background: var(--yellow); border-left: 4px solid var(--yellow-border); border-radius: 5px; padding: 12px 15px; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid; }
+  .callout-yellow-title { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--yellow-dark); margin-bottom: 7px; }
+  .callout-green { background: var(--green); border-left: 4px solid var(--green-border); border-radius: 5px; padding: 10px 14px; margin-bottom: 10px; page-break-inside: avoid; break-inside: avoid; }
+  .callout-green-title { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--green-dark); margin-bottom: 5px; }
+  .callout-red { background: var(--red); border-left: 4px solid var(--red-border); border-radius: 5px; padding: 10px 14px; margin-bottom: 10px; page-break-inside: avoid; break-inside: avoid; }
+  .callout-red-title { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--red-dark); margin-bottom: 5px; }
+
+  /* ── Bullet lists ── */
+  .bullet-list { list-style: none; padding: 0; margin: 0; }
+  .bullet-list li { padding: 5px 10px 5px 22px; position: relative; font-size: 12px; line-height: 1.5; color: #333; margin-bottom: 4px; page-break-inside: avoid; break-inside: avoid; }
+  .bullet-list li::before { content: "›"; position: absolute; left: 8px; color: var(--pink); font-weight: 900; font-size: 14px; line-height: 1.4; }
+  .bullet-list.yellow li::before { color: var(--yellow-dark); }
+  .bullet-list.green li::before { color: var(--green-dark); }
+  .bullet-list.red li::before { color: var(--red-dark); }
+
+  .divider { border: none; border-top: 1px solid var(--gray-line); margin: 16px 0; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ COVER ══════════════════ -->
+<div class="cover">
+  <div class="cover-accent"></div>
+  <div class="cover-eyebrow">Brand Intelligence Report</div>
+  <div class="cover-title">{{ brand.brand_name }}</div>
+  <div class="cover-subtitle">Ad Library Deep Analysis — Root Causes, Mechanisms &amp; Loopholes</div>
+
+  <div class="cover-meta">
+    {% if keyword %}
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Keyword</span>
+      <span class="cover-meta-value">{{ keyword }}</span>
+    </div>
+    {% endif %}
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Ads Analyzed</span>
+      <span class="cover-meta-value">{{ brand.ads_analyzed }}</span>
+    </div>
+    {% if brand.ad_count and brand.ad_count != brand.ads_analyzed %}
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Total Active Ads</span>
+      <span class="cover-meta-value">{{ brand.ad_count }}</span>
+    </div>
+    {% endif %}
+    {% if brand.all_page_names and brand.all_page_names | length > 1 %}
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Page Names</span>
+      <span class="cover-meta-value">{{ brand.all_page_names | join(", ") }}</span>
+    </div>
+    {% endif %}
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Generated</span>
+      <span class="cover-meta-value">{{ generated_date }}</span>
+    </div>
+  </div>
+
+  {% if brand.competitive_verdict %}
+  <div class="cover-verdict-box">
+    <div class="cover-verdict-label">Competitive Verdict</div>
+    {{ brand.competitive_verdict }}
+  </div>
+  {% endif %}
+
+  <div class="cover-bottom">
+    <span>Confidential — Internal Use Only</span>
+    <span class="cover-pill">Meta Ad Library Intelligence</span>
+  </div>
+</div>
+
+<!-- ══════════════════ EXECUTIVE SUMMARY ══════════════════ -->
+{% if brand.executive_summary %}
+<div class="page">
+  <div class="chapter-header">
+    <div class="chapter-label">Section 1</div>
+    <div class="chapter-title">Executive Summary</div>
+  </div>
+  <div class="section">
+    <p style="font-size:13px;line-height:1.75;color:#222;">{{ brand.executive_summary }}</p>
+  </div>
+
+  {% if brand.key_insights %}
+  <div class="section" style="margin-top:20px;">
+    <div class="section-header">Key Insights</div>
+    <ul class="bullet-list">
+      {% for insight in brand.key_insights %}
+      <li>{{ insight }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ══════════════════ AVATARS ══════════════════ -->
+{% if brand.avatars %}
+<div class="page page-break">
+  <div class="chapter-header">
+    <div class="chapter-label">Section 2</div>
+    <div class="chapter-title">Target Avatars</div>
+    <div class="chapter-sub">Who this brand is speaking to</div>
+  </div>
+  <div class="section">
+    {% for av in brand.avatars %}
+    <div class="avatar-card">
+      <div class="avatar-text">
+        <strong>Avatar {{ loop.index }}:</strong> {{ av.avatar if av is mapping and av.get("avatar") else av }}
+        {% if av is mapping %}
+          {% set ss = av.get("signal_strength", "") %}
+          {% if ss == "strong" %}<span class="signal-badge signal-strong">Strong</span>
+          {% elif ss == "valuable" %}<span class="signal-badge signal-valuable">Valuable</span>
+          {% elif ss == "directional" %}<span class="signal-badge signal-directional">Directional</span>{% endif %}
+          {% if av.frequency %}<span class="freq-badge" style="margin-left:5px;">{{ av.frequency }}×</span>{% endif %}
+        {% endif %}
+      </div>
+      {% if av is mapping and av.get("message_fit") %}
+      <div class="avatar-msg">Message: {{ av.message_fit }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ══════════════════ ROOT CAUSES ══════════════════ -->
+{% if brand.root_causes %}
+<div class="page page-break">
+  <div class="chapter-header">
+    <div class="chapter-label">Section 3</div>
+    <div class="chapter-title">Root Cause Patterns</div>
+    <div class="chapter-sub">What problems does this brand claim to solve, and how deep do they go?</div>
+  </div>
+  {% for rc in brand.root_causes %}
+  <div class="deep-card">
+    <div class="deep-card-title">
+      {{ rc.root_cause if rc is mapping else rc }}
+      {% if rc is mapping %}
+        {% set ss = rc.get("signal_strength", "") %}
+        {% if ss == "strong" %}<span class="signal-badge signal-strong">Strong</span>
+        {% elif ss == "valuable" %}<span class="signal-badge signal-valuable">Valuable</span>
+        {% elif ss == "directional" %}<span class="signal-badge signal-directional">Directional</span>
+        {% elif ss == "test" %}<span class="signal-badge signal-test">Test</span>{% endif %}
+        {% if rc.frequency %}<span class="freq-badge" style="margin-left:6px;">{{ rc.frequency }}×</span>{% endif %}
+        {% if rc.depth %}<span class="depth-badge" style="margin-left:4px;">{{ rc.depth }}</span>{% endif %}
+      {% endif %}
+    </div>
+    {% if rc is mapping %}
+      {% if rc.get("scientific_explanation") %}
+      <div class="deep-field">
+        <div class="deep-field-label">Actual Science</div>
+        <div class="deep-field-value science">{{ rc.scientific_explanation }}</div>
+      </div>
+      {% endif %}
+      {% if rc.get("how_ad_explains_it") %}
+      <div class="deep-field">
+        <div class="deep-field-label">How the Ad Explains It</div>
+        <div class="deep-field-value">{{ rc.how_ad_explains_it }}</div>
+      </div>
+      {% endif %}
+      {% if rc.get("upstream_gap") %}
+      <div class="deep-field">
+        <div class="deep-field-label">Upstream Gap (Missing Explanation)</div>
+        <div class="deep-field-value gap">{{ rc.upstream_gap }}</div>
+      </div>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ══════════════════ MECHANISMS ══════════════════ -->
+{% if brand.mechanisms %}
+<div class="page page-break">
+  <div class="chapter-header">
+    <div class="chapter-label">Section 4</div>
+    <div class="chapter-title">Mechanism Patterns</div>
+    <div class="chapter-sub">How does this brand explain the solution works?</div>
+  </div>
+  {% for mech in brand.mechanisms %}
+  <div class="deep-card">
+    <div class="deep-card-title">
+      {{ mech.mechanism if mech is mapping else mech }}
+      {% if mech is mapping %}
+        {% set ss = mech.get("signal_strength", "") %}
+        {% if ss == "strong" %}<span class="signal-badge signal-strong">Strong</span>
+        {% elif ss == "valuable" %}<span class="signal-badge signal-valuable">Valuable</span>
+        {% elif ss == "directional" %}<span class="signal-badge signal-directional">Directional</span>{% endif %}
+        {% if mech.frequency %}<span class="freq-badge" style="margin-left:6px;">{{ mech.frequency }}×</span>{% endif %}
+        {% if mech.depth %}<span class="depth-badge" style="margin-left:4px;">{{ mech.depth }}</span>{% endif %}
+      {% endif %}
+    </div>
+    {% if mech is mapping %}
+      {% if mech.get("scientific_explanation") %}
+      <div class="deep-field">
+        <div class="deep-field-label">Actual Science</div>
+        <div class="deep-field-value science">{{ mech.scientific_explanation }}</div>
+      </div>
+      {% endif %}
+      {% if mech.get("how_ad_explains_it") %}
+      <div class="deep-field">
+        <div class="deep-field-label">How the Ad Explains It</div>
+        <div class="deep-field-value">{{ mech.how_ad_explains_it }}</div>
+      </div>
+      {% endif %}
+      {% if mech.get("ingredients_involved") and mech.ingredients_involved %}
+      <div class="deep-field">
+        <div class="deep-field-label">Ingredients</div>
+        <div style="margin-top:3px;">
+          {% for ing in mech.ingredients_involved %}
+          <span class="ingredient-pill">{{ ing }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% if mech.get("stops_short_at") %}
+      <div class="deep-field">
+        <div class="deep-field-label">Stops Short At</div>
+        <div class="deep-field-value gap">{{ mech.stops_short_at }}</div>
+      </div>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ══════════════════ PAIN POINTS ══════════════════ -->
+{% if brand.pain_points %}
+<div class="page page-break">
+  <div class="chapter-header">
+    <div class="chapter-label">Section 5</div>
+    <div class="chapter-title">Pain Points &amp; Hooks</div>
+    <div class="chapter-sub">What pains does this brand target, and how do they open their ads?</div>
+  </div>
+  <div class="section">
+    <div class="section-header">Pain Points</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:35%">Pain Point</th>
+          <th style="width:45%">Observable Symptoms</th>
+          <th style="width:10%">Freq</th>
+          <th style="width:10%">Signal</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pp in brand.pain_points %}
+        <tr>
+          <td style="font-weight:600;">{{ pp.pain_point if pp is mapping else pp }}</td>
+          <td>
+            {% if pp is mapping %}
+              {% set symptoms = pp.get("symptoms", []) %}
+              {% if symptoms %}{{ symptoms | join(" · ") }}
+              {% else %}<span style="color:var(--text-light);">—</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="matrix-cell">{{ pp.frequency if pp is mapping and pp.frequency else "—" }}</td>
+          <td>
+            {% if pp is mapping %}
+              {% set ss = pp.get("signal_strength", "") %}
+              {% if ss == "strong" %}<span class="signal-badge signal-strong">Strong</span>
+              {% elif ss == "valuable" %}<span class="signal-badge signal-valuable">Val</span>
+              {% elif ss == "directional" %}<span class="signal-badge signal-directional">Dir</span>
+              {% elif ss == "test" %}<span class="signal-badge signal-test">Test</span>
+              {% else %}<span style="color:var(--text-light);">—</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if brand.hook_types %}
+  <div class="section" style="margin-top:18px;">
+    <div class="section-header">Hook Patterns</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:35%">Hook Type</th>
+          <th style="width:10%">Freq</th>
+          <th style="width:55%">Example</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for hook in brand.hook_types %}
+        <tr>
+          <td style="font-weight:600;">{{ hook.hook_type if hook is mapping else hook }}</td>
+          <td class="matrix-cell">{{ hook.frequency if hook is mapping and hook.frequency else "—" }}</td>
+          <td style="font-style:italic;color:var(--text-muted);">{{ hook.example if hook is mapping and hook.get("example") else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ══════════════════ CONCEPTS ══════════════════ -->
+{% if brand.concepts %}
+<div class="page page-break">
+  <div class="chapter-header">
+    <div class="chapter-label">Section 6</div>
+    <div class="chapter-title">Core Concepts</div>
+    <div class="chapter-sub">Root Cause + Mechanism combinations — the brand's intellectual framework</div>
+  </div>
+  {% for c in brand.concepts %}
+  <div class="concept-card">
+    <div class="concept-name">
+      {{ c.concept if c is mapping else c }}
+      {% if c is mapping %}
+        {% set ss = c.get("signal_strength", "") %}
+        {% if ss == "strong" %}<span class="signal-badge signal-strong">Strong</span>
+        {% elif ss == "valuable" %}<span class="signal-badge signal-valuable">Valuable</span>
+        {% elif ss == "directional" %}<span class="signal-badge signal-directional">Directional</span>
+        {% elif ss == "test" %}<span class="signal-badge signal-test">Test</span>{% endif %}
+        {% if c.frequency %}<span class="freq-badge" style="margin-left:6px;">{{ c.frequency }}×</span>{% endif %}
+      {% endif %}
+    </div>
+    {% if c is mapping %}
+      {% if c.get("scientific_explanation") %}
+      <div class="deep-field">
+        <div class="deep-field-label">Actual Science</div>
+        <div class="deep-field-value science">{{ c.scientific_explanation }}</div>
+      </div>
+      {% endif %}
+      {% if c.get("how_brand_explains_it") %}
+      <div class="deep-field">
+        <div class="deep-field-label">How Brand Explains It</div>
+        <div class="deep-field-value">{{ c.how_brand_explains_it }}</div>
+      </div>
+      {% endif %}
+      {% if c.get("loophole_in_chain") %}
+      <div class="deep-field">
+        <div class="deep-field-label">Gap in Explanation Chain</div>
+        <div class="deep-field-value gap">{{ c.loophole_in_chain }}</div>
+      </div>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ══════════════════ LOOPHOLES ══════════════════ -->
+{% if brand.loopholes %}
+<div class="page page-break">
+  <div class="chapter-header">
+    <div class="chapter-label">Section 7</div>
+    <div class="chapter-title">Loopholes &amp; Exploitation Roadmap</div>
+    <div class="chapter-sub">Ranked gaps you can exploit against this brand</div>
+  </div>
+  {% for lh in brand.loopholes %}
+  <div class="loophole-card">
+    <div class="loophole-header">
+      <div class="loophole-title-block">
+        <div class="loophole-rank-num">Rank #{{ lh.rank if lh is mapping and lh.get("rank") else loop.index }}</div>
+        <div class="loophole-title">{{ lh.title if lh is mapping and lh.get("title") else (lh.loophole if lh is mapping else lh) }}</div>
+      </div>
+      {% if lh is mapping and lh.get("score") %}
+      <div class="score-badge">{{ lh.score }}/50</div>
+      {% endif %}
+    </div>
+    {% if lh is mapping %}
+      {% if lh.get("gap") %}
+      <div class="loophole-field-label">The Gap</div>
+      <div class="loophole-gap-text">{{ lh.gap }}</div>
+      {% endif %}
+      {% if lh.get("why_massive") %}
+      <div class="loophole-field-label">Why It's Massive</div>
+      <div class="loophole-gap-text">{{ lh.why_massive }}</div>
+      {% endif %}
+      {% if lh.get("science_to_use") %}
+      <div class="loophole-field-label">Science to Use</div>
+      <div class="loophole-science">{{ lh.science_to_use }}</div>
+      {% endif %}
+      {% if lh.get("angle") or lh.get("example_hook") or lh.get("reason") %}
+      <div class="loophole-strategy-grid">
+        {% if lh.get("angle") %}
+        <div class="strategy-cell">
+          <div class="strategy-cell-label">Angle</div>
+          <div class="strategy-cell-value">{{ lh.angle }}</div>
+        </div>
+        {% endif %}
+        {% if lh.get("example_hook") %}
+        <div class="strategy-cell">
+          <div class="strategy-cell-label">Example Hook</div>
+          <div class="strategy-cell-value" style="font-style:italic;">{{ lh.example_hook }}</div>
+        </div>
+        {% endif %}
+        {% if lh.get("reason") %}
+        <div class="strategy-cell" style="grid-column: 1 / -1;">
+          <div class="strategy-cell-label">Why This Works</div>
+          <div class="strategy-cell-value">{{ lh.reason }}</div>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ══════════════════ GAPS & RECOMMENDATIONS ══════════════════ -->
+<div class="page page-break">
+  <div class="chapter-header">
+    <div class="chapter-label">Section 8</div>
+    <div class="chapter-title">Gaps &amp; Strategic Recommendations</div>
+    <div class="chapter-sub">What this brand leaves on the table — and how to take it</div>
+  </div>
+
+  {% if brand.what_nobody_does_well %}
+  <div class="section">
+    <div class="callout-yellow">
+      <div class="callout-yellow-title">What This Brand Never Explains</div>
+      <ul class="bullet-list yellow">
+        {% for item in brand.what_nobody_does_well %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if brand.recommendations %}
+  <div class="section">
+    <div class="callout-green">
+      <div class="callout-green-title">Strategic Recommendations</div>
+      <ul class="bullet-list green">
+        {% for rec in brand.recommendations %}
+        <li>{{ rec }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if brand.what_not_to_do %}
+  <div class="section">
+    <div class="callout-red">
+      <div class="callout-red-title">What NOT to Do — Avoid These Mistakes</div>
+      <ul class="bullet-list red">
+        {% for item in (brand.what_not_to_do if brand.what_not_to_do is iterable and brand.what_not_to_do is not string else [brand.what_not_to_do]) %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+</body>
+</html>

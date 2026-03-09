@@ -1287,7 +1287,7 @@ class MarketPipeline:
 
         # Save brand report to market subdirectory
         if self.market_subdir:
-            self.pipeline.reporter.save_brand_report(brand_report, self.market_subdir)
+            await self.pipeline.reporter.save_brand_report(brand_report, self.market_subdir)
 
         return brand_report
 

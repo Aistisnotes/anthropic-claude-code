@@ -96,12 +96,12 @@ class ReportWriter:
         logger.info(f"Report saved: {path}")
         return path
 
-    def save_brand_report(
+    async def save_brand_report(
         self,
         brand_report: BrandReport,
         market_subdir: Path,
     ) -> Path:
-        """Save per-brand market research report.
+        """Save per-brand market research report as JSON + PDF.
 
         Args:
             brand_report: Brand-specific report
@@ -110,6 +110,8 @@ class ReportWriter:
         Returns:
             Path to saved JSON file
         """
+        from meta_ads_analyzer.reporter.pdf_generator import generate_brand_pdf
+
         # Create subdirectory
         market_subdir.mkdir(parents=True, exist_ok=True)
 
@@ -125,10 +127,12 @@ class ReportWriter:
         with open(json_path, "w") as f:
             json.dump(brand_report.model_dump(mode="json"), f, indent=2, default=str)
 
-        # Save markdown (reuse existing pattern report markdown)
-        md_path = market_subdir / f"{filename}.md"
-        with open(md_path, "w") as f:
-            f.write(brand_report.pattern_report.full_report_markdown)
+        # Generate PDF to ~/Desktop/reports/
+        try:
+            pdf_path = await generate_brand_pdf(brand_report)
+            logger.info(f"Brand PDF saved: {pdf_path}")
+        except Exception as e:
+            logger.warning(f"Brand PDF generation failed, skipping: {e}")
 
         logger.info(f"Brand report saved: {json_path}")
         return json_path

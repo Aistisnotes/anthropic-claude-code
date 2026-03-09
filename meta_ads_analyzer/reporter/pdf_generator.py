@@ -558,6 +558,117 @@ def generate_blue_ocean_pdf_sync(
     )
 
 
+async def generate_brand_pdf(
+    brand_report,  # BrandReport
+    output_dir: Optional[Path] = None,
+    output_filename: Optional[str] = None,
+) -> Path:
+    """Generate a PDF report from a BrandReport.
+
+    Args:
+        brand_report: BrandReport instance
+        output_dir: Directory to save the PDF (defaults to ~/Desktop/reports/)
+        output_filename: Override the output filename (without extension)
+
+    Returns:
+        Path to the generated PDF file
+    """
+    from playwright.async_api import async_playwright
+
+    if output_dir is None:
+        output_dir = _DEFAULT_OUTPUT_DIR
+    output_dir = Path(output_dir).expanduser()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    pr = brand_report.pattern_report
+
+    if output_filename is None:
+        keyword_slug = _slugify(brand_report.keyword or "brand")
+        brand_slug = _slugify(brand_report.advertiser.page_name)
+        date_str = datetime.now().strftime("%Y%m%d")
+        output_filename = f"{brand_slug}_{keyword_slug}_{date_str}_brand_analysis"
+
+    pdf_path = output_dir / f"{output_filename}.pdf"
+
+    # Build what_not_to_do in both formats
+    what_not_to_do_raw = pr.what_not_to_do or []
+    if isinstance(what_not_to_do_raw, list):
+        what_not_to_do_list = what_not_to_do_raw
+        what_not_to_do_str = []
+    else:
+        what_not_to_do_list = []
+        what_not_to_do_str = what_not_to_do_raw
+
+    brand = {
+        "brand_name": brand_report.advertiser.page_name,
+        "ad_count": brand_report.advertiser.ad_count,
+        "all_page_names": brand_report.advertiser.all_page_names or [],
+        "ads_analyzed": pr.total_ads_analyzed or 0,
+        "competitive_verdict": pr.competitive_verdict or "",
+        "executive_summary": pr.executive_summary or "",
+        "key_insights": pr.key_insights or [],
+        "root_causes": (pr.root_cause_patterns or [])[:4],
+        "mechanisms": (pr.mechanism_patterns or [])[:4],
+        "pain_points": (pr.common_pain_points or [])[:5],
+        "hook_types": (pr.hook_patterns or [])[:5],
+        "loopholes": (pr.loopholes or [])[:6],
+        "avatars": (pr.avatars or [])[:4],
+        "concepts": (pr.concepts or [])[:4],
+        "what_nobody_does_well": pr.what_nobody_does_well or [],
+        "recommendations": pr.recommendations or [],
+        "what_not_to_do": what_not_to_do_str,
+        "what_not_to_do_list": what_not_to_do_list,
+    }
+
+    # Render HTML template
+    logger.info(f"Rendering brand report HTML for {brand['brand_name']}...")
+    env = Environment(
+        loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+        autoescape=select_autoescape(["html"]),
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+    template = env.get_template("brand_report.html")
+    html_content = template.render(
+        brand=brand,
+        keyword=brand_report.keyword or "",
+        generated_date=datetime.now().strftime("%B %d, %Y"),
+    )
+
+    # Write to temp file and render with Playwright
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".html", delete=False, encoding="utf-8"
+    ) as tmp:
+        tmp.write(html_content)
+        tmp_path = Path(tmp.name)
+
+    logger.info("Generating brand PDF with Playwright...")
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(f"file://{tmp_path}", wait_until="networkidle")
+            await page.pdf(
+                path=str(pdf_path),
+                format="A4",
+                print_background=True,
+                margin={
+                    "top": "18mm",
+                    "bottom": "18mm",
+                    "left": "16mm",
+                    "right": "16mm",
+                },
+            )
+            await browser.close()
+    except Exception as e:
+        raise RuntimeError(f"Brand PDF generation failed: {e}") from e
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    logger.info(f"Brand PDF saved: {pdf_path}")
+    return pdf_path
+
+
 def auto_generate_pdf_for_compare(
     compare_output_dir: Path,
     output_dir: Optional[Path] = None,
