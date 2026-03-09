@@ -84,8 +84,14 @@ class IngredientExtractor:
             try:
                 if progress_cb:
                     progress_cb("Loading product page...")
-                await page.goto(url, wait_until="networkidle", timeout=self.page_timeout)
-                await page.wait_for_timeout(2000)  # let JS finish
+                # Try networkidle first, fall back to domcontentloaded for sites
+                # with persistent network connections (e.g., Shopify analytics)
+                try:
+                    await page.goto(url, wait_until="networkidle", timeout=30000)
+                except Exception:
+                    logger.info("networkidle timed out, retrying with domcontentloaded")
+                    await page.goto(url, wait_until="domcontentloaded", timeout=self.page_timeout)
+                await page.wait_for_timeout(3000)  # let JS render content
 
                 # Run all strategies
                 strategies = [
