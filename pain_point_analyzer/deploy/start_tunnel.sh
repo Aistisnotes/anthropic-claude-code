@@ -3,16 +3,17 @@
 # Usage: ./start_tunnel.sh
 #
 # Environment variables:
-#   STREAMLIT_PORT   — local port (default 8502)
-#   TOOL_USERNAME    — login username (default: admin)
-#   TOOL_PASSWORD    — login password (bypass auth if unset)
+#   STREAMLIT_PORT    — local port (default 8503, avoids conflict with other tools)
+#   TOOL_USERNAME     — login username (default: admin)
+#   TOOL_PASSWORD     — login password (bypass auth if unset)
 #   ANTHROPIC_API_KEY — required for analysis
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-PORT=${STREAMLIT_PORT:-8502}
+PORT=${STREAMLIT_PORT:-8503}
+APP_PY="$PROJECT_DIR/app.py"
 
 STREAMLIT_PID=""
 TUNNEL_PID=""
@@ -55,41 +56,42 @@ if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
     echo "WARNING: ANTHROPIC_API_KEY not set. Analysis will fail without it."
 fi
 
-# ── Start Streamlit (skip if already running on this port) ────────────────────
-if lsof -i :"$PORT" -sTCP:LISTEN &>/dev/null 2>&1 || ss -tlnp 2>/dev/null | grep -q ":${PORT} "; then
-    echo "Streamlit already running on port $PORT — reusing."
-else
-    echo "Starting Streamlit on port $PORT..."
-    streamlit run app.py \
-        --server.port "$PORT" \
-        --server.address 0.0.0.0 \
-        --server.headless true &
-    STREAMLIT_PID=$!
-
-    # Wait for Streamlit to be ready
-    echo -n "Waiting for Streamlit..."
-    for i in $(seq 1 30); do
-        if curl -s "http://localhost:$PORT/_stcore/health" &>/dev/null; then
-            echo " ready."
-            break
-        fi
-        if [[ $i -eq 30 ]]; then
-            echo " timed out (30s). Continuing anyway."
-        fi
-        sleep 1
-    done
+# ── Kill anything already on our port ─────────────────────────────────────────
+if lsof -ti :"$PORT" &>/dev/null; then
+    echo "Killing existing process on port $PORT..."
+    lsof -ti :"$PORT" | xargs kill -9 2>/dev/null || true
+    sleep 1
 fi
+
+# ── Start Streamlit (absolute path to pain_point_analyzer/app.py) ─────────────
+echo "Starting Pain Point Analyzer on port $PORT..."
+echo "  App: $APP_PY"
+streamlit run "$APP_PY" \
+    --server.port "$PORT" \
+    --server.address 0.0.0.0 \
+    --server.headless true &
+STREAMLIT_PID=$!
+
+# Wait for Streamlit to be ready
+echo -n "Waiting for Streamlit..."
+for i in $(seq 1 30); do
+    if curl -s "http://localhost:$PORT/_stcore/health" &>/dev/null; then
+        echo " ready."
+        break
+    fi
+    if [[ $i -eq 30 ]]; then
+        echo " timed out (30s). Continuing anyway."
+    fi
+    sleep 1
+done
 
 # ── Start Cloudflare tunnel ──────────────────────────────────────────────────
 echo ""
-echo "Starting Cloudflare tunnel → http://localhost:$PORT"
+echo "Starting Cloudflare tunnel -> http://localhost:$PORT"
 echo "──────────────────────────────────────────────────"
-
-# cloudflared prints the public URL to stderr; tee it so the user sees it
 cloudflared tunnel --url "http://localhost:$PORT" 2>&1 &
 TUNNEL_PID=$!
 
-# Wait a few seconds then extract the public URL from cloudflared output
 sleep 5
 echo ""
 echo "──────────────────────────────────────────────────"
@@ -97,4 +99,4 @@ echo "Tunnel is running.  Press Ctrl+C to stop both."
 echo "──────────────────────────────────────────────────"
 
 # Block until either process exits
-wait -n "$TUNNEL_PID" ${STREAMLIT_PID:+"$STREAMLIT_PID"} 2>/dev/null || true
+wait -n "$TUNNEL_PID" "$STREAMLIT_PID" 2>/dev/null || true
