@@ -267,10 +267,10 @@ def sidebar():
         # Quick stats
         compare_dirs = _get_compare_dirs()
         market_dirs = _get_market_dirs()
-        brand_reports = list(REPORTS_DIR.glob("*.md"))
+        brand_pdfs = list(PDF_OUTPUT_DIR.glob("*_brand_analysis.pdf"))
         st.metric("Compare Runs", len(compare_dirs))
         st.metric("Market Runs", len(market_dirs))
-        st.metric("Brand Reports", len(brand_reports))
+        st.metric("Brand Reports", len(brand_pdfs))
 
 
 # ── Data helpers ───────────────────────────────────────────────────────────────
@@ -366,6 +366,20 @@ def _find_pdf_for_market(market_dir: Path) -> Optional[Path]:
     return next(
         (p for p in all_pdfs if slug10 in p.stem.lower() and "blue_ocean" not in p.stem), None
     )
+
+
+def _find_pdf_for_brand(brand_name: str) -> Optional[Path]:
+    """Find a brand_analysis PDF in PDF_OUTPUT_DIR matching a brand name."""
+    if not PDF_OUTPUT_DIR.exists():
+        return None
+    import re
+    slug = re.sub(r"[^a-z0-9]+", "_", brand_name.lower()).strip("_")[:20]
+    all_pdfs = sorted(
+        PDF_OUTPUT_DIR.glob("*_brand_analysis.pdf"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return next((p for p in all_pdfs if slug[:10] in p.stem.lower()), None)
 
 
 def _load_blue_ocean_result(market_dir: Path) -> Optional[dict]:
@@ -874,18 +888,31 @@ def page_results():
             for bf in brand_files:
                 try:
                     data = json.loads(bf.read_text())
-                    brand = data.get("brand_name") or data.get("page_name") or bf.stem
-                    with st.expander(f"📋 {brand}"):
-                        if data.get("top_hooks"):
-                            st.markdown("**Top Hooks**")
-                            for h in data["top_hooks"][:3]:
-                                st.markdown(f"> *\"{h}\"*")
-                        if data.get("primary_angle"):
-                            st.markdown(f"**Primary Angle:** {data['primary_angle']}")
-                        if data.get("root_cause"):
-                            st.markdown(f"**Root Cause:** {data['root_cause']}")
-                        if data.get("mechanism"):
-                            st.markdown(f"**Mechanism:** {data['mechanism']}")
+                    pr = data.get("pattern_report", {})
+                    adv = data.get("advertiser", {})
+                    brand_name = adv.get("page_name") or data.get("brand_name") or bf.stem
+                    brand_pdf = _find_pdf_for_brand(brand_name)
+                    col_exp, col_pdf = st.columns([5, 1])
+                    with col_exp:
+                        with st.expander(f"📋 {brand_name}"):
+                            if pr.get("competitive_verdict"):
+                                st.markdown(f"**Verdict:** {pr['competitive_verdict']}")
+                            if pr.get("executive_summary"):
+                                st.caption(pr["executive_summary"][:300])
+                            if pr.get("key_insights"):
+                                st.markdown("**Key Insights**")
+                                for ins in pr["key_insights"][:3]:
+                                    st.markdown(f"- {ins}")
+                    with col_pdf:
+                        if brand_pdf and brand_pdf.exists():
+                            with open(brand_pdf, "rb") as f:
+                                st.download_button(
+                                    "PDF",
+                                    data=f.read(),
+                                    file_name=brand_pdf.name,
+                                    mime="application/pdf",
+                                    key=f"dl_brand_{bf.name}",
+                                )
                 except Exception:
                     pass
         return
@@ -1070,43 +1097,54 @@ def page_history():
                 """, unsafe_allow_html=True)
 
     with tab3:
-        md_reports = sorted(REPORTS_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if not md_reports:
+        pdf_reports = sorted(PDF_OUTPUT_DIR.glob("*_brand_analysis.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not pdf_reports:
             st.info("No brand reports yet.")
         else:
-            st.caption(f"{len(md_reports)} brand reports")
+            st.caption(f"{len(pdf_reports)} brand reports")
             search = st.text_input("Filter by brand name", placeholder="Elare, Sculptique...")
-            for rpt in md_reports[:100]:
+            for rpt in pdf_reports[:100]:
                 if search and search.lower() not in rpt.stem.lower():
                     continue
-                # Parse filename: YYYYMMDD_HHMMSS_keyword_Brand_hash.md
-                stem = rpt.stem
+                # Parse filename: {brand_slug}_{keyword_slug}_{YYYYMMDD}_brand_analysis.pdf
+                stem = rpt.stem  # e.g. elare_collagen_20260309_brand_analysis
                 parts = stem.split("_")
                 date_str = ""
-                label = stem
-                if len(parts) >= 3:
-                    try:
-                        dt = datetime.strptime(f"{parts[0]}_{parts[1]}", "%Y%m%d_%H%M%S")
-                        date_str = dt.strftime("%b %d %H:%M")
-                        label = " ".join(parts[2:-1]).replace("_", " ")
-                    except ValueError:
-                        pass
-                col1, col2 = st.columns([6, 1])
+                label = stem.replace("_brand_analysis", "").replace("_", " ").title()
+                # Try to extract date (3rd from last part before "brand_analysis")
+                for i, p in enumerate(parts):
+                    if len(p) == 8 and p.isdigit():
+                        try:
+                            dt = datetime.strptime(p, "%Y%m%d")
+                            date_str = dt.strftime("%b %d, %Y")
+                            label = " ".join(parts[:i]).replace("_", " ").title()
+                        except ValueError:
+                            pass
+                        break
+                col1, col2, col3 = st.columns([5, 1, 1])
                 with col1:
                     st.markdown(f"""
-                    <div class="run-card" style="border-left-color:#666;">
+                    <div class="run-card" style="border-left-color:#e91e8c;">
                       <div class="run-card-title">{label}</div>
-                      <div class="run-card-meta">{date_str}</div>
+                      <div class="run-card-meta">{date_str} &nbsp;·&nbsp; {rpt.stat().st_size // 1024}KB</div>
                     </div>
                     """, unsafe_allow_html=True)
                 with col2:
-                    with open(rpt) as f:
+                    with open(rpt, "rb") as f:
                         st.download_button(
-                            "MD",
+                            "PDF",
                             data=f.read(),
                             file_name=rpt.name,
+                            mime="application/pdf",
                             key=f"dl_rpt_{rpt.name}",
                         )
+                with col3:
+                    # Copy to static dir and offer new-tab link
+                    dest = STATIC_DIR / rpt.name
+                    if not dest.exists():
+                        import shutil as _shutil2
+                        _shutil2.copy2(rpt, dest)
+                    st.markdown(f'<a href="app/static/{rpt.name}" target="_blank" style="text-decoration:none;"><button style="padding:4px 10px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">↗</button></a>', unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
