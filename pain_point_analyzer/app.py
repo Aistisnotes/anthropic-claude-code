@@ -87,10 +87,10 @@ async def _run_pipeline(url: str, config: dict, status_placeholder):
 
     st.session_state["extraction"] = extraction
 
-    if len(extraction.ingredients) < 3:
+    if len(extraction.ingredients) == 0:
         st.session_state["needs_manual_input"] = True
         st.session_state["pipeline_paused"] = True
-        update("Ingredient extraction needs review.", 0.15)
+        update("No ingredients found. Please provide them manually.", 0.15)
         return None
 
     return await _run_remaining_pipeline(
