@@ -8,14 +8,12 @@ root cause + mechanism positioning for the top 3 pain points.
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sys
 try:
     import tomllib
 except ModuleNotFoundError:
     import tomli as tomllib
-from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -204,6 +202,18 @@ def _show_results(report: dict):
     """Display the analysis results inline."""
     product = report["product"]
 
+    # PDF download at the top
+    pdf_path = report.get("_pdf_path")
+    if pdf_path and Path(pdf_path).exists():
+        with open(pdf_path, "rb") as f:
+            st.download_button(
+                label="Parsipust PDF",
+                data=f.read(),
+                file_name=Path(pdf_path).name,
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
     st.markdown(f"## {product['name']}")
     st.markdown(f"**Brand:** {product['brand']}")
     if product.get("description"):
@@ -331,31 +341,6 @@ def _show_results(report: dict):
                 f"{syn['description']}"
             )
 
-    # Downloads
-    st.markdown("### Downloads")
-    col1, col2 = st.columns(2)
-
-    # JSON download
-    json_str = json.dumps(report, indent=2, default=str)
-    col1.download_button(
-        label="Download JSON Report",
-        data=json_str,
-        file_name=f"pain_point_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-        mime="application/json",
-        use_container_width=True,
-    )
-
-    # PDF download
-    pdf_path = report.get("_pdf_path")
-    if pdf_path and Path(pdf_path).exists():
-        with open(pdf_path, "rb") as f:
-            col2.download_button(
-                label="Download PDF Report",
-                data=f.read(),
-                file_name=Path(pdf_path).name,
-                mime="application/pdf",
-                use_container_width=True,
-            )
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
