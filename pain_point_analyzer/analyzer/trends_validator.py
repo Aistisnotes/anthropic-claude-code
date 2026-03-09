@@ -130,10 +130,8 @@ async def _get_ad_count(keyword: str, headless: bool = True) -> int:
             page = await context.new_page()
 
             try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                # Wait for body to exist
-                await page.wait_for_selector("body", timeout=10000)
-                await asyncio.sleep(5)
+                await page.goto(url, wait_until="networkidle", timeout=45000)
+                await asyncio.sleep(3)
 
                 # Dismiss cookie/login dialogs
                 for selector in [
@@ -153,7 +151,37 @@ async def _get_ad_count(keyword: str, headless: bool = True) -> int:
                     except Exception:
                         pass
 
-                await asyncio.sleep(3)
+                # Wait for actual ad content to load — look for signs
+                # that the SPA has rendered results
+                for wait_selector in [
+                    'div[role="article"]',
+                    'a[href*="/ads/library/"]',
+                    'text=/\\d+.*results/',
+                    'text=/\\d+.*ads/',
+                ]:
+                    try:
+                        await page.wait_for_selector(
+                            wait_selector, timeout=8000
+                        )
+                        logger.debug(
+                            f"Found content indicator: {wait_selector}"
+                        )
+                        break
+                    except Exception:
+                        continue
+
+                await asyncio.sleep(5)
+
+                # Debug: log page title and snippet of text to diagnose
+                # blank/login pages
+                page_title = await page.title()
+                body_snippet = await page.evaluate(
+                    "(document.body.innerText || '').substring(0, 300)"
+                )
+                logger.debug(
+                    f"Page title: {page_title} | "
+                    f"Body snippet: {body_snippet[:150]}"
+                )
 
                 # Strategy 1: Extract total_count from embedded JSON in script tags
                 # Meta embeds Relay-style JSON with total ad counts
@@ -244,6 +272,33 @@ async def _get_ad_count(keyword: str, headless: bool = True) -> int:
                     }
                     """
                 )
+
+                # If we got 0, log diagnostic info
+                if ad_count == 0:
+                    diag = await page.evaluate(
+                        """() => {
+                            const scripts = document.querySelectorAll('script');
+                            const jsonScripts = document.querySelectorAll(
+                                'script[type="application/json"], script[data-sjs]'
+                            );
+                            const html = document.documentElement.outerHTML || '';
+                            return {
+                                scriptCount: scripts.length,
+                                jsonScriptCount: jsonScripts.length,
+                                htmlLength: html.length,
+                                hasLoginWall: !!(
+                                    document.querySelector('#login_form') ||
+                                    document.querySelector('[data-testid="royal_login_form"]') ||
+                                    (document.body.innerText || '').includes('Log in')
+                                ),
+                                url: window.location.href,
+                            };
+                        }"""
+                    )
+                    logger.warning(
+                        f"Meta Ad Library returned 0 for '{keyword}' — "
+                        f"diagnostics: {diag}"
+                    )
 
                 logger.info(f"Meta Ad Library: '{keyword}' → {ad_count} ads")
 
