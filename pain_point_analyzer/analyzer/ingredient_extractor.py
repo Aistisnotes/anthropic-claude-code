@@ -331,31 +331,46 @@ class IngredientExtractor:
 
     async def _extract_tab_content(self, page: Page) -> str:
         """Click tabs (Ingredients, Details, More Info) and extract content."""
+        import asyncio as _asyncio
+
+        # Use specific selectors first; broad ones like [class*="tab"] match too
+        # many elements on Shopify pages and cause multi-minute hangs.
         tab_selectors = [
-            'button[role="tab"]', '[class*="tab"]', '.tabs button', '.tabs a',
-            '[data-toggle="tab"]', '.product-tabs a', '.product-tabs button',
-            'li[role="tab"]', 'a[role="tab"]',
+            'button[role="tab"]', 'a[role="tab"]', 'li[role="tab"]',
+            '.product-tabs a', '.product-tabs button',
+            '[data-toggle="tab"]', '.tabs button', '.tabs a',
         ]
         parts = []
         tab_keywords = ["ingredient", "detail", "more info", "info", "about",
                         "supplement", "nutrition", "what's in", "formula"]
+        clicked_texts: set[str] = set()  # avoid clicking the same tab twice
 
         for sel in tab_selectors:
             try:
                 tabs = await page.query_selector_all(sel)
-                for tab in tabs:
-                    text = (await tab.inner_text()).lower().strip()
+                # Limit to first 10 matches per selector to avoid runaway loops
+                for tab in tabs[:10]:
+                    try:
+                        text = (await tab.inner_text()).lower().strip()
+                    except Exception:
+                        continue
+                    if text in clicked_texts:
+                        continue
                     if any(kw in text for kw in tab_keywords):
+                        clicked_texts.add(text)
                         try:
-                            await tab.click()
+                            await _asyncio.wait_for(tab.click(), timeout=3.0)
                             await page.wait_for_timeout(500)
-                            # Re-extract the page content after clicking
                             body = await page.evaluate("() => document.body.innerText")
                             parts.append(f"[After clicking tab: {text}]\n{body[:3000]}")
                         except Exception:
                             pass
             except Exception:
                 pass
+
+            # Early exit once we have enough content
+            if len(parts) >= 3:
+                break
         return "\n\n".join(parts)
 
     async def _extract_accordion_content(self, page: Page) -> str:
@@ -369,7 +384,7 @@ class IngredientExtractor:
         for sel in accordion_selectors:
             try:
                 elements = await page.query_selector_all(sel)
-                for el in elements:
+                for el in elements[:15]:  # limit to avoid runaway clicks
                     try:
                         await el.click()
                         await page.wait_for_timeout(300)
