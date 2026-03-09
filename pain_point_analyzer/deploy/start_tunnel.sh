@@ -98,5 +98,7 @@ echo "────────────────────────�
 echo "Tunnel is running.  Press Ctrl+C to stop both."
 echo "──────────────────────────────────────────────────"
 
-# Block until either process exits
-wait -n "$TUNNEL_PID" "$STREAMLIT_PID" 2>/dev/null || true
+# Block forever until Ctrl+C (trap handles cleanup)
+wait "$TUNNEL_PID" 2>/dev/null || wait "$STREAMLIT_PID" 2>/dev/null || true
+# If we get here, one process died — keep waiting for the other
+wait 2>/dev/null || true
