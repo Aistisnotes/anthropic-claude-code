@@ -163,13 +163,16 @@ class ReportGenerator:
             for pp in discovery.pain_points
         ]
 
-        # Trends data
+        # Demand validation data (Meta Ad Library)
         trends_data = []
         for r in trends.all_results:
             trends_data.append({
                 "pain_point": r.pain_point.name,
                 "best_keyword": r.best_keyword,
                 "best_score": r.best_score,
+                "tier": r.tier,
+                "tier_label": r.tier_label,
+                "tier_color": r.tier_color,
                 "keywords": [
                     {
                         "keyword": ks.keyword,
@@ -202,6 +205,9 @@ class ReportGenerator:
                 "supporting_ingredients": tr.pain_point.supporting_ingredients,
                 "best_keyword": tr.best_keyword,
                 "trend_score": tr.best_score,
+                "tier": tr.tier,
+                "tier_label": tr.tier_label,
+                "tier_color": tr.tier_color,
             }
 
             if science:

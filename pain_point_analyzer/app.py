@@ -155,8 +155,8 @@ async def _run_remaining_pipeline(extraction, config, url, update):
         progress_cb=lambda m: update(f"Step 2/6: {m}", 0.30),
     )
 
-    # Step 3: Google Trends validation
-    update("Step 3/6: Validating with Google Trends...", 0.40)
+    # Step 3: Meta Ad Library demand validation
+    update("Step 3/6: Validating demand via Meta Ad Library...", 0.40)
     trends_engine = TrendsValidator(config)
     trends = await trends_engine.validate(
         discovery.pain_points,
@@ -243,17 +243,58 @@ def _show_results(report: dict):
         })
     st.dataframe(pp_data, use_container_width=True)
 
-    # Trends
-    st.markdown("### Google Trends Rankings")
-    trends_data = []
+    # Meta Ad Library Demand Validation
+    st.markdown("### Meta Ad Library — Market Demand")
     for t in report["trends"]:
-        trends_data.append({
-            "Pain Point": t["pain_point"],
-            "Best Keyword": t["best_keyword"],
-            "Score": t["best_score"],
-            "Top 3": "Yes" if t["is_top"] else "",
-        })
-    st.dataframe(trends_data, use_container_width=True)
+        tier = t.get("tier", 1)
+        tier_label = t.get("tier_label", "LOOPHOLE")
+        tier_color = t.get("tier_color", "green")
+        ad_count = t.get("best_score", 0)
+        is_top = t.get("is_top", False)
+
+        # Color-coded tier display
+        color_map = {
+            "green": "#4caf50",
+            "yellow": "#ffc107",
+            "orange": "#ff9800",
+            "red": "#ef5350",
+        }
+        hex_color = color_map.get(tier_color, "#666")
+        bg_map = {
+            "green": "#e8f5e9",
+            "yellow": "#fff8e1",
+            "orange": "#fff3e0",
+            "red": "#ffebee",
+        }
+        bg_color = bg_map.get(tier_color, "#f5f5f5")
+
+        top_badge = " **[TOP 3]**" if is_top else ""
+        st.markdown(
+            f'<div style="background:{bg_color};border-left:5px solid {hex_color};'
+            f'padding:12px 16px;margin-bottom:8px;border-radius:0 6px 6px 0;">'
+            f'<strong>{t["pain_point"]}</strong>{top_badge}<br>'
+            f'<span style="color:{hex_color};font-weight:700;">'
+            f'{tier_label}</span> — '
+            f'{ad_count:,} active ads '
+            f'(best keyword: "{t["best_keyword"]}")<br>'
+            f'<span style="font-size:0.85em;color:#666;">'
+            f'Keywords: {", ".join(kw["keyword"] + " (" + str(kw["score"]) + ")" for kw in t.get("keywords", []))}'
+            f'</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Tier warnings
+        if tier == 3:
+            st.warning(
+                "High sophistication market — deep rootcause/mechanism "
+                "positioning is essential to stand out."
+            )
+        elif tier == 4:
+            st.error(
+                "Hyper-saturated. Better to focus on other pain points "
+                "unless you have a breakthrough angle."
+            )
 
     # Top deep dives
     st.markdown("---")
@@ -262,11 +303,12 @@ def _show_results(report: dict):
     for i, dive in enumerate(report["top_deep_dives"]):
         st.markdown(f"### #{i+1}: {dive['pain_point']}")
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Trend Score", dive["trend_score"])
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Active Ads", f"{dive.get('trend_score', 0):,}")
+        col2.metric("Tier", dive.get("tier_label", "—"))
         if dive.get("science"):
-            col2.metric("Evidence", dive["science"]["overall_evidence"].title())
-        col3.metric("Ingredients", len(dive["supporting_ingredients"]))
+            col3.metric("Evidence", dive["science"]["overall_evidence"].title())
+        col4.metric("Ingredients", len(dive["supporting_ingredients"]))
 
         # Science
         if dive.get("science"):

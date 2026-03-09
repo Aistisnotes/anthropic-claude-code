@@ -15,12 +15,8 @@ temperature = 0.3
 max_retries = 3
 
 [trends]
-# Geographic region for Google Trends
-geo = "US"
-# Timeframe for trends data
-timeframe = "today 5-y"
-# Pause between API calls (seconds) to avoid rate limits
-api_pause = 2.0
+# Max pain points to validate (caps browser sessions)
+max_pain_points = 15
 
 [reporting]
 # Output directory

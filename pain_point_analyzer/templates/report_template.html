@@ -194,7 +194,7 @@
   {% if report.top_deep_dives %}
   <div class="cover-badge">
     #1 Opportunity: {{ report.top_deep_dives[0].pain_point }}
-    (Trend Score: {{ report.top_deep_dives[0].trend_score }})
+    ({{ report.top_deep_dives[0].tier_label | default('') }} — {{ '{:,}'.format(report.top_deep_dives[0].trend_score) }} ads)
   </div>
   {% endif %}
 
@@ -258,32 +258,58 @@
   </table>
 </div>
 
-<!-- 3. GOOGLE TRENDS -->
+<!-- 3. META AD LIBRARY DEMAND -->
 <div class="section">
-  <div class="section-header"><span class="section-num">3.</span> Google Trends Validation</div>
+  <div class="section-header"><span class="section-num">3.</span> Meta Ad Library — Market Demand</div>
 
   <table>
     <thead>
       <tr>
         <th>Rank</th>
         <th>Pain Point</th>
+        <th>Tier</th>
+        <th>Active Ads</th>
         <th>Best Keyword</th>
-        <th>Score</th>
         <th>Status</th>
       </tr>
     </thead>
     <tbody>
       {% for t in report.trends %}
+      {% set tier_bg = {'green': '#e8f5e9', 'yellow': '#fff8e1', 'orange': '#fff3e0', 'red': '#ffebee'} %}
+      {% set tier_fg = {'green': '#2e7d32', 'yellow': '#b7840a', 'orange': '#e65100', 'red': '#c62828'} %}
       <tr {% if t.is_top %}class="row-highlight"{% endif %}>
         <td>{{ loop.index }}</td>
         <td><strong>{{ t.pain_point }}</strong></td>
+        <td>
+          <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:{{ tier_bg.get(t.tier_color, '#f5f5f5') }};color:{{ tier_fg.get(t.tier_color, '#666') }};">
+            {{ t.tier_label }}
+          </span>
+        </td>
+        <td>{{ '{:,}'.format(t.best_score) }}</td>
         <td>{{ t.best_keyword }}</td>
-        <td>{{ t.best_score }}</td>
-        <td>{% if t.is_top %}<span class="tag tag-blue">TOP {{ report.top_deep_dives | length }}</span>{% endif %}</td>
+        <td>
+          {% if t.is_top %}<span class="tag tag-blue">TOP {{ report.top_deep_dives | length }}</span>{% endif %}
+          {% if t.tier == 3 %}<br><span style="font-size:10px;color:#e65100;">&#9888;&#65039; High sophistication</span>{% endif %}
+          {% if t.tier == 4 %}<br><span style="font-size:10px;color:#c62828;">&#128721; Do not touch</span>{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+
+  {% for t in report.trends %}
+  {% if t.keywords and t.keywords | length > 1 %}
+  {% if loop.first %}
+  <div class="subsection-header" style="margin-top:12px;">Keyword Breakdown</div>
+  {% endif %}
+  <div style="font-size:11px;margin-bottom:4px;">
+    <strong>{{ t.pain_point }}:</strong>
+    {% for kw in t.keywords %}
+    {{ kw.keyword }} ({{ '{:,}'.format(kw.score) }}){% if not loop.last %}, {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
 </div>
 
 <!-- 4. TOP PAIN POINTS DEEP DIVE -->
@@ -294,13 +320,26 @@
     {{ dive.pain_point }} — Deep Dive
   </div>
 
-  <div style="display:flex;gap:8px;margin-bottom:12px;">
-    <span class="tag tag-blue">Trend Score: {{ dive.trend_score }}</span>
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+    {% set tier_tag_map = {1: 'strong', 2: 'moderate', 3: 'weak', 4: 'weak'} %}
+    <span class="tag tag-{{ tier_tag_map.get(dive.tier, 'blue') }}">{{ dive.tier_label | default('') }}</span>
+    <span class="tag tag-blue">{{ '{:,}'.format(dive.trend_score) }} active ads</span>
     {% if dive.science %}
     <span class="tag tag-{{ dive.science.overall_evidence }}">{{ dive.science.overall_evidence | upper }} EVIDENCE</span>
     {% endif %}
     <span class="tag tag-blue">{{ dive.supporting_ingredients | length }} ingredients</span>
   </div>
+  {% if dive.tier == 3 %}
+  <div class="callout callout-yellow" style="margin-bottom:10px;">
+    <div class="callout-title">&#9888;&#65039; High Sophistication Market</div>
+    <p>Deep rootcause and mechanism positioning is essential in this market to stand out from {{ '{:,}'.format(dive.trend_score) }} competing ads.</p>
+  </div>
+  {% elif dive.tier == 4 %}
+  <div class="callout callout-red" style="margin-bottom:10px;">
+    <div class="callout-title">&#128721; Hyper-Saturated Market</div>
+    <p>{{ '{:,}'.format(dive.trend_score) }}+ active ads. Better to focus on other pain points unless you have a truly unique angle.</p>
+  </div>
+  {% endif %}
 
   <!-- Science -->
   {% if dive.science %}
