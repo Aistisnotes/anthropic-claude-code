@@ -387,51 +387,11 @@ def main():
     # ── Input modes ─────────────────────────────────────────────────────────
     input_mode = st.radio(
         "Input method",
-        ["Paste Ingredients", "Scrape from URL"],
+        ["Scrape from URL", "Paste Ingredients"],
         horizontal=True,
     )
 
-    if input_mode == "Paste Ingredients":
-        with st.form("text_form"):
-            product_name = st.text_input(
-                "Product Name",
-                placeholder="Aged Garlic Extract 7500mg",
-            )
-            brand_name = st.text_input(
-                "Brand Name",
-                placeholder="Elare",
-            )
-            ingredient_text = st.text_area(
-                "Paste ingredient list",
-                height=200,
-                placeholder=(
-                    "Aged Garlic Extract (bulb) 7500mg\n"
-                    "S-allylcysteine (SAC) 3.6mg\n"
-                    "Allicin 5mg\n"
-                    "..."
-                ),
-            )
-            text_submitted = st.form_submit_button(
-                "Analyze", use_container_width=True
-            )
-
-        if text_submitted and ingredient_text.strip():
-            st.session_state["report"] = None
-            status = st.empty()
-            report = asyncio.run(
-                _run_pipeline_from_text(
-                    product_name or "Unknown Product",
-                    brand_name or "",
-                    ingredient_text,
-                    config,
-                    status,
-                )
-            )
-            if report:
-                st.session_state["report"] = report
-                st.rerun()
-
-    else:  # Scrape from URL
+    if input_mode == "Scrape from URL":
         with st.form("analyze_form"):
             url = st.text_input(
                 "Product Page URL",
@@ -504,6 +464,46 @@ def main():
             status = st.empty()
             report = asyncio.run(_run_pipeline(url, config, status))
 
+            if report:
+                st.session_state["report"] = report
+                st.rerun()
+
+    else:  # Paste Ingredients
+        with st.form("text_form"):
+            product_name = st.text_input(
+                "Product Name",
+                placeholder="Aged Garlic Extract 7500mg",
+            )
+            brand_name = st.text_input(
+                "Brand Name",
+                placeholder="Elare",
+            )
+            ingredient_text = st.text_area(
+                "Paste ingredient list",
+                height=200,
+                placeholder=(
+                    "Aged Garlic Extract (bulb) 7500mg\n"
+                    "S-allylcysteine (SAC) 3.6mg\n"
+                    "Allicin 5mg\n"
+                    "..."
+                ),
+            )
+            text_submitted = st.form_submit_button(
+                "Analyze", use_container_width=True
+            )
+
+        if text_submitted and ingredient_text.strip():
+            st.session_state["report"] = None
+            status = st.empty()
+            report = asyncio.run(
+                _run_pipeline_from_text(
+                    product_name or "Unknown Product",
+                    brand_name or "",
+                    ingredient_text,
+                    config,
+                    status,
+                )
+            )
             if report:
                 st.session_state["report"] = report
                 st.rerun()
