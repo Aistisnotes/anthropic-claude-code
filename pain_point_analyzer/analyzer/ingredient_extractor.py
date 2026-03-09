@@ -93,20 +93,25 @@ class IngredientExtractor:
                     await page.goto(url, wait_until="domcontentloaded", timeout=self.page_timeout)
                 await page.wait_for_timeout(3000)  # let JS render content
 
-                # Run all strategies
-                strategies = [
+                # Strategies ordered by speed/reliability.
+                # Fast text-based strategies run first; slow interactive
+                # ones (faq, tabs, accordions) only run if we haven't
+                # found enough ingredient content yet.
+                fast_strategies = [
                     ("json_ld", self._extract_json_ld),
                     ("meta_tags", self._extract_meta_tags),
                     ("supplement_facts", self._extract_supplement_facts),
                     ("ingredient_list", self._extract_ingredient_list),
                     ("body_copy", self._extract_body_copy),
+                ]
+                slow_strategies = [
                     ("faq", self._extract_faq_content),
                     ("tabs", self._extract_tab_content),
                     ("accordions", self._extract_accordion_content),
                 ]
 
                 all_text_parts: dict[str, str] = {}
-                for name, strategy in strategies:
+                for name, strategy in fast_strategies:
                     if progress_cb:
                         progress_cb(f"Searching: {name}...")
                     try:
@@ -118,6 +123,38 @@ class IngredientExtractor:
                         logger.warning(f"Strategy '{name}' timed out after 30s")
                     except Exception as e:
                         logger.warning(f"Strategy '{name}' failed: {e}")
+
+                # Check if fast strategies already found ingredient data.
+                # Look for keyword signals that indicate real ingredient content.
+                _ingredient_keywords = [
+                    "ingredient", "supplement fact", "serving size",
+                    "daily value", "amount per", "proprietary blend",
+                ]
+                _found_text = " ".join(all_text_parts.values()).lower()
+                has_ingredients = any(kw in _found_text for kw in _ingredient_keywords)
+
+                if has_ingredients:
+                    logger.info(
+                        "Fast strategies found ingredient content — "
+                        "skipping slow interactive strategies"
+                    )
+                else:
+                    logger.info(
+                        "No clear ingredient content yet — "
+                        "running slow interactive strategies"
+                    )
+                    for name, strategy in slow_strategies:
+                        if progress_cb:
+                            progress_cb(f"Searching: {name}...")
+                        try:
+                            text = await asyncio.wait_for(strategy(page), timeout=30.0)
+                            if text and text.strip():
+                                all_text_parts[name] = text.strip()
+                                logger.info(f"Strategy '{name}' found {len(text)} chars")
+                        except asyncio.TimeoutError:
+                            logger.warning(f"Strategy '{name}' timed out after 30s")
+                        except Exception as e:
+                            logger.warning(f"Strategy '{name}' failed: {e}")
 
                 result.raw_sources = all_text_parts
 
