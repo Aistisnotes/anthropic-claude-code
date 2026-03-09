@@ -68,10 +68,37 @@ class IngredientExtractor:
 
     async def extract(self, url: str, progress_cb=None) -> ExtractionResult:
         """Run all extraction strategies and return combined results."""
+        result = await self._extract_once(url, progress_cb)
+
+        # Retry once if no ingredients found — pages can be flaky
+        if len(result.ingredients) == 0:
+            logger.info("No ingredients on first attempt — retrying with fresh browser...")
+            if progress_cb:
+                progress_cb("Retrying extraction with fresh browser...")
+            await asyncio.sleep(2)
+            result = await self._extract_once(url, progress_cb)
+
+        # Last resort: full-page screenshot + Claude vision
+        if len(result.ingredients) == 0:
+            logger.info("Still no ingredients — trying full-page screenshot fallback...")
+            if progress_cb:
+                progress_cb("Trying full-page screenshot analysis...")
+            screenshot_ings = await self._extract_from_full_page_screenshot(url)
+            if screenshot_ings:
+                result.ingredients = screenshot_ings
+                result.warnings.append("Ingredients extracted from full-page screenshot (fallback)")
+
+        return result
+
+    async def _extract_once(self, url: str, progress_cb=None) -> ExtractionResult:
+        """Single attempt at extraction."""
         result = ExtractionResult(product=ProductInfo(), ingredients=[])
 
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=self.headless)
+            browser = await pw.chromium.launch(
+                headless=self.headless,
+                args=["--no-sandbox", "--disable-setuid-sandbox"],
+            )
             context = await browser.new_context(
                 viewport={"width": 1440, "height": 900},
                 user_agent=(
@@ -526,6 +553,79 @@ class IngredientExtractor:
                 logger.warning(f"Image {i+1} analysis failed: {e}")
 
         return "\n\n".join(parts)
+
+    async def _extract_from_full_page_screenshot(self, url: str) -> list[Ingredient]:
+        """Last-resort fallback: take a full-page screenshot and send to Claude vision."""
+        try:
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(
+                    headless=self.headless,
+                    args=["--no-sandbox", "--disable-setuid-sandbox"],
+                )
+                context = await browser.new_context(
+                    viewport={"width": 1440, "height": 900},
+                    user_agent=(
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/122.0.0.0 Safari/537.36"
+                    ),
+                )
+                page = await context.new_page()
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=self.page_timeout)
+                    await page.wait_for_timeout(5000)
+
+                    # Scroll down to trigger lazy loading
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+                    await page.wait_for_timeout(2000)
+
+                    screenshot = await page.screenshot(full_page=True)
+                    if not screenshot or len(screenshot) < 5000:
+                        return []
+
+                    b64 = base64.b64encode(screenshot).decode("utf-8")
+                    response = self.client.messages.create(
+                        model=self.model,
+                        max_tokens=4096,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": "image/png",
+                                            "data": b64,
+                                        },
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": (
+                                            "This is a full-page screenshot of a supplement product page. "
+                                            "Find and extract ALL supplement ingredients listed anywhere on the page "
+                                            "(supplement facts panel, ingredient list, product description, etc.). "
+                                            "For each ingredient, provide name, amount, and unit if visible.\n\n"
+                                            "Return ONLY valid JSON:\n"
+                                            "```json\n"
+                                            '{"ingredients": [{"name": "...", "amount": "...", "unit": "..."}]}\n'
+                                            "```"
+                                        ),
+                                    },
+                                ],
+                            }
+                        ],
+                    )
+                    ingredients = self._parse_claude_ingredient_json(
+                        response.content[0].text, "full_page_screenshot"
+                    )
+                    logger.info(f"Full-page screenshot fallback found {len(ingredients)} ingredients")
+                    return ingredients
+                finally:
+                    await browser.close()
+        except Exception as e:
+            logger.warning(f"Full-page screenshot fallback failed: {e}")
+            return []
 
     async def _extract_product_info(
         self, page: Page, text_parts: dict[str, str]
