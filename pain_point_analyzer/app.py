@@ -504,8 +504,9 @@ def _show_reports_tab():
         return
 
     for i, entry in enumerate(index):
-        pdf_path = Path(entry.get("pdf_path", ""))
-        pdf_exists = pdf_path.exists()
+        pdf_path_str = entry.get("pdf_path", "")
+        pdf_path = Path(pdf_path_str) if pdf_path_str else None
+        pdf_exists = pdf_path is not None and pdf_path.is_file()
 
         # Parse date
         try:

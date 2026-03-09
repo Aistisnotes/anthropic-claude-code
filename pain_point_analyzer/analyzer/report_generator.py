@@ -99,29 +99,24 @@ class ReportGenerator:
             return None
 
     def _html_to_pdf(self, html_path: Path, pdf_path: Path) -> None:
-        """Convert HTML file to PDF using Playwright."""
-        import asyncio
+        """Convert HTML file to PDF using Playwright (sync API)."""
+        from playwright.sync_api import sync_playwright
 
-        from playwright.async_api import async_playwright
-
-        async def _convert():
-            async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=True)
-                page = await browser.new_page()
-                await page.goto(
-                    f"file://{html_path.resolve()}",
-                    wait_until="networkidle",
-                )
-                await page.pdf(
-                    path=str(pdf_path),
-                    format="A4",
-                    margin={"top": "14mm", "bottom": "14mm",
-                            "left": "15mm", "right": "15mm"},
-                    print_background=True,
-                )
-                await browser.close()
-
-        asyncio.get_event_loop().run_until_complete(_convert())
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(
+                f"file://{html_path.resolve()}",
+                wait_until="networkidle",
+            )
+            page.pdf(
+                path=str(pdf_path),
+                format="A4",
+                margin={"top": "14mm", "bottom": "14mm",
+                        "left": "15mm", "right": "15mm"},
+                print_background=True,
+            )
+            browser.close()
 
     def _build_report_dict(
         self,
