@@ -70,7 +70,7 @@ def _check_auth() -> bool:
 # ── Pipeline runner ────────────────────────────────────────────────────────────
 async def _run_pipeline(url: str, config: dict, status_placeholder):
     """Run the full 6-step pipeline."""
-    from pain_point_analyzer.analyzer.ingredient_extractor import IngredientExtractor
+    from analyzer.ingredient_extractor import IngredientExtractor
 
     progress_bar = status_placeholder.progress(0, text="Starting analysis...")
 
@@ -108,7 +108,7 @@ async def _run_pipeline_from_text(
     status_placeholder,
 ):
     """Run the pipeline starting from pasted ingredient text (no scraping)."""
-    from pain_point_analyzer.analyzer.ingredient_extractor import (
+    from analyzer.ingredient_extractor import (
         ExtractionResult,
         IngredientExtractor,
         ProductInfo,
@@ -145,11 +145,11 @@ async def _run_pipeline_from_text(
 
 async def _run_remaining_pipeline(extraction, config, url, update):
     """Run steps 2-6 after ingredients are confirmed."""
-    from pain_point_analyzer.analyzer.pain_point_discovery import PainPointDiscovery
-    from pain_point_analyzer.analyzer.trends_validator import TrendsValidator
-    from pain_point_analyzer.analyzer.scientific_researcher import ScientificResearcher
-    from pain_point_analyzer.analyzer.positioning_engine import PositioningEngine
-    from pain_point_analyzer.analyzer.report_generator import ReportGenerator
+    from analyzer.pain_point_discovery import PainPointDiscovery
+    from analyzer.trends_validator import TrendsValidator
+    from analyzer.scientific_researcher import ScientificResearcher
+    from analyzer.positioning_engine import PositioningEngine
+    from analyzer.report_generator import ReportGenerator
 
     # Step 2: Discover pain points
     update("Step 2/6: Discovering pain points...", 0.20)
@@ -593,7 +593,7 @@ def main():
                     placeholder="Aged Garlic Extract 600mg\nS-allylcysteine 1.2mg\n...",
                 )
                 if st.button("Submit Text"):
-                    from pain_point_analyzer.analyzer.ingredient_extractor import (
+                    from analyzer.ingredient_extractor import (
                         IngredientExtractor,
                         merge_ingredients,
                     )
