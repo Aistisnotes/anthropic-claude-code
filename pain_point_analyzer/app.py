@@ -98,6 +98,49 @@ async def _run_pipeline(url: str, config: dict, status_placeholder):
     )
 
 
+async def _run_pipeline_from_text(
+    product_name: str,
+    brand_name: str,
+    ingredient_text: str,
+    config: dict,
+    status_placeholder,
+):
+    """Run the pipeline starting from pasted ingredient text (no scraping)."""
+    from pain_point_analyzer.analyzer.ingredient_extractor import (
+        ExtractionResult,
+        IngredientExtractor,
+        ProductInfo,
+    )
+
+    progress_bar = status_placeholder.progress(0, text="Starting analysis...")
+
+    def update(msg: str, pct: float | None = None):
+        if pct is not None:
+            progress_bar.progress(pct, text=msg)
+        else:
+            status_placeholder.text(msg)
+
+    # Step 1: Parse pasted ingredients with Claude
+    update("Step 1/6: Parsing ingredients...", 0.05)
+    extractor = IngredientExtractor(config)
+    ingredients = await extractor.extract_from_text(ingredient_text)
+    update(f"Step 1/6: Found {len(ingredients)} ingredients", 0.15)
+
+    extraction = ExtractionResult(
+        product=ProductInfo(
+            product_name=product_name,
+            brand_name=brand_name,
+        ),
+        ingredients=ingredients,
+    )
+
+    if len(ingredients) < 1:
+        status_placeholder.error("No ingredients could be parsed from the text.")
+        return None
+
+    return await _run_remaining_pipeline(extraction, config, "", update)
+
+
 async def _run_remaining_pipeline(extraction, config, url, update):
     """Run steps 2-6 after ingredients are confirmed."""
     from pain_point_analyzer.analyzer.pain_point_discovery import PainPointDiscovery
@@ -341,30 +384,74 @@ def main():
     if "running" not in st.session_state:
         st.session_state["running"] = False
 
-    # Input form
-    with st.form("analyze_form"):
-        url = st.text_input(
-            "Product Page URL",
-            placeholder="https://www.tryelare.com/products/aged-garlic-supplement",
-        )
-        submitted = st.form_submit_button("Analyze", use_container_width=True)
+    # ── Input modes ─────────────────────────────────────────────────────────
+    input_mode = st.radio(
+        "Input method",
+        ["Paste Ingredients", "Scrape from URL"],
+        horizontal=True,
+    )
 
-    # Manual ingredient input section
-    if st.session_state.get("needs_manual_input"):
-        extraction = st.session_state.get("extraction")
-        st.warning(
-            f"Auto-extraction found only {len(extraction.ingredients)} ingredient(s). "
-            "Please provide ingredients manually."
-        )
+    if input_mode == "Paste Ingredients":
+        with st.form("text_form"):
+            product_name = st.text_input(
+                "Product Name",
+                placeholder="Aged Garlic Extract 7500mg",
+            )
+            brand_name = st.text_input(
+                "Brand Name",
+                placeholder="Elare",
+            )
+            ingredient_text = st.text_area(
+                "Paste ingredient list",
+                height=200,
+                placeholder=(
+                    "Aged Garlic Extract (bulb) 7500mg\n"
+                    "S-allylcysteine (SAC) 3.6mg\n"
+                    "Allicin 5mg\n"
+                    "..."
+                ),
+            )
+            text_submitted = st.form_submit_button(
+                "Analyze", use_container_width=True
+            )
 
-        if extraction.ingredients:
-            st.markdown("**Found so far:**")
-            for ing in extraction.ingredients:
-                st.markdown(f"- {ing.name}")
+        if text_submitted and ingredient_text.strip():
+            st.session_state["report"] = None
+            status = st.empty()
+            report = asyncio.run(
+                _run_pipeline_from_text(
+                    product_name or "Unknown Product",
+                    brand_name or "",
+                    ingredient_text,
+                    config,
+                    status,
+                )
+            )
+            if report:
+                st.session_state["report"] = report
+                st.rerun()
 
-        tab1, tab2 = st.tabs(["Paste Ingredients", "Upload Label Image"])
+    else:  # Scrape from URL
+        with st.form("analyze_form"):
+            url = st.text_input(
+                "Product Page URL",
+                placeholder="https://www.example.com/products/supplement",
+            )
+            submitted = st.form_submit_button("Analyze", use_container_width=True)
 
-        with tab1:
+        # Manual ingredient input section (shown when auto-extraction finds too few)
+        if st.session_state.get("needs_manual_input"):
+            extraction = st.session_state.get("extraction")
+            st.warning(
+                f"Auto-extraction found only {len(extraction.ingredients)} "
+                "ingredient(s). Please provide ingredients manually."
+            )
+
+            if extraction.ingredients:
+                st.markdown("**Found so far:**")
+                for ing in extraction.ingredients:
+                    st.markdown(f"- {ing.name}")
+
             manual_text = st.text_area(
                 "Paste ingredient list here",
                 height=150,
@@ -384,62 +471,42 @@ def main():
                 st.session_state["pipeline_paused"] = False
                 st.rerun()
 
-        with tab2:
-            uploaded = st.file_uploader(
-                "Upload label/ingredient photo",
-                type=["png", "jpg", "jpeg", "webp"],
+        # Resume pipeline after manual input
+        if (
+            st.session_state.get("pipeline_paused") is False
+            and st.session_state.get("extraction")
+            and not st.session_state.get("report")
+        ):
+            extraction = st.session_state["extraction"]
+            url = st.session_state.get("last_url", "")
+            status = st.empty()
+
+            def update(msg, pct=None):
+                if pct is not None:
+                    status.progress(pct, text=msg)
+                else:
+                    status.text(msg)
+
+            report = asyncio.run(
+                _run_remaining_pipeline(extraction, config, url, update)
             )
-            if uploaded and st.button("Extract from Image"):
-                from pain_point_analyzer.analyzer.ingredient_extractor import (
-                    IngredientExtractor,
-                    merge_ingredients,
-                )
-                extractor = IngredientExtractor(config)
-                image_data = uploaded.read()
-                image_ings = asyncio.run(extractor.extract_from_image(image_data))
-                extraction.ingredients = merge_ingredients(
-                    extraction.ingredients, image_ings
-                )
-                st.session_state["needs_manual_input"] = False
-                st.session_state["pipeline_paused"] = False
+            if report:
+                st.session_state["report"] = report
                 st.rerun()
 
-    # Resume pipeline after manual input
-    if (
-        st.session_state.get("pipeline_paused") is False
-        and st.session_state.get("extraction")
-        and not st.session_state.get("report")
-    ):
-        extraction = st.session_state["extraction"]
-        url = st.session_state.get("last_url", "")
-        status = st.empty()
+        # Run URL-based pipeline
+        if submitted and url:
+            st.session_state["report"] = None
+            st.session_state["needs_manual_input"] = False
+            st.session_state["pipeline_paused"] = None
+            st.session_state["last_url"] = url
 
-        def update(msg, pct=None):
-            if pct is not None:
-                status.progress(pct, text=msg)
-            else:
-                status.text(msg)
+            status = st.empty()
+            report = asyncio.run(_run_pipeline(url, config, status))
 
-        report = asyncio.run(
-            _run_remaining_pipeline(extraction, config, url, update)
-        )
-        if report:
-            st.session_state["report"] = report
-            st.rerun()
-
-    # Run pipeline
-    if submitted and url:
-        st.session_state["report"] = None
-        st.session_state["needs_manual_input"] = False
-        st.session_state["pipeline_paused"] = None
-        st.session_state["last_url"] = url
-
-        status = st.empty()
-        report = asyncio.run(_run_pipeline(url, config, status))
-
-        if report:
-            st.session_state["report"] = report
-            st.rerun()
+            if report:
+                st.session_state["report"] = report
+                st.rerun()
 
     # Show results
     if st.session_state.get("report"):
