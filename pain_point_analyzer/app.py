@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sys
 try:
@@ -83,16 +84,37 @@ async def _run_pipeline(url: str, config: dict, status_placeholder):
     # Step 1: Extract ingredients
     update("Step 1/6: Extracting ingredients...", 0.05)
     extractor = IngredientExtractor(config)
-    extraction = await extractor.extract(
-        url, progress_cb=lambda m: update(f"Step 1/6: {m}", 0.10)
-    )
+    try:
+        extraction = await extractor.extract(
+            url, progress_cb=lambda m: update(f"Step 1/6: {m}", 0.10)
+        )
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        logging.error(f"Ingredient extraction failed: {tb}")
+        update(f"Extraction error: {e}", 0.15)
+        extraction = None
+
+    if extraction is None:
+        st.error("Ingredient extraction failed. Check that Playwright is installed "
+                 "(`python3 -m playwright install chromium`) and your ANTHROPIC_API_KEY is set.")
+        return None
 
     st.session_state["extraction"] = extraction
+
+    # Show any warnings from extraction
+    for w in extraction.warnings:
+        st.warning(w)
 
     if len(extraction.ingredients) == 0:
         st.session_state["needs_manual_input"] = True
         st.session_state["pipeline_paused"] = True
-        update("No ingredients found. Please provide them manually.", 0.15)
+        # Show raw sources info to help debug
+        sources_info = ", ".join(
+            f"{k}: {len(v)} chars" for k, v in extraction.raw_sources.items()
+        ) if extraction.raw_sources else "none"
+        logging.warning(f"No ingredients found. Raw sources: {sources_info}")
+        update(f"No ingredients found (sources: {sources_info}). Please provide them manually.", 0.15)
         return None
 
     return await _run_remaining_pipeline(
@@ -527,6 +549,12 @@ def _show_reports_tab():
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
+    # Configure logging so errors show in terminal
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
     st.set_page_config(
         page_title="Pain Point Analyzer",
         page_icon="🔬",
@@ -537,6 +565,12 @@ def main():
         return
 
     st.title("Pain Point Analyzer")
+
+    # Check for API key
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        st.error("ANTHROPIC_API_KEY environment variable is not set. "
+                 "Set it before running: `export ANTHROPIC_API_KEY=sk-ant-...`")
+        return
 
     config = _load_config()
 
