@@ -242,7 +242,7 @@ def _show_results(report: dict):
     if pdf_path and Path(pdf_path).exists():
         with open(pdf_path, "rb") as f:
             st.download_button(
-                label="Parsipust PDF",
+                label="Download PDF",
                 data=f.read(),
                 file_name=Path(pdf_path).name,
                 mime="application/pdf",
@@ -289,6 +289,7 @@ def _show_results(report: dict):
 
         # Color-coded tier display
         color_map = {
+            "gray": "#9e9e9e",
             "green": "#4caf50",
             "yellow": "#ffc107",
             "orange": "#ff9800",
@@ -296,6 +297,7 @@ def _show_results(report: dict):
         }
         hex_color = color_map.get(tier_color, "#666")
         bg_map = {
+            "gray": "#f5f5f5",
             "green": "#e8f5e9",
             "yellow": "#fff8e1",
             "orange": "#fff3e0",
@@ -304,17 +306,27 @@ def _show_results(report: dict):
         bg_color = bg_map.get(tier_color, "#f5f5f5")
 
         top_badge = " **[TOP 3]**" if is_top else ""
+
+        # Handle unknown tier (Meta Ad Library unreachable)
+        if ad_count < 0:
+            ad_display = "N/A (Meta Ad Library unavailable)"
+            kw_display = ""
+        else:
+            ad_display = f"{ad_count:,} active ads (best keyword: \"{t['best_keyword']}\")"
+            kw_display = (
+                f'<span style="font-size:0.85em;color:#666;">'
+                f'Keywords: {", ".join(kw["keyword"] + " (" + str(kw["score"]) + ")" for kw in t.get("keywords", []))}'
+                f'</span>'
+            )
+
         st.markdown(
             f'<div style="background:{bg_color};border-left:5px solid {hex_color};'
             f'padding:12px 16px;margin-bottom:8px;border-radius:0 6px 6px 0;">'
             f'<strong>{t["pain_point"]}</strong>{top_badge}<br>'
             f'<span style="color:{hex_color};font-weight:700;">'
             f'{tier_label}</span> — '
-            f'{ad_count:,} active ads '
-            f'(best keyword: "{t["best_keyword"]}")<br>'
-            f'<span style="font-size:0.85em;color:#666;">'
-            f'Keywords: {", ".join(kw["keyword"] + " (" + str(kw["score"]) + ")" for kw in t.get("keywords", []))}'
-            f'</span>'
+            f'{ad_display}<br>'
+            f'{kw_display}'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -535,7 +547,7 @@ def _show_reports_tab():
                 if pdf_exists:
                     with open(pdf_path, "rb") as f:
                         st.download_button(
-                            label="Parsipust PDF",
+                            label="Download PDF",
                             data=f.read(),
                             file_name=pdf_path.name,
                             mime="application/pdf",
