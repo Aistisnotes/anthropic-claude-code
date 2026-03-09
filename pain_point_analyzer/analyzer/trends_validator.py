@@ -28,12 +28,14 @@ from .pain_point_discovery import PainPoint
 logger = logging.getLogger(__name__)
 
 # ── Tier definitions ──────────────────────────────────────────────────────────
+TIER_UNKNOWN = 0
 TIER_LOOPHOLE = 1
 TIER_AVERAGE = 2
 TIER_HIGH_SOPHISTICATION = 3
 TIER_DO_NOT_TOUCH = 4
 
 TIER_LABELS = {
+    TIER_UNKNOWN: "UNKNOWN",
     TIER_LOOPHOLE: "LOOPHOLE",
     TIER_AVERAGE: "AVERAGE",
     TIER_HIGH_SOPHISTICATION: "HIGH SOPHISTICATION",
@@ -41,6 +43,7 @@ TIER_LABELS = {
 }
 
 TIER_COLORS = {
+    TIER_UNKNOWN: "gray",
     TIER_LOOPHOLE: "green",
     TIER_AVERAGE: "yellow",
     TIER_HIGH_SOPHISTICATION: "orange",
@@ -50,6 +53,8 @@ TIER_COLORS = {
 
 def _classify_tier(ad_count: int) -> int:
     """Classify an ad count into a market tier."""
+    if ad_count < 0:
+        return TIER_UNKNOWN
     if ad_count < 2000:
         return TIER_LOOPHOLE
     elif ad_count < 5000:
@@ -322,10 +327,66 @@ class TrendsValidator:
         self.headless = config.get("scraper", {}).get("headless", True)
         self.client = anthropic.Anthropic()
 
+    async def _check_facebook_reachable(self) -> bool:
+        """Quick check if facebook.com is reachable (not blocked by proxy)."""
+        from playwright.async_api import async_playwright
+
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-setuid-sandbox"],
+                )
+                page = await browser.new_page()
+                resp = await page.goto(
+                    "https://www.facebook.com/ads/library/",
+                    wait_until="commit",
+                    timeout=15000,
+                )
+                status = resp.status if resp else 0
+                html_len = len(await page.content())
+                await browser.close()
+                if status == 407 or html_len == 0:
+                    return False
+                return True
+        except Exception:
+            return False
+
     async def validate(
         self, pain_points: list[PainPoint], progress_cb=None
     ) -> ValidationResult:
         """Query Meta Ad Library for all pain points, rank by opportunity."""
+
+        # Pre-flight: check if Facebook is reachable
+        if progress_cb:
+            progress_cb("Checking Meta Ad Library connectivity...")
+        reachable = await self._check_facebook_reachable()
+        if not reachable:
+            logger.warning(
+                "Meta Ad Library unreachable (proxy/network block) — "
+                "skipping demand validation. Run locally for full results."
+            )
+            if progress_cb:
+                progress_cb(
+                    "Meta Ad Library unreachable — skipping demand validation"
+                )
+            # Return all pain points as unknown tier, preserve original order
+            results = []
+            for pp in pain_points:
+                results.append(
+                    TrendResult(
+                        pain_point=pp,
+                        keywords=[KeywordScore(pp.name.lower(), -1, "unknown")],
+                        best_keyword=pp.name.lower(),
+                        best_score=-1,
+                        tier=TIER_UNKNOWN,
+                        tier_label=TIER_LABELS[TIER_UNKNOWN],
+                        tier_color=TIER_COLORS[TIER_UNKNOWN],
+                    )
+                )
+            top = results[: self.top_n]
+            return ValidationResult(all_results=results, top_results=top)
+
         max_queries = self.config.get("trends", {}).get("max_pain_points", 15)
         query_points = pain_points[:max_queries]
 
