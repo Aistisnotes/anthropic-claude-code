@@ -609,6 +609,25 @@ class IngredientExtractor:
                     if not screenshot or len(screenshot) < 5000:
                         return []
 
+                    # Resize if >4MB to stay under Claude's 5MB limit
+                    if len(screenshot) > 4_000_000:
+                        try:
+                            from PIL import Image
+                            import io
+                            img = Image.open(io.BytesIO(screenshot))
+                            # Scale down to 50%
+                            new_size = (img.width // 2, img.height // 2)
+                            img = img.resize(new_size, Image.LANCZOS)
+                            buf = io.BytesIO()
+                            img.save(buf, format="JPEG", quality=75)
+                            screenshot = buf.getvalue()
+                            logger.info(f"Resized screenshot from {len(screenshot)} to {len(buf.getvalue())} bytes")
+                        except ImportError:
+                            logger.warning("Pillow not installed — cannot resize screenshot")
+                            # Try JPEG screenshot instead
+                            screenshot = await page.screenshot(full_page=True, type="jpeg", quality=50)
+
+                    media_type = "image/jpeg" if screenshot[:3] == b'\xff\xd8\xff' else "image/png"
                     b64 = base64.b64encode(screenshot).decode("utf-8")
                     response = self.client.messages.create(
                         model=self.model,
@@ -621,7 +640,7 @@ class IngredientExtractor:
                                         "type": "image",
                                         "source": {
                                             "type": "base64",
-                                            "media_type": "image/png",
+                                            "media_type": media_type,
                                             "data": b64,
                                         },
                                     },
@@ -734,7 +753,9 @@ class IngredientExtractor:
         )
 
         text = response.content[0].text
+        logger.info(f"Claude ingredient parse response ({len(text)} chars): {text[:500]}")
         ingredients = self._parse_claude_ingredient_json(text, "combined")
+        logger.info(f"Parsed {len(ingredients)} ingredients from Claude response")
 
         # Also try to get claims
         try:
@@ -761,6 +782,7 @@ class IngredientExtractor:
                 json_match = re.search(r"\[[\s\S]*\]", text)
                 if json_match:
                     items = json.loads(json_match.group())
+                    logger.info(f"Parsed {len(items)} items from JSON array")
                     return [
                         Ingredient(
                             name=item.get("name", ""),
@@ -771,12 +793,16 @@ class IngredientExtractor:
                         for item in items
                         if item.get("name")
                     ]
+                logger.warning(f"No JSON found in Claude response: {text[:300]}")
                 return []
 
-            data = json.loads(json_match.group())
+            raw_json = json_match.group()
+            data = json.loads(raw_json)
             items = data.get("ingredients", data) if isinstance(data, dict) else data
             if not isinstance(items, list):
+                logger.warning(f"JSON 'ingredients' is not a list: {type(items)}, keys={list(data.keys()) if isinstance(data, dict) else 'N/A'}")
                 return []
+            logger.info(f"Parsed {len(items)} items from JSON object")
 
             return [
                 Ingredient(
