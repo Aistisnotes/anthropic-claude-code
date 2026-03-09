@@ -195,22 +195,33 @@ class IngredientExtractor:
                     progress_cb("Extracting product info...")
                 result.product = await self._extract_product_info(page, all_text_parts)
 
-                # If we still have very little text, grab the entire page body as fallback
-                total_text = sum(len(v) for v in all_text_parts.values())
-                if total_text < 200:
-                    logger.info(f"Only {total_text} chars from strategies — grabbing full page text")
-                    if progress_cb:
-                        progress_cb("Grabbing full page text as fallback...")
-                    try:
-                        full_body = await page.evaluate(
-                            "() => document.body ? (document.body.innerText || document.body.textContent || '') : ''"
-                        )
-                        if full_body and len(full_body.strip()) > 50:
-                            # Truncate to avoid sending massive pages
-                            all_text_parts["full_page_text"] = full_body[:15000]
-                            logger.info(f"Full page text: {len(full_body)} chars")
-                    except Exception as e:
-                        logger.warning(f"Full page text extraction failed: {e}")
+                # Always grab full page text — landing pages often have ingredients
+                # scattered in marketing sections that targeted selectors miss
+                if progress_cb:
+                    progress_cb("Grabbing full page text...")
+                try:
+                    # Scroll through the page to trigger lazy loading
+                    await page.evaluate("""
+                        async () => {
+                            const delay = ms => new Promise(r => setTimeout(r, ms));
+                            const height = document.body.scrollHeight;
+                            for (let y = 0; y < height; y += 500) {
+                                window.scrollTo(0, y);
+                                await delay(200);
+                            }
+                            window.scrollTo(0, 0);
+                        }
+                    """)
+                    await page.wait_for_timeout(2000)
+
+                    full_body = await page.evaluate(
+                        "() => document.body ? (document.body.innerText || document.body.textContent || '') : ''"
+                    )
+                    if full_body and len(full_body.strip()) > 50:
+                        all_text_parts["full_page_text"] = full_body[:15000]
+                        logger.info(f"Full page text: {len(full_body)} chars")
+                except Exception as e:
+                    logger.warning(f"Full page text extraction failed: {e}")
 
                 # Image analysis with Claude vision
                 if progress_cb:
@@ -230,6 +241,7 @@ class IngredientExtractor:
                 combined = "\n\n---\n\n".join(
                     f"[Source: {k}]\n{v}" for k, v in all_text_parts.items()
                 )
+                logger.info(f"Combined text for Claude ({len(combined)} chars):\n{combined[:2000]}")
                 result.ingredients = await self._parse_ingredients_with_claude(combined)
 
                 # Check for suspiciously few ingredients
@@ -724,16 +736,27 @@ class IngredientExtractor:
                         "Below is text extracted from a supplement/health product page "
                         "using multiple extraction strategies. Your job is to identify "
                         "ALL ingredients in this product.\n\n"
+                        "IMPORTANT: Ingredients may appear in MANY formats:\n"
+                        "- Traditional Supplement Facts panels (tabular)\n"
+                        "- Marketing descriptions (e.g., 'Burdock Powder — A traditional root...')\n"
+                        "- Feature sections (e.g., 'Key Ingredient: Bromelain Powder')\n"
+                        "- Bullet points or cards describing each ingredient\n"
+                        "- Ingredient names mentioned in headings, subheadings, or bold text\n"
+                        "- ANY mention of a specific herb, extract, vitamin, mineral, or compound "
+                        "that is part of this product's formula\n\n"
                         "Rules:\n"
-                        "- Extract every supplement ingredient, vitamin, mineral, herb, "
-                        "amino acid, or bioactive compound\n"
+                        "- Extract EVERY ingredient mentioned as part of this product's formula\n"
+                        "- Look for herbs, extracts, powders, vitamins, minerals, amino acids, "
+                        "enzymes, and bioactive compounds\n"
                         "- Include amounts and units when available\n"
                         "- Include which source(s) each ingredient was found in\n"
                         "- Deduplicate — if the same ingredient appears in multiple sources, "
                         "merge them into one entry with multiple sources listed\n"
-                        "- Exclude inactive ingredients like gelatin capsule, rice flour, "
-                        "magnesium stearate, silicon dioxide (fillers/binders)\n"
-                        "- Standardize names (e.g., 'Vit D3' → 'Vitamin D3')\n\n"
+                        "- Exclude inactive/filler ingredients like gelatin capsule, rice flour, "
+                        "magnesium stearate, silicon dioxide\n"
+                        "- Standardize names (e.g., 'Vit D3' → 'Vitamin D3')\n"
+                        "- If the text describes an ingredient with its benefits, the INGREDIENT "
+                        "NAME is what we want, not the benefit description\n\n"
                         "Also extract:\n"
                         "- Any product CLAIMS (health benefits mentioned)\n\n"
                         "Return ONLY valid JSON in this exact format:\n"
