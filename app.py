@@ -521,82 +521,229 @@ def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
     thread.start()
 
 
+def _run_pipeline_direct(brands_text: str, keyword: str, ads_per_brand: int, run_compare: bool):
+    """Execute direct brand URL pipeline in a background thread."""
+    if st.session_state.running or st.session_state._spawned:
+        return
+    st.session_state.running = True
+    st.session_state._spawned = True
+
+    log = st.session_state.run_log
+    log.clear()
+
+    def _log(msg: str):
+        ts = datetime.now().strftime("%H:%M:%S")
+        log.append(f"[{ts}] {msg}")
+
+    def _run():
+        st.session_state.last_compare_dir = None
+        st.session_state.last_pdf_path = None
+
+        try:
+            lines = [l.strip() for l in brands_text.strip().splitlines() if l.strip()]
+            _log(f"Direct analysis: {len(lines)} brand(s), topic: {keyword or 'direct'}")
+
+            # Build CLI args: each line becomes one argument
+            cmd = [str(META_ADS_BIN), "direct"] + lines + [
+                "--ads-per-brand", str(ads_per_brand),
+            ]
+            if keyword.strip():
+                cmd += ["--keyword", keyword.strip()]
+            if not run_compare:
+                cmd += ["--no-compare"]
+
+            _log(f"Command: meta-ads direct ({len(lines)} brands)")
+            _log("─" * 50)
+
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=str(PROJECT_ROOT),
+            )
+            st.session_state.process = proc
+
+            for line in proc.stdout:
+                line = line.rstrip()
+                if line:
+                    import re as _re
+                    clean = _re.sub(r'\x1b\[[0-9;]*m', '', line)
+                    _log(clean)
+
+            proc.wait()
+            _log("─" * 50)
+
+            if proc.returncode == 0:
+                _log("✓ Direct analysis complete")
+
+                # Find latest market dir (direct runs use market_ prefix)
+                market_dirs = _get_market_dirs()
+                if market_dirs:
+                    latest = market_dirs[0]
+                    st.session_state.last_compare_dir = latest
+
+                # Find latest compare dir if compare ran
+                compare_dirs = _get_compare_dirs()
+                if compare_dirs and run_compare:
+                    latest_cmp = compare_dirs[0]
+                    st.session_state.last_compare_dir = latest_cmp
+                    loophole_path = latest_cmp / "strategic_loophole_doc.json"
+                    if loophole_path.exists():
+                        _log("Generating PDF report...")
+                        try:
+                            from meta_ads_analyzer.reporter.pdf_generator import generate_pdf_sync
+                            pdf_path = generate_pdf_sync(
+                                loophole_doc_path=loophole_path,
+                                market_map_path=latest_cmp / "strategic_market_map.json",
+                                output_dir=PDF_OUTPUT_DIR,
+                            )
+                            st.session_state.last_pdf_path = pdf_path
+                            _log(f"✓ PDF saved: {pdf_path}")
+                        except Exception as e:
+                            _log(f"⚠ PDF generation failed: {e}")
+            else:
+                _log(f"✗ Process exited with code {proc.returncode}")
+
+        except Exception as e:
+            _log(f"✗ Error: {e}")
+        finally:
+            st.session_state.running = False
+            st.session_state._spawned = False
+            st.session_state.process = None
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  PAGE: HOME
 # ══════════════════════════════════════════════════════════════════════════════
 def page_home():
     st.markdown('<div class="section-header">🏠 New Analysis Run</div>', unsafe_allow_html=True)
 
-    col1, col2 = st.columns([3, 2])
+    tab_direct, tab_keyword = st.tabs(["🔗 Direct Brand URLs", "🔍 Keyword Search"])
 
-    with col1:
-        st.markdown("#### Market Keyword")
-        keyword = st.text_input(
-            "Keyword",
-            placeholder="aged garlic supplement",
-            label_visibility="collapsed",
-            key="input_keyword",
+    # ── Tab 1: Direct Brand URLs (primary) ───────────────────────────────────
+    with tab_direct:
+        st.markdown(
+            "Paste the **Meta Ads Library links** for the brands you want to analyze. "
+            "One brand per line. Format: `Brand Name: URL_or_page_id`"
         )
 
-        st.markdown("#### Brand URL (optional)")
-        brand_url = st.text_input(
-            "Brand URL",
-            placeholder="TryElare or tryelarE.com",
-            label_visibility="collapsed",
-            key="input_brand",
-        )
+        col1, col2 = st.columns([3, 2])
 
-        st.markdown("#### Run Mode")
-        mode = st.radio(
-            "Mode",
-            ["Market Research + Compare", "Compare Only", "Brand Analysis"],
-            label_visibility="collapsed",
-            horizontal=True,
-            key="input_mode",
-        )
+        with col1:
+            brands_text = st.text_area(
+                "Brand URLs",
+                placeholder=(
+                    "My Brand: https://www.facebook.com/ads/library/?view_all_page_id=123456789\n"
+                    "Competitor A: https://www.facebook.com/ads/library/?view_all_page_id=987654321\n"
+                    "Competitor B: 111222333444"
+                ),
+                height=160,
+                label_visibility="collapsed",
+                key="input_direct_brands",
+            )
+            keyword_direct = st.text_input(
+                "Research topic (for report naming)",
+                placeholder="collagen eye mask, vertigo supplement, ...",
+                key="input_direct_keyword",
+            )
 
-    with col2:
-        st.markdown("#### Options")
-        top_brands = st.slider("Top brands", 3, 15, 8)
-        ads_per_brand = st.slider("Ads per brand", 10, 50, 30)
-        run_compare = True
-        if mode == "Market Research + Compare":
-            run_compare = st.checkbox("Auto-run compare after market", value=True)
+        with col2:
+            st.markdown("#### Options")
+            ads_direct = st.slider("Ads per brand", 10, 100, 50, key="direct_ads")
+            compare_direct = st.checkbox("Run compare after analysis", value=True, key="direct_compare")
+            st.caption(
+                "How to get a URL: go to Meta Ads Library → search brand → "
+                "click 'See all ads from this advertiser' → copy the page URL."
+            )
 
-    st.markdown("---")
+        st.markdown("---")
+        run_col, stop_col, _ = st.columns([2, 1, 4])
+        with run_col:
+            if st.button("▶ Run Direct Analysis", disabled=st.session_state.running, use_container_width=True, key="btn_direct"):
+                if not brands_text.strip():
+                    st.error("Please enter at least one brand URL.")
+                else:
+                    _run_pipeline_direct(
+                        brands_text=brands_text.strip(),
+                        keyword=keyword_direct.strip(),
+                        ads_per_brand=ads_direct,
+                        run_compare=compare_direct,
+                    )
+                    st.rerun()
+        with stop_col:
+            if st.session_state.running and st.button("⏹ Stop", key="stop_direct"):
+                if st.session_state.process:
+                    st.session_state.process.terminate()
 
-    # Run button + stop button
-    run_col, stop_col, _ = st.columns([2, 1, 4])
-    with run_col:
-        if st.button("▶ Run Analysis", disabled=st.session_state.running, use_container_width=True):
-            if not keyword.strip():
-                st.error("Please enter a keyword.")
-            else:
-                _mode_map = {
-                    "Market Research + Compare": "market",
-                    "Compare Only": "compare",
-                    "Brand Analysis": "brand",
-                }
-                _run_pipeline(
-                    keyword=keyword.strip(),
-                    brand_url=brand_url.strip() or None,
-                    mode=_mode_map[mode],
-                    top_brands=top_brands,
-                    ads_per_brand=ads_per_brand,
-                    run_compare=run_compare,
-                )
-                st.rerun()
+    # ── Tab 2: Keyword Search (secondary) ────────────────────────────────────
+    with tab_keyword:
+        col1, col2 = st.columns([3, 2])
 
-    with stop_col:
-        if st.button("⏹ Stop", disabled=not st.session_state.running, use_container_width=True):
-            proc = st.session_state.get("process")
-            if proc:
-                proc.terminate()
-                st.session_state.running = False
-                st.session_state.run_log.append("[STOPPED]")
-                st.rerun()
+        with col1:
+            st.markdown("#### Market Keyword")
+            keyword = st.text_input(
+                "Keyword",
+                placeholder="aged garlic supplement",
+                label_visibility="collapsed",
+                key="input_keyword",
+            )
 
-    # Progress log
+            st.markdown("#### Brand URL (optional)")
+            brand_url = st.text_input(
+                "Brand URL",
+                placeholder="TryElare or tryelarE.com",
+                label_visibility="collapsed",
+                key="input_brand",
+            )
+
+            st.markdown("#### Run Mode")
+            mode = st.radio(
+                "Mode",
+                ["Market Research + Compare", "Compare Only", "Brand Analysis"],
+                label_visibility="collapsed",
+                horizontal=True,
+                key="input_mode",
+            )
+
+        with col2:
+            st.markdown("#### Options")
+            top_brands = st.slider("Top brands", 3, 15, 8, key="kw_top_brands")
+            ads_per_brand = st.slider("Ads per brand", 10, 50, 30, key="kw_ads_per_brand")
+            run_compare = True
+            if mode == "Market Research + Compare":
+                run_compare = st.checkbox("Auto-run compare after market", value=True, key="kw_run_compare")
+
+        st.markdown("---")
+        run_col, stop_col, _ = st.columns([2, 1, 4])
+        with run_col:
+            if st.button("▶ Run Analysis", disabled=st.session_state.running, use_container_width=True, key="btn_keyword"):
+                if not keyword.strip():
+                    st.error("Please enter a keyword.")
+                else:
+                    _mode_map = {
+                        "Market Research + Compare": "market",
+                        "Compare Only": "compare",
+                        "Brand Analysis": "brand",
+                    }
+                    _run_pipeline(
+                        keyword=keyword.strip(),
+                        brand_url=brand_url.strip() or None,
+                        mode=_mode_map[mode],
+                        top_brands=top_brands,
+                        ads_per_brand=ads_per_brand,
+                        run_compare=run_compare,
+                    )
+                    st.rerun()
+        with stop_col:
+            if st.session_state.running and st.button("⏹ Stop", key="stop_keyword"):
+                if st.session_state.process:
+                    st.session_state.process.terminate()
+
+    # Progress log (shared across both tabs)
     if st.session_state.running or st.session_state.run_log:
         st.markdown("#### Pipeline Output")
         log_placeholder = st.empty()

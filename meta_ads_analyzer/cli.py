@@ -586,6 +586,71 @@ def pdf(
 
 
 @app.command()
+def direct(
+    brands: list[str] = typer.Argument(
+        ...,
+        help=(
+            'Brand entries as "Brand Name: URL_or_page_id". '
+            'Example: "Elare: https://www.facebook.com/ads/library/?view_all_page_id=123"'
+        ),
+    ),
+    keyword: str = typer.Option("", "--keyword", "-k", help="Research topic for report naming"),
+    ads_per_brand: int = typer.Option(30, "--ads-per-brand", help="Max ads per brand"),
+    run_compare: bool = typer.Option(True, "--compare/--no-compare", help="Run compare after analysis"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+    headless: bool = typer.Option(True, "--headless/--no-headless"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+):
+    """Analyze specific brands by direct Ads Library URL — no keyword discovery needed.
+
+    Each argument should be "Brand Name: URL_or_page_id", e.g.:
+
+        meta-ads direct "Elare: https://facebook.com/ads/library/?view_all_page_id=123" \\
+                        "Competitor: 987654321" \\
+                        --keyword "collagen eye mask"
+    """
+    from meta_ads_analyzer.direct_pipeline import DirectPipeline, parse_brand_entries
+
+    setup_logging(log_level)
+    config = load_config(config_path)
+    config.setdefault("scraper", {})["headless"] = headless
+
+    entries = parse_brand_entries(list(brands))
+    if not entries:
+        console.print("[red]No valid brand entries found. Use format: \"Brand Name: URL_or_page_id\"[/]")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold]Direct Brand Analysis[/]")
+    for e in entries:
+        console.print(f"  • {e['name']}: page_id={e['page_id']}")
+
+    dp = DirectPipeline(config)
+    result = asyncio.run(
+        dp.run(
+            brand_entries=entries,
+            keyword=keyword,
+            ads_per_brand=ads_per_brand,
+        )
+    )
+
+    _display_market_summary(result)
+
+    if run_compare and result.brand_reports:
+        _log_kw = keyword or entries[0]["name"]
+        console.print(f"\n[cyan]Running compare for: {_log_kw}[/]")
+        from meta_ads_analyzer.compare_pipeline import ComparePipeline
+        cmp = ComparePipeline(config)
+        cmp_result = asyncio.run(
+            cmp.run(
+                keyword=_log_kw,
+                enhance=True,
+            )
+        )
+        if cmp_result.loophole_doc:
+            _generate_compare_pdf(cmp_result, _log_kw, config)
+
+
+@app.command()
 def install_browser():
     """Install Playwright browsers (required first-time setup)."""
     import subprocess
