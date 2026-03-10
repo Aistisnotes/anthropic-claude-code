@@ -365,7 +365,7 @@ table td, table th,
 
 /* ── Result cards ──────────────────────────────────────────────────────── */
 .pp-card {
-    background: #fafafa !important;
+    background: #262730 !important;
     padding: 12px 16px !important;
     margin-bottom: 8px !important;
     border-radius: 0 6px 6px 0 !important;
@@ -421,7 +421,7 @@ table td, table th,
     padding: 8px 0 !important;
 }
 .skipped-section .pp-card {
-    background: #f5f5f5 !important;
+    background: #262730 !important;
     border-left-color: #9e9e9e !important;
     opacity: 0.85;
 }
@@ -430,7 +430,7 @@ table td, table th,
 .pipeline-log {
     font-family: monospace !important;
     font-size: 0.85em !important;
-    background: #fafafa !important;
+    background: #262730 !important;
     border: 1px solid #e0e0e0 !important;
     border-radius: 6px !important;
     padding: 12px !important;
@@ -1135,7 +1135,7 @@ def main():
 
         # Time estimate display
         st.markdown(
-            '<div style="background:#e3f2fd;border-radius:6px;padding:8px 16px;'
+            '<div style="background:#1e3a5f;border-radius:6px;padding:8px 16px;'
             'margin-bottom:12px;color:#fafafa;font-size:0.9em;">'
             'Estimated time: ~8 minutes '
             '<span style="color:#666;">(faster with cached data)</span>'
