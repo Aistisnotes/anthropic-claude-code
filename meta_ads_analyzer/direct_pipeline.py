@@ -197,7 +197,8 @@ class DirectPipeline:
         import copy
 
         scrape_cfg = copy.deepcopy(self.config)
-        scrape_cfg.setdefault("scraper", {})["max_ads"] = ads_per_brand
+        # Over-fetch 2x to ensure we have enough quality ads after filtering
+        scrape_cfg.setdefault("scraper", {})["max_ads"] = ads_per_brand * 2
 
         scraper = MetaAdsScraper(scrape_cfg)
 
@@ -233,6 +234,7 @@ class DirectPipeline:
             scraped_ads=scraped_ads,
             query=keyword,
             brand=brand_name,
+            target_analyze=ads_per_brand,
         )
 
         advertiser = AdvertiserEntry(

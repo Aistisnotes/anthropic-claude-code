@@ -98,6 +98,7 @@ class Pipeline:
         query: str,
         brand: str,
         ad_metadata: dict[str, dict] | None = None,
+        target_analyze: int | None = None,
     ) -> PatternReport:
         """Run pipeline stages 2-8 on pre-scraped ads (bypass Stage 1).
 
@@ -128,6 +129,7 @@ class Pipeline:
                     query=query,
                     brand=brand,
                     ad_metadata=ad_metadata,
+                    target_analyze=target_analyze,
                 )
                 await self.store.complete_run(run_id, "completed")
                 return report
@@ -142,6 +144,7 @@ class Pipeline:
         query: str,
         brand: str,
         ad_metadata: dict[str, dict] | None = None,
+        target_analyze: int | None = None,
     ) -> PatternReport:
         """Execute stages 2-8 of the pipeline (download through report).
 
@@ -229,6 +232,11 @@ class Pipeline:
                 f"  [green]✓[/] {len(analyzable)} ads ready for analysis "
                 f"({filtered_count} filtered out)"
             )
+
+            # Cap to target if requested (target was already over-fetched 2x at scrape time)
+            if target_analyze and len(analyzable) > target_analyze:
+                analyzable = analyzable[:target_analyze]
+                console.print(f"  [dim]Capped to {target_analyze} ads (target)[/]")
 
             if not analyzable:
                 console.print("[red]No ads passed filtering. Aborting analysis.[/]")

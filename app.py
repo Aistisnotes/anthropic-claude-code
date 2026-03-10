@@ -239,6 +239,7 @@ def _init_state():
         "last_pdf_path": None,
         "process": None,
         "_spawned": False,  # synchronous guard — prevents duplicate thread launches
+        "run_start_time": None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -394,6 +395,25 @@ def _load_blue_ocean_result(market_dir: Path) -> Optional[dict]:
 
 
 # ── Run pipeline ───────────────────────────────────────────────────────────────
+def _force_stop():
+    """Force-kill the running pipeline process and reset all state."""
+    import os
+    import signal
+    proc = st.session_state.get("process")
+    if proc:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    st.session_state.running = False
+    st.session_state._spawned = False
+    st.session_state.process = None
+    st.session_state.run_start_time = None
+
+
 def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
                   top_brands: int, ads_per_brand: int, run_compare: bool):
     """Execute the meta-ads pipeline in a background thread, streaming logs."""
@@ -416,6 +436,7 @@ def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
     def _run():
         st.session_state.last_compare_dir = None
         st.session_state.last_pdf_path = None
+        st.session_state.run_start_time = time.time()
 
         try:
             _log(f"Starting {mode} run for: {keyword}")
@@ -445,6 +466,7 @@ def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
                 stderr=subprocess.STDOUT,
                 text=True,
                 cwd=str(PROJECT_ROOT),
+                start_new_session=True,
             )
             st.session_state.process = proc
 
@@ -475,6 +497,7 @@ def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
                         stderr=subprocess.STDOUT,
                         text=True,
                         cwd=str(PROJECT_ROOT),
+                        start_new_session=True,
                     )
                     for line in cmp_proc.stdout:
                         line = line.rstrip()
@@ -538,6 +561,7 @@ def _run_pipeline_direct(brands_text: str, keyword: str, ads_per_brand: int, run
     def _run():
         st.session_state.last_compare_dir = None
         st.session_state.last_pdf_path = None
+        st.session_state.run_start_time = time.time()
 
         try:
             lines = [l.strip() for l in brands_text.strip().splitlines() if l.strip()]
@@ -561,6 +585,7 @@ def _run_pipeline_direct(brands_text: str, keyword: str, ads_per_brand: int, run
                 stderr=subprocess.STDOUT,
                 text=True,
                 cwd=str(PROJECT_ROOT),
+                start_new_session=True,
             )
             st.session_state.process = proc
 
@@ -677,9 +702,9 @@ def page_home():
                     )
                     st.rerun()
         with stop_col:
-            if st.session_state.running and st.button("⏹ Stop", key="stop_direct"):
-                if st.session_state.process:
-                    st.session_state.process.terminate()
+            if st.button("⏹ Stop", key="stop_direct", disabled=not st.session_state.running):
+                _force_stop()
+                st.rerun()
 
     # ── Tab 2: Keyword Search (secondary) ────────────────────────────────────
     with tab_keyword:
@@ -741,18 +766,47 @@ def page_home():
                     )
                     st.rerun()
         with stop_col:
-            if st.session_state.running and st.button("⏹ Stop", key="stop_keyword"):
-                if st.session_state.process:
-                    st.session_state.process.terminate()
+            if st.button("⏹ Stop", key="stop_keyword", disabled=not st.session_state.running):
+                _force_stop()
+                st.rerun()
 
-    # Progress log (shared across both tabs)
+    # Progress + log (shared across both tabs)
     if st.session_state.running or st.session_state.run_log:
-        st.markdown("#### Pipeline Output")
-        log_placeholder = st.empty()
-        log_text = "\n".join(st.session_state.run_log[-200:]) or "(waiting for output...)"
-        log_placeholder.code(log_text, language=None)
+        import re as _pre
 
-    # Auto-refresh while running — always checked, not nested inside the log block
+        # Parse current brand progress from log lines
+        _cur, _tot = 0, 0
+        for _ln in st.session_state.run_log:
+            _m = _pre.search(r'Brand\s+(\d+)/(\d+)', _ln)
+            if _m:
+                _cur, _tot = int(_m.group(1)), int(_m.group(2))
+
+        _elapsed = 0.0
+        if st.session_state.run_start_time:
+            _elapsed = time.time() - st.session_state.run_start_time
+
+        if st.session_state.running:
+            _e_str = f"{int(_elapsed // 60)}m {int(_elapsed % 60)}s elapsed"
+            if _tot > 0:
+                # Progress bar: complete brand = 1.0, in-progress brand counts as 0.5
+                _frac = max(0.0, min(1.0, (_cur - 0.5) / _tot))
+                st.progress(_frac, text=f"Brand {_cur} / {_tot}")
+                if _cur > 1:
+                    _avg = _elapsed / (_cur - 1)
+                    _rem = (_tot - _cur + 1) * _avg
+                    _r_str = f"{int(_rem // 60)}m {int(_rem % 60)}s left"
+                else:
+                    _r_str = "estimating…"
+                st.caption(f"{_e_str}  ·  ~{_r_str}")
+            else:
+                st.progress(0.0, text="Starting pipeline…")
+                st.caption(_e_str)
+
+        with st.expander("🔍 Pipeline Output", expanded=False):
+            _log_text = "\n".join(st.session_state.run_log[-200:]) or "(waiting for output…)"
+            st.code(_log_text, language=None)
+
+    # Auto-refresh while running
     if st.session_state.running:
         time.sleep(1.5)
         st.rerun()
