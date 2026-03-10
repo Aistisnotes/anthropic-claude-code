@@ -297,11 +297,11 @@ GLOBAL_CSS = """
 .stMarkdown th,
 .stMarkdown span,
 .stMarkdown div {
-    color: #1a1a1a !important;
+    color: #fafafa !important;
 }
 
 /* Metric labels/values */
-[data-testid="stMetricValue"] { color: #1a1a1a !important; }
+[data-testid="stMetricValue"] { color: #fafafa !important; }
 [data-testid="stMetricLabel"] { color: #444444 !important; }
 [data-testid="stMetricDelta"] { color: #555555 !important; }
 
@@ -309,7 +309,7 @@ GLOBAL_CSS = """
 .stDataFrame td, .stDataFrame th,
 table td, table th,
 .dataframe td, .dataframe th {
-    color: #1a1a1a !important;
+    color: #fafafa !important;
 }
 
 /* All paragraph, list, header text */
@@ -320,7 +320,7 @@ table td, table th,
 .element-container h3,
 .element-container h4,
 .element-container h5 {
-    color: #1a1a1a !important;
+    color: #fafafa !important;
 }
 
 /* Expander text */
@@ -330,7 +330,7 @@ table td, table th,
 .streamlit-expanderContent span,
 .streamlit-expanderContent td,
 .streamlit-expanderContent th {
-    color: #1a1a1a !important;
+    color: #fafafa !important;
 }
 
 /* ── Tier badges ───────────────────────────────────────────────────────── */
@@ -374,7 +374,7 @@ table td, table th,
 .pp-card span,
 .pp-card div,
 .pp-card p {
-    color: #1a1a1a !important;
+    color: #fafafa !important;
 }
 /* Override for specific colored spans inside cards */
 .pp-card .tier-badge.tier-open,
@@ -465,7 +465,7 @@ table td, table th,
 .stTabs [data-baseweb="tab-panel"] h1,
 .stTabs [data-baseweb="tab-panel"] h2,
 .stTabs [data-baseweb="tab-panel"] h3 {
-    color: #1a1a1a !important;
+    color: #fafafa !important;
 }
 
 /* Deep-dive sections */
@@ -475,7 +475,7 @@ table td, table th,
 .stExpander div,
 .stExpander td,
 .stExpander th {
-    color: #1a1a1a !important;
+    color: #fafafa !important;
 }
 </style>
 """
@@ -1136,7 +1136,7 @@ def main():
         # Time estimate display
         st.markdown(
             '<div style="background:#e3f2fd;border-radius:6px;padding:8px 16px;'
-            'margin-bottom:12px;color:#1a1a1a;font-size:0.9em;">'
+            'margin-bottom:12px;color:#fafafa;font-size:0.9em;">'
             'Estimated time: ~8 minutes '
             '<span style="color:#666;">(faster with cached data)</span>'
             '</div>',
