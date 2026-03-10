@@ -6,11 +6,35 @@ from typing import Any, Optional
 
 from meta_ads_analyzer.classifier.product_type import classify_product_type_batch
 from meta_ads_analyzer.models import ScanResult
+from meta_ads_analyzer.scraper.searchapi_scraper import SearchAPIScraper, is_searchapi_available
 from meta_ads_analyzer.scraper.meta_library import MetaAdsScraper
 from meta_ads_analyzer.selector import aggregate_by_advertiser, rank_advertisers
 from meta_ads_analyzer.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _make_scraper(config: dict[str, Any]):
+    """Create the appropriate scraper based on config and environment.
+
+    Uses SearchAPI by default. Falls back to Playwright if:
+    - config scraper.backend is explicitly "playwright"
+    - SEARCHAPI_KEY env var is not set
+    """
+    backend = config.get("scraper", {}).get("backend", "searchapi")
+
+    if backend == "searchapi" and is_searchapi_available():
+        logger.info("Using SearchAPI.io scraper backend")
+        return SearchAPIScraper(config)
+    elif backend == "searchapi" and not is_searchapi_available():
+        logger.warning(
+            "SearchAPI backend selected but SEARCHAPI_KEY not set — "
+            "falling back to Playwright"
+        )
+        return MetaAdsScraper(config)
+    else:
+        logger.info("Using Playwright scraper backend")
+        return MetaAdsScraper(config)
 
 
 async def run_scan(
@@ -39,10 +63,9 @@ async def run_scan(
     else:
         logger.info(f"Starting scan for: {query}")
 
-    # Use existing MetaAdsScraper
-    scraper = MetaAdsScraper(config)
+    scraper = _make_scraper(config)
     ads = await scraper.scrape(query, page_id=page_id, expected_page_name=expected_page_name)
-    found_page_ids = list(scraper._found_page_ids)  # view_all_page_id from advertiser header
+    found_page_ids = list(scraper._found_page_ids)
 
     logger.info(f"Scraped {len(ads)} ads")
 

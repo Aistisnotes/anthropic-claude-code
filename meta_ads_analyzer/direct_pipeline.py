@@ -24,6 +24,7 @@ from meta_ads_analyzer.models import AdvertiserEntry, BrandReport, MarketResult
 from meta_ads_analyzer.pipeline import Pipeline
 from meta_ads_analyzer.reporter.output import ReportWriter
 from meta_ads_analyzer.scraper.meta_library import MetaAdsScraper
+from meta_ads_analyzer.scraper.searchapi_scraper import SearchAPIScraper, is_searchapi_available
 from meta_ads_analyzer.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -200,7 +201,11 @@ class DirectPipeline:
         # Over-fetch 2x to ensure we have enough quality ads after filtering
         scrape_cfg.setdefault("scraper", {})["max_ads"] = ads_per_brand * 2
 
-        scraper = MetaAdsScraper(scrape_cfg)
+        backend = scrape_cfg.get("scraper", {}).get("backend", "searchapi")
+        if backend == "searchapi" and is_searchapi_available():
+            scraper = SearchAPIScraper(scrape_cfg)
+        else:
+            scraper = MetaAdsScraper(scrape_cfg)
 
         console.print(f"  [cyan]Searching ads for domain: {domain}...[/]")
         scraped_ads = await scraper.scrape(

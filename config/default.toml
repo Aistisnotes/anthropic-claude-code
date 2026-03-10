@@ -1,4 +1,8 @@
 [scraper]
+# Scraper backend: "searchapi" (default) or "playwright"
+# searchapi uses SearchAPI.io (requires SEARCHAPI_KEY env var)
+# playwright uses browser automation (fallback if SEARCHAPI_KEY not set)
+backend = "searchapi"
 # Max ads to extract per search
 max_ads = 100
 # Browser headless mode

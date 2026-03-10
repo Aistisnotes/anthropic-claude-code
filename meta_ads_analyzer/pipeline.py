@@ -32,6 +32,7 @@ from meta_ads_analyzer.models import AdContent, AdStatus, PatternReport, Scraped
 from meta_ads_analyzer.quality.gates import QualityGates, CopyQualityChecker
 from meta_ads_analyzer.reporter.output import ReportWriter
 from meta_ads_analyzer.scraper.meta_library import MetaAdsScraper
+from meta_ads_analyzer.scraper.searchapi_scraper import SearchAPIScraper, is_searchapi_available
 from meta_ads_analyzer.transcriber.whisper import WhisperTranscriber
 from meta_ads_analyzer.transcriber.router import make_transcriber
 from meta_ads_analyzer.utils.logging import get_logger
@@ -40,12 +41,26 @@ logger = get_logger(__name__)
 console = Console()
 
 
+def _make_pipeline_scraper(config: dict[str, Any]):
+    """Create scraper based on config/environment. SearchAPI by default, Playwright fallback."""
+    backend = config.get("scraper", {}).get("backend", "searchapi")
+    if backend == "searchapi" and is_searchapi_available():
+        logger.info("Pipeline using SearchAPI.io scraper")
+        return SearchAPIScraper(config)
+    elif backend == "searchapi" and not is_searchapi_available():
+        logger.warning("SEARCHAPI_KEY not set — Pipeline falling back to Playwright scraper")
+        return MetaAdsScraper(config)
+    else:
+        logger.info("Pipeline using Playwright scraper")
+        return MetaAdsScraper(config)
+
+
 class Pipeline:
     """Main pipeline orchestrating the full ad analysis flow."""
 
     def __init__(self, config: dict[str, Any]):
         self.config = config
-        self.scraper = MetaAdsScraper(config)
+        self.scraper = _make_pipeline_scraper(config)
         self.downloader = MediaDownloader(config)
         self.transcriber = make_transcriber(config)
         self.ad_filter = AdFilter(config)
@@ -349,9 +364,10 @@ class Pipeline:
         if found_page_ids:
             deep_cfg = copy.deepcopy(self.config)
             deep_cfg.setdefault("scraper", {})["max_ads"] = 500
-            deep_scraper = MetaAdsScraper(deep_cfg)
-            if self.scraper.debug_dir:
-                deep_scraper.debug_dir = self.scraper.debug_dir
+            deep_scraper = _make_pipeline_scraper(deep_cfg)
+            if hasattr(self.scraper, 'debug_dir') and self.scraper.debug_dir:
+                if hasattr(deep_scraper, 'debug_dir'):
+                    deep_scraper.debug_dir = self.scraper.debug_dir
 
             seen_ids = {ad.ad_id for ad in scraped_ads}
             for page_id in found_page_ids:

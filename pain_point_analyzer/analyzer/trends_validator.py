@@ -4,6 +4,9 @@ For each pain point, generate broad keyword variants and query Meta Ad Library
 for total active ad counts. Tier the pain points by market saturation and
 select the top N opportunities (lowest saturation first).
 
+Uses SearchAPI.io by default (fast, reliable, no IP bans).
+Falls back to Playwright if SEARCHAPI_KEY is not set.
+
 Tiers:
   - Tier 1 OPEN: 1-5,000 active ads (green)
   - Tier 2 SOLID: 5,000-15,000 active ads (yellow)
@@ -16,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import random
 import re
 from dataclasses import dataclass, field
@@ -176,9 +180,50 @@ class ValidationResult:
     meta_reachable: bool = True  # whether Meta Ad Library was reachable
 
 
-# ── Ad count scraper ──────────────────────────────────────────────────────────
-async def _get_ad_count(keyword: str, headless: bool = True) -> int:
+# ── Ad count via SearchAPI.io ─────────────────────────────────────────────────
+async def _get_ad_count_via_searchapi(keyword: str) -> int:
+    """Get total ad count for a keyword via SearchAPI.io (fast, no browser needed).
+
+    Single API call — reads search_information.total_results.
+    """
+    import httpx
+
+    api_key = os.environ.get("SEARCHAPI_KEY")
+    if not api_key:
+        return -1  # Signal: SearchAPI not available
+
+    params = {
+        "engine": "meta_ad_library",
+        "q": keyword,
+        "country": "us",
+        "active_status": "active",
+        "ad_type": "all",
+        "api_key": api_key,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                "https://www.searchapi.io/api/v1/search", params=params
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        total = data.get("search_information", {}).get("total_results", 0)
+        if isinstance(total, str):
+            total = int(total.replace(",", ""))
+        logger.info(f"SearchAPI ad count: '{keyword}' → {total}")
+        return total
+    except Exception as e:
+        logger.warning(f"SearchAPI ad count failed for '{keyword}': {e}")
+        return 0
+
+
+# ── Ad count via Playwright (fallback) ───────────────────────────────────────
+async def _get_ad_count_playwright(keyword: str, headless: bool = True) -> int:
     """Search Meta Ad Library for a keyword and return the total ad count.
+
+    Playwright fallback — used only when SEARCHAPI_KEY is not set.
 
     Uses multiple strategies:
     1. Extract from embedded JSON data in script tags (most reliable)
@@ -390,6 +435,15 @@ async def _get_ad_count(keyword: str, headless: bool = True) -> int:
     return ad_count or 0
 
 
+async def _get_ad_count(keyword: str, headless: bool = True) -> int:
+    """Get ad count — uses SearchAPI if available, Playwright fallback."""
+    if os.environ.get("SEARCHAPI_KEY"):
+        count = await _get_ad_count_via_searchapi(keyword)
+        if count >= 0:  # -1 means SearchAPI unavailable
+            return count
+    return await _get_ad_count_playwright(keyword, headless=headless)
+
+
 class TrendsValidator:
     """Validate pain point demand via Meta Ad Library ad counts."""
 
@@ -403,13 +457,35 @@ class TrendsValidator:
         self.cooldown_between_brands = scraper_cfg.get("cooldown_between_brands", 30)
         self.max_requests_per_session = scraper_cfg.get("max_requests_per_session", 20)
         self._session_request_count = 0
+        self._use_searchapi = bool(os.environ.get("SEARCHAPI_KEY"))
+        # SearchAPI has no IP ban risk — allow more requests per session
+        if self._use_searchapi:
+            self.max_requests_per_session = max(self.max_requests_per_session, 100)
         self.client = anthropic.Anthropic()
 
     async def _check_facebook_reachable(self) -> bool:
-        """Quick check if facebook.com is reachable (not blocked by proxy).
+        """Quick check if Meta Ad Library data is accessible.
 
-        Uses a test keyword 'supplement' as a pre-flight check.
+        If SearchAPI is available, just test that. Otherwise falls back to
+        Playwright pre-flight check.
         """
+        # SearchAPI path: quick HTTP test
+        if os.environ.get("SEARCHAPI_KEY"):
+            try:
+                count = await _get_ad_count_via_searchapi("supplement")
+                if count > 0:
+                    logger.info("SearchAPI pre-flight check passed")
+                    return True
+                elif count == -1:
+                    logger.warning("SearchAPI key not set despite env check")
+                else:
+                    logger.warning("SearchAPI returned 0 for 'supplement' — may be down")
+                    return False
+            except Exception as e:
+                logger.warning(f"SearchAPI pre-flight check failed: {e}")
+                return False
+
+        # Playwright fallback
         from playwright.async_api import async_playwright
 
         try:
@@ -603,9 +679,12 @@ class TrendsValidator:
                         )
                     break
 
-                # 15-second delay + random 5-15s jitter between pain points
+                # Rate limit delay: 2s for SearchAPI, 15-30s for Playwright
                 if i > 0:
-                    cooldown = 15 + random.uniform(5, 15)
+                    if self._use_searchapi:
+                        cooldown = 2.0
+                    else:
+                        cooldown = 15 + random.uniform(5, 15)
                     logger.info(
                         f"Rate limit: {cooldown:.0f}s cooldown before pain point "
                         f"'{pp.name}' ({i+1}/{len(to_search_fresh)})"
@@ -654,9 +733,12 @@ class TrendsValidator:
 
                     scored.append(KeywordScore(kw, count, variant_type))
 
-                    # 15s delay + 5-15s jitter between keyword requests
+                    # Rate limit between keyword requests
                     if j < len(keywords) - 1:
-                        delay = 15 + random.uniform(5, 15)
+                        if self._use_searchapi:
+                            delay = 2.0
+                        else:
+                            delay = 15 + random.uniform(5, 15)
                         logger.info(f"Rate limit: {delay:.1f}s delay before next keyword")
                         await asyncio.sleep(delay)
 

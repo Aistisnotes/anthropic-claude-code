@@ -9,6 +9,7 @@ dependencies = [
     "openai>=1.0",
     "yt-dlp>=2024.1",
     "aiohttp>=3.9",
+    "httpx>=0.25",
     "aiofiles>=23.2",
     "pydantic>=2.5",
     "rich>=13.7",
