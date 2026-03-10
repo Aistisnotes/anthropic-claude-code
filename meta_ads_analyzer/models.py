@@ -438,8 +438,8 @@ class MarketResult(BaseModel):
     """Complete market research result."""
 
     keyword: str
-    country: str
-    scan_date: datetime
+    country: str = "US"
+    scan_date: datetime = Field(default_factory=datetime.utcnow)
     total_advertisers: int
     brands_analyzed: int
     brand_reports: list[BrandReport] = Field(default_factory=list)
