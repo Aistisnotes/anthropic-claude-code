@@ -280,223 +280,21 @@ async def _run_remaining_pipeline(extraction, config, url, update):
     return report
 
 
-# ── Global CSS ────────────────────────────────────────────────────────────────
-GLOBAL_CSS = """
-<style>
-/* ═══════════════════════════════════════════════════════════════════════════
-   PERMANENT TEXT COLOR FIX — uses !important on ALL elements to prevent
-   dynamic Streamlit re-renders from overriding colors.
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-/* Force dark text on ALL Streamlit markdown containers */
-.stMarkdown div[data-testid="stMarkdownContainer"],
-.stMarkdown div[data-testid="stMarkdownContainer"] *,
-.stMarkdown p,
-.stMarkdown li,
-.stMarkdown td,
-.stMarkdown th,
-.stMarkdown span,
-.stMarkdown div {
-    color: #1a1a1a !important;
-}
-
-/* Metric labels/values */
-[data-testid="stMetricValue"] { color: #1a1a1a !important; }
-[data-testid="stMetricLabel"] { color: #444444 !important; }
-[data-testid="stMetricDelta"] { color: #555555 !important; }
-
-/* All table cells */
-.stDataFrame td, .stDataFrame th,
-table td, table th,
-.dataframe td, .dataframe th {
-    color: #1a1a1a !important;
-}
-
-/* All paragraph, list, header text */
-.element-container p,
-.element-container li,
-.element-container h1,
-.element-container h2,
-.element-container h3,
-.element-container h4,
-.element-container h5 {
-    color: #1a1a1a !important;
-}
-
-/* Expander text */
-.streamlit-expanderContent p,
-.streamlit-expanderContent li,
-.streamlit-expanderContent div,
-.streamlit-expanderContent span,
-.streamlit-expanderContent td,
-.streamlit-expanderContent th {
-    color: #1a1a1a !important;
-}
-
-/* ── Tier badges ───────────────────────────────────────────────────────── */
-.tier-badge {
-    display: inline-block;
-    padding: 3px 12px;
-    border-radius: 12px;
-    font-size: 0.8em;
-    font-weight: 700;
-    letter-spacing: 0.3px;
-}
-.tier-open {
-    background: #4caf50 !important;
-    color: #ffffff !important;
-}
-.tier-solid {
-    background: #f9a825 !important;
-    color: #000000 !important;
-}
-.tier-saturated {
-    background: #ff9800 !important;
-    color: #ffffff !important;
-}
-.tier-super-saturated {
-    background: #ef5350 !important;
-    color: #ffffff !important;
-}
-.tier-unknown {
-    background: #9e9e9e !important;
-    color: #ffffff !important;
-}
-
-/* ── Result cards ──────────────────────────────────────────────────────── */
-.pp-card {
-    background: #fafafa !important;
-    padding: 12px 16px !important;
-    margin-bottom: 8px !important;
-    border-radius: 0 6px 6px 0 !important;
-}
-.pp-card strong,
-.pp-card span,
-.pp-card div,
-.pp-card p {
-    color: #1a1a1a !important;
-}
-/* Override for specific colored spans inside cards */
-.pp-card .tier-badge.tier-open,
-.pp-card .tier-badge.tier-saturated,
-.pp-card .tier-badge.tier-super-saturated,
-.pp-card .tier-badge.tier-unknown {
-    color: #ffffff !important;
-}
-.pp-card .tier-badge.tier-solid {
-    color: #000000 !important;
-}
-.pp-card .top3-badge {
-    background: #1565c0 !important;
-    color: #ffffff !important;
-    font-size: 0.75em !important;
-    padding: 2px 8px !important;
-    border-radius: 10px !important;
-    font-weight: 700 !important;
-}
-.pp-card .cache-tag {
-    color: #888888 !important;
-    font-size: 0.85em !important;
-}
-.pp-card .kw-display {
-    font-size: 0.85em !important;
-    color: #555555 !important;
-    margin-top: 2px !important;
-}
-.pp-card .skip-display {
-    font-size: 0.85em !important;
-    color: #888888 !important;
-    margin-top: 2px !important;
-}
-.pp-card .error-display {
-    color: #c62828 !important;
-    font-weight: 700 !important;
-}
-
-/* ── Skipped section ───────────────────────────────────────────────────── */
-.skipped-section summary {
-    cursor: pointer;
-    color: #666666 !important;
-    font-size: 0.9em !important;
-    padding: 8px 0 !important;
-}
-.skipped-section .pp-card {
-    background: #f5f5f5 !important;
-    border-left-color: #9e9e9e !important;
-    opacity: 0.85;
-}
-
-/* ── Pipeline log ──────────────────────────────────────────────────────── */
-.pipeline-log {
-    font-family: monospace !important;
-    font-size: 0.85em !important;
-    background: #fafafa !important;
-    border: 1px solid #e0e0e0 !important;
-    border-radius: 6px !important;
-    padding: 12px !important;
-    max-height: 400px !important;
-    overflow-y: auto !important;
-    color: #333333 !important;
-}
-.pipeline-log .log-error { color: #c62828 !important; font-weight: 700 !important; }
-.pipeline-log .log-cached { color: #888888 !important; }
-.pipeline-log .log-info { color: #333333 !important; }
-
-/* ── Tier warning flags ────────────────────────────────────────────────── */
-.flag-saturated {
-    color: #e65100 !important;
-    font-weight: 700 !important;
-    font-size: 0.9em !important;
-}
-.flag-super-saturated {
-    color: #c62828 !important;
-    font-weight: 700 !important;
-    font-size: 0.9em !important;
-}
-
-/* ── Reports tab text fix ──────────────────────────────────────────────── */
-.stTabs [data-baseweb="tab-panel"] p,
-.stTabs [data-baseweb="tab-panel"] li,
-.stTabs [data-baseweb="tab-panel"] td,
-.stTabs [data-baseweb="tab-panel"] th,
-.stTabs [data-baseweb="tab-panel"] span,
-.stTabs [data-baseweb="tab-panel"] div,
-.stTabs [data-baseweb="tab-panel"] strong,
-.stTabs [data-baseweb="tab-panel"] h1,
-.stTabs [data-baseweb="tab-panel"] h2,
-.stTabs [data-baseweb="tab-panel"] h3 {
-    color: #1a1a1a !important;
-}
-
-/* Deep-dive sections */
-.stExpander p,
-.stExpander li,
-.stExpander span,
-.stExpander div,
-.stExpander td,
-.stExpander th {
-    color: #1a1a1a !important;
-}
-</style>
-"""
-
-
-def _tier_badge_class(tier: int) -> str:
-    """Return the CSS class for a tier badge."""
-    return {
-        0: "tier-unknown",
-        1: "tier-open",
-        2: "tier-solid",
-        3: "tier-saturated",
-        4: "tier-super-saturated",
-    }.get(tier, "tier-unknown")
+def _tier_badge_inline(tier: int) -> tuple[str, str]:
+    """Return (tier_label, inline_style) for a tier badge."""
+    styles = {
+        0: ("UNKNOWN", "background-color: #9e9e9e; color: #ffffff; padding: 4px 12px; border-radius: 4px; font-weight: bold;"),
+        1: ("OPEN", "background-color: #22c55e; color: #ffffff; padding: 4px 12px; border-radius: 4px; font-weight: bold;"),
+        2: ("SOLID", "background-color: #eab308; color: #000000; padding: 4px 12px; border-radius: 4px; font-weight: bold;"),
+        3: ("SATURATED", "background-color: #f97316; color: #ffffff; padding: 4px 12px; border-radius: 4px; font-weight: bold;"),
+        4: ("SUPER SATURATED", "background-color: #ef4444; color: #ffffff; padding: 4px 12px; border-radius: 4px; font-weight: bold;"),
+    }
+    return styles.get(tier, styles[0])
 
 
 # ── Results display ────────────────────────────────────────────────────────────
 def _show_results(report: dict):
     """Display the analysis results inline."""
-    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
-
     # Completion banner
     elapsed = report.get("_elapsed")
     if elapsed:
@@ -506,17 +304,24 @@ def _show_results(report: dict):
     log_entries = report.get("_pipeline_log", [])
     if log_entries:
         with st.expander("Pipeline Log (click to expand)", expanded=False):
-            log_html = '<div class="pipeline-log">'
+            log_html = (
+                '<div style="font-family: monospace; font-size: 0.85em; '
+                'background: #fafafa; border: 1px solid #e0e0e0; border-radius: 6px; '
+                'padding: 12px; max-height: 400px; overflow-y: auto;">'
+            )
             for entry in log_entries:
                 level = entry.get("level", "info")
                 if "error" in entry.get("msg", "").lower() or level == "error":
-                    css_class = "log-error"
+                    color = "#c62828"
+                    weight = "bold"
                 elif "cached" in entry.get("msg", "").lower():
-                    css_class = "log-cached"
+                    color = "#888888"
+                    weight = "normal"
                 else:
-                    css_class = "log-info"
+                    color = "#1a1a1a"
+                    weight = "normal"
                 log_html += (
-                    f'<div class="{css_class}">'
+                    f'<div style="color: {color}; font-weight: {weight};">'
                     f'[{entry["time"]}] {entry["msg"]}'
                     f'</div>'
                 )
@@ -627,7 +432,7 @@ def _show_results(report: dict):
     skipped_trends = [t for t in report["trends"] if t.get("skipped", False)]
 
     def _render_pp_card(t: dict):
-        """Render a single pain point card."""
+        """Render a single pain point card with inline styles."""
         tier = t.get("tier", 1)
         tier_label = t.get("tier_label", "OPEN")
         ad_count = t.get("best_score", 0)
@@ -637,23 +442,43 @@ def _show_results(report: dict):
         skipped = t.get("skipped", False)
         skip_reason = t.get("skip_reason", "")
 
-        badge_class = _tier_badge_class(tier)
-        border_color = {1: "#4caf50", 2: "#f9a825", 3: "#ff9800", 4: "#ef5350"}.get(tier, "#9e9e9e")
+        _, badge_style = _tier_badge_inline(tier)
+        border_color = {
+            1: "#22c55e", 2: "#eab308", 3: "#f97316", 4: "#ef4444"
+        }.get(tier, "#9e9e9e")
 
-        top_badge = ' <span class="top3-badge">TOP 3</span>' if is_top else ""
+        top_badge = (
+            ' <span style="background-color: #1565c0; color: #ffffff; '
+            'font-size: 0.75em; padding: 2px 8px; border-radius: 10px; '
+            'font-weight: bold;">TOP 3</span>'
+            if is_top else ""
+        )
 
         # Build ad display text
         if ad_count <= 0:
             if ad_count == -2:
-                ad_display = '<span class="error-display">Could not retrieve</span> — try again later'
+                ad_display = (
+                    '<span style="color: #c62828; font-weight: bold;">'
+                    'Could not retrieve</span> '
+                    '<span style="color: #1a1a1a;">— try again later</span>'
+                )
             else:
-                ad_display = '<span class="cache-tag">N/A</span>'
+                ad_display = '<span style="color: #888888;">N/A</span>'
         else:
             if from_cache and cache_date:
-                cache_tag = f' <span class="cache-tag">(cached, checked {cache_date})</span>'
+                cache_tag = (
+                    f' <span style="color: #888888; font-size: 0.85em;">'
+                    f'(cached, checked {cache_date})</span>'
+                )
             else:
-                cache_tag = ' <span class="cache-tag">(fresh)</span>'
-            ad_display = f'{ad_count:,} active ads{cache_tag}'
+                cache_tag = (
+                    ' <span style="color: #888888; font-size: 0.85em;">'
+                    '(fresh)</span>'
+                )
+            ad_display = (
+                f'<span style="color: #1a1a1a;">{ad_count:,} active ads</span>'
+                f'{cache_tag}'
+            )
 
         # Keyword display
         kw_display = ""
@@ -661,17 +486,29 @@ def _show_results(report: dict):
             kw_list = ", ".join(
                 f'{kw["keyword"]} ({kw["score"]})' for kw in t.get("keywords", [])
             )
-            kw_display = f'<div class="kw-display">Keywords: {kw_list}</div>'
+            kw_display = (
+                f'<div style="font-size: 0.85em; color: #555555; margin-top: 2px;">'
+                f'Keywords: {kw_list}</div>'
+            )
 
         # Skip info
         skip_display = ""
         if skipped and skip_reason:
-            skip_display = f'<div class="skip-display">{skip_reason}</div>'
+            skip_display = (
+                f'<div style="font-size: 0.85em; color: #888888; margin-top: 2px;">'
+                f'{skip_reason}</div>'
+            )
+
+        card_bg = "#f5f5f5" if skipped else "#fafafa"
 
         st.markdown(
-            f'<div class="pp-card" style="border-left:5px solid {border_color};">'
-            f'<strong>{t["pain_point"]}</strong>{top_badge}<br>'
-            f'<span class="tier-badge {badge_class}">{tier_label}</span> — '
+            f'<div style="background: {card_bg}; padding: 12px 16px; '
+            f'margin-bottom: 8px; border-radius: 0 6px 6px 0; '
+            f'border-left: 5px solid {border_color};">'
+            f'<strong style="color: #1a1a1a;">{t["pain_point"]}</strong>'
+            f'{top_badge}<br>'
+            f'<span style="{badge_style}">{tier_label}</span> '
+            f'<span style="color: #1a1a1a;">— </span>'
             f'{ad_display}<br>'
             f'{kw_display}'
             f'{skip_display}'
@@ -682,16 +519,16 @@ def _show_results(report: dict):
         # Tier warnings
         if tier == 3:
             st.markdown(
-                '<div class="flag-saturated">'
+                '<p style="color: #e65100; font-weight: bold; font-size: 0.9em;">'
                 'Saturated — strong rootcause/mechanism required'
-                '</div>',
+                '</p>',
                 unsafe_allow_html=True,
             )
         elif tier == 4:
             st.markdown(
-                '<div class="flag-super-saturated">'
+                '<p style="color: #c62828; font-weight: bold; font-size: 0.9em;">'
                 'Super saturated — extremely difficult to stand out'
-                '</div>',
+                '</p>',
                 unsafe_allow_html=True,
             )
 
@@ -699,19 +536,10 @@ def _show_results(report: dict):
     for t in validated_trends:
         _render_pp_card(t)
 
-    # Render skipped pain points in collapsed accordion at bottom
+    # Render skipped/unvalidated pain points at bottom in collapsed accordion
     if skipped_trends:
-        st.markdown(
-            f'<div class="skipped-section">'
-            f'<details>'
-            f'<summary>Skipped Pain Points — single ingredient support '
-            f'({len(skipped_trends)} items)</summary>'
-            f'</details>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
         with st.expander(
-            f"Skipped Pain Points ({len(skipped_trends)} items)",
+            f"Skipped Pain Points — single ingredient support ({len(skipped_trends)} items)",
             expanded=False,
         ):
             for t in skipped_trends:
@@ -1066,9 +894,6 @@ def main():
         return
 
     st.title("Pain Point Analyzer")
-
-    # Inject global CSS at app top — BEFORE any dynamic content renders
-    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
     # Check for API key
     if not os.environ.get("ANTHROPIC_API_KEY"):
