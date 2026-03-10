@@ -282,12 +282,13 @@ async def _run_remaining_pipeline(extraction, config, url, update):
 
 def _tier_badge_inline(tier: int) -> tuple[str, str]:
     """Return (tier_label, inline_style) for a tier badge."""
+    _base = "padding: 4px 12px; border-radius: 4px; font-weight: bold; display: inline-block;"
     styles = {
-        0: ("UNKNOWN", "background-color: #9e9e9e; color: #ffffff; padding: 4px 12px; border-radius: 4px; font-weight: bold;"),
-        1: ("OPEN", "background-color: #22c55e; color: #ffffff; padding: 4px 12px; border-radius: 4px; font-weight: bold;"),
-        2: ("SOLID", "background-color: #eab308; color: #000000; padding: 4px 12px; border-radius: 4px; font-weight: bold;"),
-        3: ("SATURATED", "background-color: #f97316; color: #ffffff; padding: 4px 12px; border-radius: 4px; font-weight: bold;"),
-        4: ("SUPER SATURATED", "background-color: #ef4444; color: #ffffff; padding: 4px 12px; border-radius: 4px; font-weight: bold;"),
+        0: ("UNKNOWN", f"background-color: #6b7280; color: #ffffff; {_base}"),
+        1: ("OPEN", f"background-color: #22c55e; color: #ffffff; {_base}"),
+        2: ("SOLID", f"background-color: #eab308; color: #000000; {_base}"),
+        3: ("SATURATED", f"background-color: #f97316; color: #ffffff; {_base}"),
+        4: ("SUPER SATURATED", f"background-color: #ef4444; color: #ffffff; {_base}"),
     }
     return styles.get(tier, styles[0])
 
@@ -306,19 +307,19 @@ def _show_results(report: dict):
         with st.expander("Pipeline Log (click to expand)", expanded=False):
             log_html = (
                 '<div style="font-family: monospace; font-size: 0.85em; '
-                'background: #fafafa; border: 1px solid #e0e0e0; border-radius: 6px; '
+                'background: #262730; border: 1px solid #3d3d4d; border-radius: 6px; '
                 'padding: 12px; max-height: 400px; overflow-y: auto;">'
             )
             for entry in log_entries:
                 level = entry.get("level", "info")
                 if "error" in entry.get("msg", "").lower() or level == "error":
-                    color = "#c62828"
+                    color = "#ff6b6b"
                     weight = "bold"
                 elif "cached" in entry.get("msg", "").lower():
                     color = "#888888"
                     weight = "normal"
                 else:
-                    color = "#1a1a1a"
+                    color = "#fafafa"
                     weight = "normal"
                 log_html += (
                     f'<div style="color: {color}; font-weight: {weight};">'
@@ -432,7 +433,7 @@ def _show_results(report: dict):
     skipped_trends = [t for t in report["trends"] if t.get("skipped", False)]
 
     def _render_pp_card(t: dict):
-        """Render a single pain point card with inline styles."""
+        """Render a single pain point card with inline styles (dark mode)."""
         tier = t.get("tier", 1)
         tier_label = t.get("tier_label", "OPEN")
         ad_count = t.get("best_score", 0)
@@ -445,10 +446,10 @@ def _show_results(report: dict):
         _, badge_style = _tier_badge_inline(tier)
         border_color = {
             1: "#22c55e", 2: "#eab308", 3: "#f97316", 4: "#ef4444"
-        }.get(tier, "#9e9e9e")
+        }.get(tier, "#6b7280")
 
         top_badge = (
-            ' <span style="background-color: #1565c0; color: #ffffff; '
+            ' <span style="background-color: #1a73e8; color: #ffffff; '
             'font-size: 0.75em; padding: 2px 8px; border-radius: 10px; '
             'font-weight: bold;">TOP 3</span>'
             if is_top else ""
@@ -458,9 +459,9 @@ def _show_results(report: dict):
         if ad_count <= 0:
             if ad_count == -2:
                 ad_display = (
-                    '<span style="color: #c62828; font-weight: bold;">'
+                    '<span style="color: #ff6b6b; font-weight: bold;">'
                     'Could not retrieve</span> '
-                    '<span style="color: #1a1a1a;">— try again later</span>'
+                    '<span style="color: #fafafa;">— try again later</span>'
                 )
             else:
                 ad_display = '<span style="color: #888888;">N/A</span>'
@@ -476,7 +477,7 @@ def _show_results(report: dict):
                     '(fresh)</span>'
                 )
             ad_display = (
-                f'<span style="color: #1a1a1a;">{ad_count:,} active ads</span>'
+                f'<span style="color: #fafafa;">{ad_count:,} active ads</span>'
                 f'{cache_tag}'
             )
 
@@ -487,7 +488,7 @@ def _show_results(report: dict):
                 f'{kw["keyword"]} ({kw["score"]})' for kw in t.get("keywords", [])
             )
             kw_display = (
-                f'<div style="font-size: 0.85em; color: #555555; margin-top: 2px;">'
+                f'<div style="font-size: 0.85em; color: #aaaaaa; margin-top: 2px;">'
                 f'Keywords: {kw_list}</div>'
             )
 
@@ -499,38 +500,22 @@ def _show_results(report: dict):
                 f'{skip_reason}</div>'
             )
 
-        card_bg = "#f5f5f5" if skipped else "#fafafa"
+        card_bg = "#1e1e2a" if skipped else "#262730"
 
         st.markdown(
             f'<div style="background: {card_bg}; padding: 12px 16px; '
             f'margin-bottom: 8px; border-radius: 0 6px 6px 0; '
             f'border-left: 5px solid {border_color};">'
-            f'<strong style="color: #1a1a1a;">{t["pain_point"]}</strong>'
+            f'<strong style="color: #fafafa;">{t["pain_point"]}</strong>'
             f'{top_badge}<br>'
             f'<span style="{badge_style}">{tier_label}</span> '
-            f'<span style="color: #1a1a1a;">— </span>'
+            f'<span style="color: #fafafa;">— </span>'
             f'{ad_display}<br>'
             f'{kw_display}'
             f'{skip_display}'
             f'</div>',
             unsafe_allow_html=True,
         )
-
-        # Tier warnings
-        if tier == 3:
-            st.markdown(
-                '<p style="color: #e65100; font-weight: bold; font-size: 0.9em;">'
-                'Saturated — strong rootcause/mechanism required'
-                '</p>',
-                unsafe_allow_html=True,
-            )
-        elif tier == 4:
-            st.markdown(
-                '<p style="color: #c62828; font-weight: bold; font-size: 0.9em;">'
-                'Super saturated — extremely difficult to stand out'
-                '</p>',
-                unsafe_allow_html=True,
-            )
 
     # Render validated pain points first
     for t in validated_trends:
@@ -569,100 +554,228 @@ def _show_results(report: dict):
     for i, dive in enumerate(report["top_deep_dives"]):
         st.markdown(f"### #{i+1}: {dive['pain_point']}")
 
+        tier = dive.get("tier", 0)
+        tier_label = dive.get("tier_label", "—")
+
         col1, col2, col3, col4 = st.columns(4)
         ad_score = dive.get('trend_score', 0)
         col1.metric("Active Ads", f"{ad_score:,}" if ad_score > 0 else "N/A")
-        col2.metric("Tier", dive.get("tier_label", "—"))
+        col2.metric("Tier", tier_label)
         if dive.get("science"):
             col3.metric("Evidence", dive["science"]["overall_evidence"].title())
         col4.metric("Ingredients", len(dive["supporting_ingredients"]))
 
-        # Science
+        # Saturation note only in the deep dive (not in the list)
+        if tier >= 3:
+            note_color = "#ef4444" if tier == 4 else "#f97316"
+            note_text = (
+                "Super saturated — see Edge Angle below for differentiation strategy"
+                if tier == 4
+                else "Saturated — strong rootcause/mechanism required to stand out"
+            )
+            st.markdown(
+                f'<p style="color: {note_color}; font-weight: bold; '
+                f'font-size: 0.9em; margin-bottom: 4px;">{note_text}</p>',
+                unsafe_allow_html=True,
+            )
+
+        # ── Science ───────────────────────────────────────────────────────
         if dive.get("science"):
+            sci = dive["science"]
             with st.expander("Scientific Evidence", expanded=True):
-                st.info(dive["science"]["summary"])
-                for ev in dive["science"]["ingredient_evidence"]:
-                    st.markdown(f"**{ev['ingredient']}** — Evidence: `{ev['strength']}`")
-                    st.markdown(f"_{ev['mechanism']}_")
-                    if ev.get("optimal_dosage"):
-                        st.markdown(f"Optimal dosage: {ev['optimal_dosage']}")
+                # 1. THE PATHWAY
+                pathway_steps = sci.get("pathway_steps", [])
+                if pathway_steps:
+                    st.markdown("**The Pathway**")
+                    pathway_html = '<div style="background: #262730; border: 1px solid #3d3d4d; border-radius: 6px; padding: 12px; margin-bottom: 12px;">'
+                    for ps in pathway_steps:
+                        step_num = ps.get("step_number", "")
+                        desc = ps.get("description", "")
+                        pathway_html += (
+                            f'<div style="color: #fafafa; margin-bottom: 6px;">'
+                            f'<span style="color: #1a73e8; font-weight: bold;">Step {step_num}:</span> '
+                            f'{desc}</div>'
+                        )
+                    pathway_html += '</div>'
+                    st.markdown(pathway_html, unsafe_allow_html=True)
+
+                # 2. KEY STUDIES
+                st.markdown("**Key Studies**")
+                for ev in sci["ingredient_evidence"]:
+                    st.markdown(
+                        f"**{ev['ingredient']}** — "
+                        f"Evidence: `{ev['strength']}`"
+                    )
                     for s in ev.get("studies", []):
                         st.markdown(
-                            f"- {s['description']} "
-                            f"(Dose: {s['dosage']}, Duration: {s['duration']}, "
-                            f"Effect: {s['effect_size']})"
+                            f"- **Study:** {s['description']} | "
+                            f"**Dose:** {s['dosage']} | "
+                            f"**Duration:** {s['duration']} | "
+                            f"**Result:** {s['effect_size']}"
                         )
+                    if ev.get("optimal_dosage"):
+                        st.markdown(f"  Optimal dosage: {ev['optimal_dosage']}")
                     if ev.get("contraindications"):
-                        st.warning("Contraindications: " + ", ".join(ev["contraindications"]))
+                        st.warning(
+                            "Contraindications: "
+                            + ", ".join(ev["contraindications"])
+                        )
 
-                if dive["science"].get("synergies"):
+                # 3. ELI10
+                eli10 = sci.get("eli10", "")
+                if eli10:
+                    st.markdown(
+                        f'<div style="background: #1a2332; border-left: 4px solid #1a73e8; '
+                        f'padding: 12px 16px; border-radius: 0 6px 6px 0; margin-top: 12px;">'
+                        f'<strong style="color: #1a73e8;">Explain Like I\'m 10:</strong><br>'
+                        f'<span style="color: #fafafa; font-style: italic;">{eli10}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                if sci.get("synergies"):
                     st.markdown("**Synergies:**")
-                    for syn in dive["science"]["synergies"]:
+                    for syn in sci["synergies"]:
                         st.success(
                             f"**{' + '.join(syn['ingredients'])}**: "
                             f"{syn['description']}"
                         )
 
-        # Positioning
+        # ── Positioning ───────────────────────────────────────────────────
         if dive.get("positioning"):
             pos = dive["positioning"]
-            with st.expander("Root Cause + Mechanism Positioning", expanded=True):
-                st.markdown("**Root Cause Depth:**")
-                col1, col2 = st.columns(2)
-                col1.markdown(f"_Surface:_ {pos['root_cause']['surface']}")
-                col2.markdown(f"_Cellular:_ {pos['root_cause']['cellular']}")
-                st.markdown(f"_Molecular:_ {pos['root_cause']['molecular']}")
+            with st.expander("Positioning & Avatars", expanded=True):
+                # Mass Desire first
+                if pos.get("mass_desire"):
+                    st.markdown(
+                        f'<div style="background: #1a2332; border: 1px solid #1a73e8; '
+                        f'border-radius: 6px; padding: 16px; margin-bottom: 16px;">'
+                        f'<strong style="color: #1a73e8; font-size: 0.85em;">MASS DESIRE</strong><br>'
+                        f'<span style="color: #fafafa; font-size: 1.1em; font-weight: bold;">'
+                        f'{pos["mass_desire"]}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+
+                # Avatar Profiles (CHANGE 3)
+                avatar_profiles = pos.get("avatar_profiles", [])
+                if avatar_profiles:
+                    st.markdown("**Target Avatars**")
+                    for idx, profile in enumerate(avatar_profiles, 1):
+                        desc = profile.get("description", "") if isinstance(profile, dict) else str(profile)
+                        st.markdown(
+                            f'<div style="background: #262730; border-left: 3px solid #1a73e8; '
+                            f'padding: 10px 14px; margin-bottom: 6px; border-radius: 0 4px 4px 0;">'
+                            f'<span style="color: #1a73e8; font-weight: bold;">{idx}.</span> '
+                            f'<span style="color: #fafafa;">{desc}</span></div>',
+                            unsafe_allow_html=True,
+                        )
+                else:
+                    # Fallback to legacy avatar
+                    avatar = pos.get("avatar", {})
+                    if avatar.get("narrative"):
+                        st.markdown(f"**Avatar:** {avatar['narrative']}")
+
+                # Daily Symptoms (CHANGE 7)
+                if pos.get("daily_symptoms"):
+                    st.markdown("**What They Experience Daily**")
+                    symptoms_html = '<div style="background: #262730; border-radius: 6px; padding: 12px; margin-bottom: 12px;">'
+                    for s in pos["daily_symptoms"]:
+                        symptoms_html += (
+                            f'<div style="color: #fafafa; margin-bottom: 4px; padding-left: 12px; '
+                            f'border-left: 2px solid #f97316;">{s}</div>'
+                        )
+                    symptoms_html += '</div>'
+                    st.markdown(symptoms_html, unsafe_allow_html=True)
+
+                # Root Cause Chain
+                st.markdown("**Root Cause Depth**")
+                rc = pos["root_cause"]
+                rc_html = (
+                    f'<div style="background: #262730; border-radius: 6px; padding: 12px; margin-bottom: 12px;">'
+                    f'<div style="color: #fafafa; margin-bottom: 8px;">'
+                    f'<span style="color: #22c55e; font-weight: bold;">Surface:</span> {rc["surface"]}</div>'
+                    f'<div style="color: #fafafa; margin-bottom: 8px;">'
+                    f'<span style="color: #eab308; font-weight: bold;">Cellular:</span> {rc["cellular"]}</div>'
+                    f'<div style="color: #fafafa;">'
+                    f'<span style="color: #ef4444; font-weight: bold;">Molecular:</span> {rc["molecular"]}</div>'
+                    f'</div>'
+                )
+                st.markdown(rc_html, unsafe_allow_html=True)
 
                 st.markdown(f"**Mechanism:** {pos['mechanism']}")
 
-                st.markdown("**Avatar:**")
-                avatar = pos["avatar"]
-                if avatar.get("narrative"):
-                    st.markdown(avatar["narrative"])
-                else:
+                # Ingredient Pathways (CHANGE 6)
+                pathways = pos.get("ingredient_pathways", [])
+                if pathways:
+                    st.markdown("**Ingredient Pathways**")
+                    for pw in pathways:
+                        chain = pw.get("chain", "")
+                        if not chain:
+                            chain = (
+                                f"{pw.get('ingredient', '')} → "
+                                f"{pw.get('root_cause', '')} → "
+                                f"{pw.get('resolution', '')} → "
+                                f"{pw.get('mass_desire', '')}"
+                            )
+                        st.markdown(
+                            f'<div style="background: #1a2332; border-left: 4px solid #22c55e; '
+                            f'padding: 10px 14px; margin-bottom: 6px; border-radius: 0 4px 4px 0; '
+                            f'font-size: 0.95em;">'
+                            f'<span style="color: #fafafa;">{chain}</span></div>',
+                            unsafe_allow_html=True,
+                        )
+
+                # Multi-Layer Connection (CHANGE 8) — only for saturated
+                multi_layer = pos.get("multi_layer")
+                if multi_layer:
                     st.markdown(
-                        f"Age: {avatar.get('age', 'N/A')} | "
-                        f"Gender: {avatar.get('gender', 'N/A')} | "
-                        f"Lifestyle: {avatar.get('lifestyle', 'N/A')}"
+                        '<div style="background: #2a1a1a; border: 1px solid #ef4444; '
+                        'border-radius: 6px; padding: 16px; margin: 12px 0;">',
+                        unsafe_allow_html=True,
                     )
-                if avatar.get("habit_history"):
-                    st.markdown(f"**Core Habit:** {avatar['habit_history']}")
-                if avatar.get("root_cause_connection"):
-                    st.markdown(f"**Why It Matters:** {avatar['root_cause_connection']}")
-                if avatar.get("failed_solutions"):
-                    st.markdown("**What They've Tried (And Why It Failed):**")
-                    for sol in avatar["failed_solutions"]:
-                        st.markdown(f"- {sol}")
-                elif avatar.get("tried_before"):
                     st.markdown(
-                        f"_Tried before:_ {', '.join(avatar['tried_before'])}"
+                        '<span style="color: #ef4444; font-weight: bold; font-size: 1.05em;">'
+                        'Edge Angle — Multi-Layer Connection</span>',
+                        unsafe_allow_html=True,
                     )
-                if avatar.get("urgency_trigger"):
-                    st.markdown(f"**Why Now:** {avatar['urgency_trigger']}")
+                    st.markdown(
+                        f'<div style="color: #fafafa; margin: 8px 0; font-weight: bold; '
+                        f'font-size: 1em;">{multi_layer["full_chain"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        f'<div style="color: #cccccc; margin-bottom: 8px;">'
+                        f'<strong style="color: #f97316;">Why this is new:</strong> '
+                        f'{multi_layer["why_new_angle"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        f'<div style="color: #fafafa; background: #1a2332; '
+                        f'padding: 10px; border-radius: 4px; margin-bottom: 8px; '
+                        f'font-style: italic;">'
+                        f'{multi_layer["new_hope_hook"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    ml_hooks = multi_layer.get("hooks", [])
+                    if ml_hooks:
+                        hooks_html = '<div style="margin-top: 8px;">'
+                        for mh in ml_hooks:
+                            hooks_html += (
+                                f'<div style="color: #fafafa; margin-bottom: 4px; '
+                                f'padding-left: 12px; border-left: 2px solid #ef4444;">'
+                                f'"{mh}"</div>'
+                            )
+                        hooks_html += '</div>'
+                        st.markdown(hooks_html, unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-                if pos.get("daily_symptoms"):
-                    st.markdown("**Daily Symptoms:**")
-                    for s in pos["daily_symptoms"]:
-                        st.markdown(f"- {s}")
-
-                if pos.get("mass_desire"):
-                    st.info(f"**Mass Desire:** {pos['mass_desire']}")
-
+                # Hooks
                 if pos.get("hooks"):
-                    st.markdown("**Hook Examples:**")
+                    st.markdown("**Hook Examples**")
                     for h in pos["hooks"]:
                         st.markdown(f'> "{h}"')
 
         st.markdown("---")
-
-    # Synergy map
-    if report.get("synergy_map"):
-        st.markdown("### Ingredient Synergy Map")
-        for syn in report["synergy_map"]:
-            st.success(
-                f"**{' + '.join(syn['ingredients'])}** → {syn['pain_point']}: "
-                f"{syn['description']}"
-            )
 
 
 
@@ -857,7 +970,7 @@ def _show_reports_tab():
                     b64_html = base64.b64encode(html_content.encode("utf-8")).decode()
                     st.markdown(
                         f'<iframe src="data:text/html;base64,{b64_html}" '
-                        f'width="100%" height="800" style="border:1px solid #ddd;'
+                        f'width="100%" height="800" style="border:1px solid #3d3d4d;'
                         f'border-radius:6px;"></iframe>',
                         unsafe_allow_html=True,
                     )
@@ -867,7 +980,7 @@ def _show_reports_tab():
                     b64_pdf = base64.b64encode(pdf_bytes).decode()
                     st.markdown(
                         f'<iframe src="data:application/pdf;base64,{b64_pdf}" '
-                        f'width="100%" height="800" style="border:1px solid #ddd;'
+                        f'width="100%" height="800" style="border:1px solid #3d3d4d;'
                         f'border-radius:6px;"></iframe>',
                         unsafe_allow_html=True,
                     )
@@ -960,10 +1073,10 @@ def main():
 
         # Time estimate display
         st.markdown(
-            '<div style="background:#e3f2fd;border-radius:6px;padding:8px 16px;'
-            'margin-bottom:12px;color:#1a1a1a;font-size:0.9em;">'
+            '<div style="background:#1a2332;border-radius:6px;padding:8px 16px;'
+            'margin-bottom:12px;color:#fafafa;font-size:0.9em;border:1px solid #3d3d4d;">'
             'Estimated time: ~8 minutes '
-            '<span style="color:#666;">(faster with cached data)</span>'
+            '<span style="color:#888;">(faster with cached data)</span>'
             '</div>',
             unsafe_allow_html=True,
         )

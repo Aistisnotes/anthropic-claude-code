@@ -48,12 +48,20 @@ class SynergyInfo:
 
 
 @dataclass
+class PathwayStep:
+    step_number: int
+    description: str
+
+
+@dataclass
 class ScientificReport:
     pain_point_name: str
     summary: str
     overall_evidence_strength: str
     ingredient_evidence: list[IngredientEvidence]
     synergies: list[SynergyInfo] = field(default_factory=list)
+    pathway_steps: list[PathwayStep] = field(default_factory=list)
+    eli10: str = ""
 
 
 @dataclass
@@ -149,12 +157,30 @@ class ScientificResearcher:
                                 "5. optimal_dosage: Recommended dosage based on research\n\n"
                                 "Also provide:\n"
                                 "- summary: 2-3 sentence overall assessment\n"
-                                "- overall_evidence_strength: Combined strength rating\n\n"
+                                "- overall_evidence_strength: Combined strength rating\n"
+                                "- pathway_steps: THE PATHWAY showing step-by-step how "
+                                "the key ingredient(s) resolve this pain point. "
+                                "4 steps: Step 1: [Ingredient] enters the body → "
+                                "Step 2: [Specific biological action] → "
+                                "Step 3: [What changes in the body] → "
+                                "Step 4: [How this resolves the symptom]\n"
+                                "- eli10: EXPLAIN LIKE I'M 10 — a simple analogy that "
+                                "an ad copywriter can use. Format: 'Imagine your "
+                                "[body part] is like a [simple analogy]. When you take "
+                                "[ingredient], it's like [simple action] which makes "
+                                "[simple outcome].' Make it vivid and memorable.\n\n"
                                 "Return ONLY valid JSON:\n"
                                 "```json\n"
                                 "{\n"
                                 '  "summary": "...",\n'
                                 '  "overall_evidence_strength": "strong|moderate|weak",\n'
+                                '  "pathway_steps": [\n'
+                                '    {"step_number": 1, "description": "..."},\n'
+                                '    {"step_number": 2, "description": "..."},\n'
+                                '    {"step_number": 3, "description": "..."},\n'
+                                '    {"step_number": 4, "description": "..."}\n'
+                                "  ],\n"
+                                '  "eli10": "Imagine your ... is like a ...",\n'
                                 '  "ingredient_evidence": [\n'
                                 "    {\n"
                                 '      "ingredient_name": "...",\n'
@@ -203,6 +229,14 @@ class ScientificResearcher:
                         )
                     )
 
+                pathway_steps = [
+                    PathwayStep(
+                        step_number=ps.get("step_number", idx + 1),
+                        description=ps.get("description", ""),
+                    )
+                    for idx, ps in enumerate(data.get("pathway_steps", []))
+                ]
+
                 return ScientificReport(
                     pain_point_name=pain_point.name,
                     summary=data.get("summary", ""),
@@ -210,6 +244,8 @@ class ScientificResearcher:
                         "overall_evidence_strength", "moderate"
                     ),
                     ingredient_evidence=evidence_list,
+                    pathway_steps=pathway_steps,
+                    eli10=data.get("eli10", ""),
                 )
 
             except Exception as e:

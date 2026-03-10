@@ -213,6 +213,14 @@ class ReportGenerator:
                 dive["science"] = {
                     "summary": science.summary,
                     "overall_evidence": science.overall_evidence_strength,
+                    "pathway_steps": [
+                        {
+                            "step_number": ps.step_number,
+                            "description": ps.description,
+                        }
+                        for ps in science.pathway_steps
+                    ],
+                    "eli10": science.eli10,
                     "ingredient_evidence": [
                         {
                             "ingredient": ev.ingredient_name,
@@ -243,6 +251,16 @@ class ReportGenerator:
                 }
 
             if pos:
+                # Build multi-layer connection dict if present
+                multi_layer_data = None
+                if pos.multi_layer:
+                    multi_layer_data = {
+                        "full_chain": pos.multi_layer.full_chain,
+                        "why_new_angle": pos.multi_layer.why_new_angle,
+                        "new_hope_hook": pos.multi_layer.new_hope_hook,
+                        "hooks": pos.multi_layer.hooks,
+                    }
+
                 dive["positioning"] = {
                     "root_cause": {
                         "surface": pos.root_cause_surface,
@@ -261,9 +279,24 @@ class ReportGenerator:
                         "failed_solutions": pos.avatar_failed_solutions,
                         "urgency_trigger": pos.avatar_urgency_trigger,
                     },
+                    "avatar_profiles": [
+                        {"description": ap.description}
+                        for ap in pos.avatar_profiles
+                    ],
                     "daily_symptoms": pos.daily_symptoms,
                     "mass_desire": pos.mass_desire,
                     "hooks": pos.hooks,
+                    "ingredient_pathways": [
+                        {
+                            "ingredient": pw.ingredient,
+                            "root_cause": pw.root_cause,
+                            "resolution": pw.resolution,
+                            "mass_desire": pw.mass_desire,
+                            "chain": pw.chain,
+                        }
+                        for pw in pos.ingredient_pathways
+                    ],
+                    "multi_layer": multi_layer_data,
                 }
 
             top_deep_dives.append(dive)

@@ -1,7 +1,8 @@
 """Step 5: Root Cause + Mechanism Positioning.
 
 For each top pain point, build DR framework positioning:
-root cause, mechanism, avatar, pain points, mass desire, hooks.
+root cause, mechanism, avatars, pain points, mass desire, hooks,
+ingredient pathways, and multi-layer connections for saturated markets.
 """
 
 from __future__ import annotations
@@ -22,6 +23,28 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class AvatarProfile:
+    description: str  # 2-3 sentence profile
+
+
+@dataclass
+class IngredientPathway:
+    ingredient: str
+    root_cause: str
+    resolution: str
+    mass_desire: str
+    chain: str  # "A → B → C → D" display string
+
+
+@dataclass
+class MultiLayerConnection:
+    full_chain: str  # "Ingredient → Layer 1 → Layer 2 → Layer 3"
+    why_new_angle: str
+    new_hope_hook: str
+    hooks: list[str] = field(default_factory=list)
+
+
+@dataclass
 class PositioningDoc:
     pain_point_name: str
     root_cause_surface: str = ""
@@ -39,9 +62,15 @@ class PositioningDoc:
     avatar_root_cause_connection: str = ""
     avatar_failed_solutions: list[str] = field(default_factory=list)
     avatar_urgency_trigger: str = ""
+    # Multiple avatar profiles (CHANGE 3)
+    avatar_profiles: list[AvatarProfile] = field(default_factory=list)
     daily_symptoms: list[str] = field(default_factory=list)
     mass_desire: str = ""
     hooks: list[str] = field(default_factory=list)
+    # Ingredient pathways (CHANGE 6)
+    ingredient_pathways: list[IngredientPathway] = field(default_factory=list)
+    # Multi-layer connection for saturated markets (CHANGE 8)
+    multi_layer: MultiLayerConnection | None = None
 
 
 @dataclass
@@ -84,14 +113,16 @@ class PositioningEngine:
                     science = r
                     break
 
-            doc = self._build_single_positioning(pp, science, all_ingredients)
+            doc = self._build_single_positioning(
+                pp, science, all_ingredients, result.tier, result.best_score
+            )
             if doc:
                 docs.append(doc)
 
         return PositioningResult(docs=docs)
 
     def _build_single_positioning(
-        self, pain_point, science_report, all_ingredients
+        self, pain_point, science_report, all_ingredients, tier: int, ad_count: int
     ) -> PositioningDoc | None:
         """Build DR framework positioning for one pain point."""
         # Build context from science report
@@ -105,6 +136,33 @@ class PositioningEngine:
                 )
 
         ingredient_list = ", ".join(pain_point.supporting_ingredients)
+
+        # Build multi-layer instruction for saturated markets
+        multi_layer_instruction = ""
+        if tier >= 3:
+            multi_layer_instruction = (
+                f"\n7. MULTI-LAYER CONNECTION (this pain point has {ad_count:,} "
+                f"active ads — it's {'super saturated' if tier == 4 else 'saturated'}). "
+                f"Find a DEEPER connection:\n"
+                f"   a) Start with the ingredient's PRIMARY mechanism\n"
+                f"   b) Trace that mechanism to a SECONDARY system it affects\n"
+                f"   c) Trace that secondary effect to a SPECIFIC symptom cluster\n"
+                f"   d) This creates a NEW ANGLE competitors aren't talking about\n"
+                f"   Output:\n"
+                f'   - "multi_layer_chain": "Ingredient → Layer 1 → Layer 2 → Layer 3"\n'
+                f'   - "multi_layer_why_new": "Why this angle is different"\n'
+                f'   - "multi_layer_new_hope": "One sentence that makes someone think '
+                f"'wait, I haven't tried THIS approach'\"\n"
+                f'   - "multi_layer_hooks": ["3 hooks using this angle"]\n'
+            )
+            multi_layer_json = (
+                '  "multi_layer_chain": "...",\n'
+                '  "multi_layer_why_new": "...",\n'
+                '  "multi_layer_new_hope": "...",\n'
+                '  "multi_layer_hooks": ["..."],\n'
+            )
+        else:
+            multi_layer_json = ""
 
         for attempt in range(self.max_retries):
             try:
@@ -134,65 +192,63 @@ class PositioningEngine:
                                 f"Not 'supports heart health' but specific actions like "
                                 f"'S-allylcysteine inhibits calcium deposition in arterial "
                                 f"walls by...'\n\n"
-                                f"3. AVATAR — THIS IS CRITICAL. Do NOT write a generic "
-                                f"demographic profile. Write a SPECIFIC person with:\n"
-                                f"   - A specific behavior or habit they've had for years "
-                                f"(e.g. 'drinking 2-3 cups of coffee daily for 15-20 years')\n"
-                                f"   - WHY that habit connects to the root cause "
-                                f"(e.g. 'chronic caffeine intake depletes adrenal cortisol "
-                                f"rhythm, which means their body can't produce natural "
-                                f"morning energy anymore')\n"
-                                f"   - How that creates the symptom chain leading to the "
-                                f"pain point\n"
-                                f"   - What they've specifically tried that FAILED and WHY "
-                                f"it failed — connect each failure to the root cause, not "
-                                f"just a list of things\n"
-                                f"   - A life situation that makes this problem urgent NOW\n\n"
-                                f"   BAD avatar: 'Age: 28-45, Both genders, high-stress "
-                                f"professionals, tried B-vitamins and meditation apps'\n"
-                                f"   GOOD avatar: 'Women over 45 who've been drinking 2-3 "
-                                f"cups of coffee daily for 15-20 years. Two decades of "
-                                f"caffeine has depleted their adrenal cortisol rhythm, "
-                                f"which means their body can't produce natural morning "
-                                f"energy anymore. They've tried B-vitamins (doesn't work "
-                                f"because the issue isn't vitamin deficiency — it's adrenal "
-                                f"burnout from chronic stimulant use). They've tried "
-                                f"sleeping more (doesn't work because their cortisol curve "
-                                f"is inverted — high at night, low in morning). The coffee "
-                                f"that used to give them energy is now the reason they "
-                                f"have none.'\n\n"
-                                f"   The avatar's HABITS connect to the ROOT CAUSE which "
-                                f"connects to WHY NOTHING ELSE WORKED. It's a story, not "
-                                f"a demographic profile.\n\n"
+                                f"3. AVATARS — Generate 3-5 DISTINCT avatar profiles. "
+                                f"Each avatar is a SPECIFIC person, not a demographic. "
+                                f"Each profile should be 2-3 sentences describing:\n"
+                                f"   - A specific person with a specific habit/life situation\n"
+                                f"   - How that habit connects to the root cause\n"
+                                f"   - Why nothing else worked for them specifically\n\n"
+                                f"   Example avatars for 'bloating':\n"
+                                f"   1. Women 45+ who've been drinking wine 3-4 nights a "
+                                f"week for 20 years. The alcohol disrupted bile production "
+                                f"which means fat sits undigested causing chronic bloating. "
+                                f"Probiotics didn't work because the problem isn't gut "
+                                f"bacteria — it's liver function.\n"
+                                f"   2. Desk workers 35-50 who sit 10+ hours daily. "
+                                f"Sedentary posture compresses the lymphatic system which "
+                                f"slows fluid drainage. Exercise and water intake didn't "
+                                f"fix it because the compression happens during work hours, "
+                                f"not gym hours.\n"
+                                f"   3. Chronic dieters 30-45 who've done 5+ restrictive "
+                                f"diets. Repeated calorie restriction downregulated thyroid "
+                                f"output which slowed gut motility. More fiber made it worse "
+                                f"because the gut can't move what's already backed up.\n\n"
+                                f"   Each avatar must: name a specific HABIT or LIFE PATTERN, "
+                                f"connect it to the ROOT CAUSE, and explain WHY their previous "
+                                f"solution attempts failed.\n\n"
                                 f"4. DAILY SYMPTOMS: 5-7 specific symptoms this person "
-                                f"experiences daily\n\n"
+                                f"experiences daily. These must be PHYSICAL SENSATIONS and "
+                                f"DAILY LIFE IMPACTS, not clinical terms.\n"
+                                f"   BAD: 'elevated systolic pressure', 'endothelial "
+                                f"dysfunction', 'inflammatory markers'\n"
+                                f"   GOOD: 'waking up with a puffy face every morning', "
+                                f"'that heavy feeling in your legs by 3pm', 'brain fog so "
+                                f"bad you re-read the same email 3 times', 'dreading "
+                                f"stepping on the scale', 'avoiding mirrors because you "
+                                f"don't recognize yourself'\n"
+                                f"   Symptoms should be things the person would say to a "
+                                f"friend, not to a doctor.\n\n"
                                 f"5. MASS DESIRE — THIS IS CRITICAL:\n"
                                 f"   Mass desire must be an EMOTIONAL, IDENTITY-LEVEL "
                                 f"outcome — how the person wants to FEEL and be SEEN. "
                                 f"NOT a clinical measurement or biological target.\n"
                                 f"   Think: what would this person say they want if you "
                                 f"asked them at a dinner party, not in a doctor's office.\n\n"
-                                f"   BAD mass desire examples (too clinical/specific):\n"
-                                f"   - 'Achieve systolic blood pressure readings below "
+                                f"   BAD: 'Achieve systolic blood pressure readings below "
                                 f"130mmHg within 90 days'\n"
-                                f"   - 'Restore nitric oxide production to support "
-                                f"endothelial function'\n"
-                                f"   - 'Reduce inflammatory cytokine levels in arterial "
-                                f"walls'\n\n"
-                                f"   GOOD mass desire examples (emotional/identity):\n"
-                                f"   - 'Feel like yourself again — energized, confident, "
+                                f"   GOOD: 'Feel like yourself again — energized, confident, "
                                 f"not worried every time you check your numbers'\n"
-                                f"   - 'Stop dreading every doctor's visit and finally "
-                                f"hear \"your numbers look great\"'\n"
-                                f"   - 'Look in the mirror and see someone who's thriving, "
-                                f"not just surviving'\n"
-                                f"   - 'Feel comfortable in your own body again — no more "
-                                f"hiding, no more bloating, no more avoiding the beach'\n\n"
-                                f"   The mass desire is the emotional state and identity "
-                                f"shift the person craves. It should make someone reading "
-                                f"it think 'YES, that's exactly what I want.'\n"
                                 f"   Write ONE powerful sentence.\n\n"
-                                f"6. HOOKS: 5 attention-grabbing ad hooks based on the "
+                                f"6. INGREDIENT PATHWAYS: For each key ingredient (1-2 "
+                                f"pathways total), show a clear A→B→C→D chain:\n"
+                                f"   [Ingredient] → [Root Cause it addresses] → "
+                                f"[Pain Point Resolution] → [Mass Desire]\n"
+                                f"   Example: 'S-allylcysteine → dissolves arterial calcium "
+                                f"deposits → blood pressure normalizes → stop dreading "
+                                f"every doctor visit'\n"
+                                f"   Keep each pathway to one clear line.\n\n"
+                                f"{multi_layer_instruction}"
+                                f"\n8. HOOKS: 5 attention-grabbing ad hooks based on the "
                                 f"root cause + mechanism. These should be specific, "
                                 f"provocative, and based on the molecular root cause. "
                                 f"Pattern: reveal a hidden cause or mechanism.\n\n"
@@ -203,21 +259,23 @@ class PositioningEngine:
                                 f'  "root_cause_cellular": "...",\n'
                                 f'  "root_cause_molecular": "...",\n'
                                 f'  "mechanism": "...",\n'
-                                f'  "avatar_narrative": "Full 3-5 sentence story of this '
-                                f'specific person, their habit, root cause connection, '
-                                f'and why nothing else worked",\n'
-                                f'  "avatar_habit_history": "The specific long-term habit '
-                                f'or behavior (e.g. drinking coffee daily for 15+ years)",\n'
-                                f'  "avatar_root_cause_connection": "How that habit caused '
-                                f'the root cause at the molecular level",\n'
-                                f'  "avatar_failed_solutions": [\n'
-                                f'    "Solution X — why it failed (connected to root cause)",\n'
-                                f'    "Solution Y — why it failed (connected to root cause)"\n'
+                                f'  "avatar_profiles": [\n'
+                                f'    "Profile 1: 2-3 sentences...",\n'
+                                f'    "Profile 2: 2-3 sentences...",\n'
+                                f'    "Profile 3: 2-3 sentences..."\n'
                                 f'  ],\n'
-                                f'  "avatar_urgency_trigger": "Life situation making this '
-                                f'urgent now",\n'
-                                f'  "daily_symptoms": ["..."],\n'
+                                f'  "daily_symptoms": ["symptom in plain language", ...],\n'
                                 f'  "mass_desire": "...",\n'
+                                f'  "ingredient_pathways": [\n'
+                                f'    {{\n'
+                                f'      "ingredient": "...",\n'
+                                f'      "root_cause": "...",\n'
+                                f'      "resolution": "...",\n'
+                                f'      "mass_desire": "...",\n'
+                                f'      "chain": "A → B → C → D"\n'
+                                f"    }}\n"
+                                f"  ],\n"
+                                f"{multi_layer_json}"
                                 f'  "hooks": ["..."]\n'
                                 f"}}\n"
                                 f"```"
@@ -233,24 +291,55 @@ class PositioningEngine:
 
                 data = json.loads(json_match.group())
 
+                # Parse avatar profiles
+                avatar_profiles = []
+                for profile in data.get("avatar_profiles", []):
+                    if isinstance(profile, str):
+                        avatar_profiles.append(AvatarProfile(description=profile))
+                    elif isinstance(profile, dict):
+                        avatar_profiles.append(
+                            AvatarProfile(
+                                description=profile.get("description", str(profile))
+                            )
+                        )
+
+                # Parse ingredient pathways
+                pathways = []
+                for pw in data.get("ingredient_pathways", []):
+                    if isinstance(pw, dict):
+                        pathways.append(
+                            IngredientPathway(
+                                ingredient=pw.get("ingredient", ""),
+                                root_cause=pw.get("root_cause", ""),
+                                resolution=pw.get("resolution", ""),
+                                mass_desire=pw.get("mass_desire", ""),
+                                chain=pw.get("chain", ""),
+                            )
+                        )
+
+                # Parse multi-layer connection (only for tier 3-4)
+                multi_layer = None
+                if tier >= 3 and data.get("multi_layer_chain"):
+                    multi_layer = MultiLayerConnection(
+                        full_chain=data.get("multi_layer_chain", ""),
+                        why_new_angle=data.get("multi_layer_why_new", ""),
+                        new_hope_hook=data.get("multi_layer_new_hope", ""),
+                        hooks=data.get("multi_layer_hooks", []),
+                    )
+
                 return PositioningDoc(
                     pain_point_name=pain_point.name,
                     root_cause_surface=data.get("root_cause_surface", ""),
                     root_cause_cellular=data.get("root_cause_cellular", ""),
                     root_cause_molecular=data.get("root_cause_molecular", ""),
                     mechanism=data.get("mechanism", ""),
-                    avatar_age=data.get("avatar_age", ""),
-                    avatar_gender=data.get("avatar_gender", ""),
-                    avatar_lifestyle=data.get("avatar_lifestyle", ""),
-                    avatar_tried_before=data.get("avatar_tried_before", []),
                     avatar_narrative=data.get("avatar_narrative", ""),
-                    avatar_habit_history=data.get("avatar_habit_history", ""),
-                    avatar_root_cause_connection=data.get("avatar_root_cause_connection", ""),
-                    avatar_failed_solutions=data.get("avatar_failed_solutions", []),
-                    avatar_urgency_trigger=data.get("avatar_urgency_trigger", ""),
+                    avatar_profiles=avatar_profiles,
                     daily_symptoms=data.get("daily_symptoms", []),
                     mass_desire=data.get("mass_desire", ""),
                     hooks=data.get("hooks", []),
+                    ingredient_pathways=pathways,
+                    multi_layer=multi_layer,
                 )
 
             except Exception as e:

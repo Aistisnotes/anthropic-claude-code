@@ -96,6 +96,27 @@ class PainPointDiscovery:
             for pp in ranked
         ]
 
+        # Filter out cancer-related pain points (non-compliant for Meta ads)
+        _CANCER_TERMS = {
+            "cancer", "tumor", "tumour", "carcinoma", "oncology",
+            "malignant", "malignancy", "chemotherapy", "metastasis",
+            "leukemia", "lymphoma",
+        }
+        before_count = len(pain_points)
+        pain_points = [
+            pp for pp in pain_points
+            if not any(
+                term in pp.name.lower() or term in pp.description.lower()
+                for term in _CANCER_TERMS
+            )
+        ]
+        filtered_count = before_count - len(pain_points)
+        if filtered_count > 0:
+            logger.info(
+                f"Filtered out {filtered_count} cancer-related pain points "
+                f"(non-compliant for Meta ads)"
+            )
+
         return DiscoveryResult(
             pain_points=pain_points,
             ingredient_pain_map=ingredient_pain_map,
@@ -125,6 +146,11 @@ class PainPointDiscovery:
                                 f"- Conditions with published clinical evidence\n"
                                 f"- Traditional/historical uses with some scientific backing\n"
                                 f"- Biological mechanisms that suggest benefit\n\n"
+                                f"IMPORTANT: Do NOT include any cancer-related pain points. "
+                                f"Cancer claims are non-compliant on Meta advertising platforms. "
+                                f"Exclude anything related to cancer, tumors, carcinoma, "
+                                f"oncology, malignancy, chemotherapy, metastasis, leukemia, "
+                                f"or lymphoma.\n\n"
                                 f"For each pain point, provide:\n"
                                 f"- name: Short, clear name (e.g., 'High Blood Pressure')\n"
                                 f"- description: One sentence explaining the link\n"
