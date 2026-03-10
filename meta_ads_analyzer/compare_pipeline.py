@@ -170,7 +170,7 @@ class ComparePipeline:
             reports_dir = self.output_dir
 
         # Find matching market directories
-        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword)[:50]
+        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword.lower())[:50]
         matching_dirs = list(reports_dir.glob(f"market_{keyword_slug}_*"))
 
         if not matching_dirs:
@@ -244,7 +244,7 @@ class ComparePipeline:
         """Look for a blue_ocean_report.json in the most recent market directory."""
         if reports_dir is None:
             reports_dir = self.output_dir
-        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword)[:50]
+        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword.lower())[:50]
         matching_dirs = list(reports_dir.glob(f"market_{keyword_slug}_*"))
         if not matching_dirs:
             return None
@@ -264,7 +264,7 @@ class ComparePipeline:
         Returns:
             Path to output subdirectory
         """
-        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword)[:50]
+        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword.lower())[:50]
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         subdir = self.output_dir / f"compare_{keyword_slug}_{timestamp}"
         subdir.mkdir(parents=True, exist_ok=True)
