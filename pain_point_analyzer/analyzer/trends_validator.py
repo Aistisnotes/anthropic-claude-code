@@ -52,9 +52,16 @@ TIER_COLORS = {
 }
 
 
+SCRAPER_ERROR = -2  # Sentinel: scraper returned 0, likely a failure
+
+
 def _classify_tier(ad_count: int) -> int:
-    """Classify an ad count into a market tier."""
-    if ad_count < 0:
+    """Classify an ad count into a market tier.
+
+    CRITICAL: 0 ad count means the scraper failed, NOT that there's no
+    competition.  We must never classify 0 as LOOPHOLE.
+    """
+    if ad_count <= 0:
         return TIER_UNKNOWN
     if ad_count < 2000:
         return TIER_LOOPHOLE
@@ -473,6 +480,23 @@ class TrendsValidator:
                 variant_type = ["broad", "symptom", "clinical"][j] if j < 3 else "other"
                 count = await _get_ad_count(kw, headless=self.headless)
                 self._session_request_count += 1
+
+                # Retry once with 10s delay if count is 0 (likely scraper failure)
+                if count == 0:
+                    logger.warning(
+                        f"Got 0 ads for '{kw}' — retrying in 10s "
+                        f"(broad keywords should never be 0)"
+                    )
+                    await asyncio.sleep(10)
+                    count = await _get_ad_count(kw, headless=self.headless)
+                    self._session_request_count += 1
+                    if count == 0:
+                        logger.warning(
+                            f"Still 0 ads for '{kw}' after retry — "
+                            f"marking as SCRAPER ERROR"
+                        )
+                        count = SCRAPER_ERROR
+
                 scored.append(KeywordScore(kw, count, variant_type))
 
                 # Random 5-10 second delay between keyword requests
@@ -482,13 +506,25 @@ class TrendsValidator:
                     logger.info(f"Rate limit: {delay:.1f}s delay before next keyword")
                     await asyncio.sleep(delay)
 
-            best = max(scored, key=lambda x: x.score)
+            # Check if ALL keywords for this pain point returned errors
+            all_failed = all(ks.score <= 0 for ks in scored) if scored else True
+            best = max(scored, key=lambda x: x.score) if scored else KeywordScore(pp.name.lower(), SCRAPER_ERROR, "unknown")
+
+            if all_failed:
+                logger.warning(
+                    f"ALL keyword variants for '{pp.name}' returned 0/error — "
+                    f"Meta Ad Library may be unreachable for these keywords"
+                )
+                best_score = SCRAPER_ERROR
+            else:
+                best_score = best.score
+
             results.append(
                 TrendResult(
                     pain_point=pp,
                     keywords=scored,
                     best_keyword=best.keyword,
-                    best_score=best.score,
+                    best_score=best_score,
                 )
             )
 

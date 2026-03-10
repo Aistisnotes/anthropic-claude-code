@@ -235,6 +235,22 @@ async def _run_remaining_pipeline(extraction, config, url, update):
 # ── Results display ────────────────────────────────────────────────────────────
 def _show_results(report: dict):
     """Display the analysis results inline."""
+    # Inject global CSS to fix text readability on light backgrounds
+    st.markdown(
+        """
+        <style>
+        /* Force dark text on light backgrounds for all custom HTML */
+        .stMarkdown div[data-testid="stMarkdownContainer"] {
+            color: #1a1a1a;
+        }
+        /* Ensure metric labels/values are dark */
+        [data-testid="stMetricValue"] { color: #1a1a1a !important; }
+        [data-testid="stMetricLabel"] { color: #444 !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     product = report["product"]
 
     # PDF download at the top
@@ -287,15 +303,16 @@ def _show_results(report: dict):
         ad_count = t.get("best_score", 0)
         is_top = t.get("is_top", False)
 
-        # Color-coded tier display
-        color_map = {
+        # Color-coded tier display — border accent colors
+        border_color_map = {
             "gray": "#9e9e9e",
             "green": "#4caf50",
-            "yellow": "#ffc107",
+            "yellow": "#f9a825",
             "orange": "#ff9800",
             "red": "#ef5350",
         }
-        hex_color = color_map.get(tier_color, "#666")
+        border_hex = border_color_map.get(tier_color, "#666")
+        # Light card backgrounds
         bg_map = {
             "gray": "#f5f5f5",
             "green": "#e8f5e9",
@@ -304,28 +321,48 @@ def _show_results(report: dict):
             "red": "#ffebee",
         }
         bg_color = bg_map.get(tier_color, "#f5f5f5")
+        # Dark text colors readable against each light background
+        text_color_map = {
+            "gray": "#555555",
+            "green": "#1b5e20",
+            "yellow": "#b7840a",
+            "orange": "#e65100",
+            "red": "#b71c1c",
+        }
+        tier_text_color = text_color_map.get(tier_color, "#333")
 
-        top_badge = " **[TOP 3]**" if is_top else ""
+        top_badge = (
+            f' <span style="background:#1565c0;color:#fff;font-size:0.75em;'
+            f'padding:2px 8px;border-radius:10px;font-weight:700;">TOP 3</span>'
+            if is_top else ""
+        )
 
-        # Handle unknown tier (Meta Ad Library unreachable)
-        if ad_count < 0:
-            ad_display = "N/A (Meta Ad Library unavailable)"
+        # Handle unknown tier / scraper errors
+        if ad_count <= 0:
+            if ad_count == -2:
+                ad_display = (
+                    '<span style="color:#c62828;font-weight:700;">'
+                    'SCRAPER ERROR</span> — could not retrieve count'
+                )
+            else:
+                ad_display = "N/A (Meta Ad Library unavailable)"
             kw_display = ""
         else:
             ad_display = f"{ad_count:,} active ads (best keyword: \"{t['best_keyword']}\")"
             kw_display = (
-                f'<span style="font-size:0.85em;color:#666;">'
+                f'<span style="font-size:0.85em;color:#555;">'
                 f'Keywords: {", ".join(kw["keyword"] + " (" + str(kw["score"]) + ")" for kw in t.get("keywords", []))}'
                 f'</span>'
             )
 
         st.markdown(
-            f'<div style="background:{bg_color};border-left:5px solid {hex_color};'
-            f'padding:12px 16px;margin-bottom:8px;border-radius:0 6px 6px 0;">'
-            f'<strong>{t["pain_point"]}</strong>{top_badge}<br>'
-            f'<span style="color:{hex_color};font-weight:700;">'
+            f'<div style="background:{bg_color};border-left:5px solid {border_hex};'
+            f'padding:12px 16px;margin-bottom:8px;border-radius:0 6px 6px 0;'
+            f'color:#1a1a1a;">'
+            f'<strong style="color:#111;">{t["pain_point"]}</strong>{top_badge}<br>'
+            f'<span style="color:{tier_text_color};font-weight:700;">'
             f'{tier_label}</span> — '
-            f'{ad_display}<br>'
+            f'<span style="color:#333;">{ad_display}</span><br>'
             f'{kw_display}'
             f'</div>',
             unsafe_allow_html=True,
@@ -342,6 +379,16 @@ def _show_results(report: dict):
                 "Hyper-saturated. Better to focus on other pain points "
                 "unless you have a breakthrough angle."
             )
+
+    # Check if ALL pain points had scraper errors
+    all_scraper_errors = all(
+        t.get("best_score", 0) <= 0 for t in report["trends"]
+    )
+    if all_scraper_errors and report["trends"]:
+        st.warning(
+            "Could not validate demand — Meta Ad Library unreachable for "
+            "these keywords. Run again or check manually."
+        )
 
     # Top deep dives
     st.markdown("---")
@@ -396,15 +443,30 @@ def _show_results(report: dict):
                 st.markdown(f"**Mechanism:** {pos['mechanism']}")
 
                 st.markdown("**Avatar:**")
-                st.markdown(
-                    f"Age: {pos['avatar']['age']} | "
-                    f"Gender: {pos['avatar']['gender']} | "
-                    f"Lifestyle: {pos['avatar']['lifestyle']}"
-                )
-                if pos["avatar"].get("tried_before"):
+                avatar = pos["avatar"]
+                # Show rich narrative avatar if available, otherwise fall back to structured fields
+                if avatar.get("narrative"):
+                    st.markdown(avatar["narrative"])
+                else:
                     st.markdown(
-                        f"_Tried before:_ {', '.join(pos['avatar']['tried_before'])}"
+                        f"Age: {avatar.get('age', 'N/A')} | "
+                        f"Gender: {avatar.get('gender', 'N/A')} | "
+                        f"Lifestyle: {avatar.get('lifestyle', 'N/A')}"
                     )
+                if avatar.get("habit_history"):
+                    st.markdown(f"**Core Habit:** {avatar['habit_history']}")
+                if avatar.get("root_cause_connection"):
+                    st.markdown(f"**Why It Matters:** {avatar['root_cause_connection']}")
+                if avatar.get("failed_solutions"):
+                    st.markdown("**What They've Tried (And Why It Failed):**")
+                    for sol in avatar["failed_solutions"]:
+                        st.markdown(f"- {sol}")
+                elif avatar.get("tried_before"):
+                    st.markdown(
+                        f"_Tried before:_ {', '.join(avatar['tried_before'])}"
+                    )
+                if avatar.get("urgency_trigger"):
+                    st.markdown(f"**Why Now:** {avatar['urgency_trigger']}")
 
                 if pos.get("daily_symptoms"):
                     st.markdown("**Daily Symptoms:**")
@@ -484,6 +546,43 @@ def _add_to_reports_index(report: dict, pdf_path: str) -> None:
     _save_reports_index(index)
 
 
+def _generate_pdf_for_report(entry: dict) -> None:
+    """Generate a PDF for a report entry that doesn't have one yet."""
+    # Look for matching JSON report file
+    report_id = entry.get("id", "")
+    json_candidates = list(OUTPUT_DIR.glob(f"*{report_id}*.json")) + list(
+        REPORTS_DIR.glob(f"*{report_id}*.json")
+    )
+    if not json_candidates:
+        # Try to find any JSON file matching the product name
+        slug = entry.get("product_name", "").replace(" ", "_")[:30]
+        json_candidates = list(OUTPUT_DIR.glob(f"*{slug}*.json"))
+
+    if not json_candidates:
+        st.error("Could not find source report JSON to generate PDF.")
+        return
+
+    try:
+        report_data = json.loads(json_candidates[0].read_text(encoding="utf-8"))
+        config = _load_config()
+        from analyzer.report_generator import ReportGenerator
+        reporter = ReportGenerator(config)
+        pdf_path = reporter.generate_pdf(report_data)
+        if pdf_path:
+            # Update the index entry with the new PDF path
+            idx = _load_reports_index()
+            for e in idx:
+                if e.get("id") == entry.get("id"):
+                    e["pdf_path"] = str(pdf_path)
+                    break
+            _save_reports_index(idx)
+            st.success(f"PDF generated: {pdf_path.name}")
+        else:
+            st.error("PDF generation failed. Check Playwright is installed.")
+    except Exception as e:
+        st.error(f"PDF generation error: {e}")
+
+
 def _show_reports_tab():
     """Display the Reports tab content."""
     from datetime import datetime
@@ -520,6 +619,13 @@ def _show_reports_tab():
         pdf_path = Path(pdf_path_str) if pdf_path_str else None
         pdf_exists = pdf_path is not None and pdf_path.is_file()
 
+        # Check for corresponding HTML file (for preview)
+        html_path = None
+        if pdf_path:
+            candidate = pdf_path.with_suffix(".html")
+            if candidate.is_file():
+                html_path = candidate
+
         # Parse date
         try:
             dt = datetime.fromisoformat(entry["date"])
@@ -528,7 +634,7 @@ def _show_reports_tab():
             date_str = entry.get("date", "Unknown date")
 
         with st.container():
-            col1, col2, col3 = st.columns([4, 1, 1])
+            col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
 
             with col1:
                 product = entry.get("product_name", "Unknown")
@@ -545,21 +651,34 @@ def _show_reports_tab():
 
             with col2:
                 if pdf_exists:
+                    if st.button("Preview", key=f"preview_{i}", use_container_width=True):
+                        st.session_state[f"show_preview_{i}"] = not st.session_state.get(f"show_preview_{i}", False)
+
+            with col3:
+                if pdf_exists:
                     with open(pdf_path, "rb") as f:
                         st.download_button(
-                            label="Download PDF",
+                            label="Download",
                             data=f.read(),
                             file_name=pdf_path.name,
                             mime="application/pdf",
                             key=f"dl_{i}",
                             use_container_width=True,
                         )
+                else:
+                    # PDF doesn't exist — offer to generate it
+                    if st.button("Generate PDF", key=f"gen_{i}", use_container_width=True):
+                        _generate_pdf_for_report(entry)
+                        st.rerun()
 
-            with col3:
+            with col4:
                 if st.button("Delete", key=f"del_{i}", use_container_width=True):
                     # Remove PDF file
                     if pdf_exists:
                         pdf_path.unlink(missing_ok=True)
+                    # Remove HTML preview too
+                    if html_path and html_path.is_file():
+                        html_path.unlink(missing_ok=True)
                     # Remove from index
                     updated = [
                         e for e in _load_reports_index()
@@ -567,6 +686,33 @@ def _show_reports_tab():
                     ]
                     _save_reports_index(updated)
                     st.rerun()
+
+            # Inline PDF preview (rendered HTML version)
+            if st.session_state.get(f"show_preview_{i}", False):
+                if html_path and html_path.is_file():
+                    html_content = html_path.read_text(encoding="utf-8")
+                    # Render HTML in an iframe for preview
+                    import base64
+                    b64_html = base64.b64encode(html_content.encode("utf-8")).decode()
+                    st.markdown(
+                        f'<iframe src="data:text/html;base64,{b64_html}" '
+                        f'width="100%" height="800" style="border:1px solid #ddd;'
+                        f'border-radius:6px;"></iframe>',
+                        unsafe_allow_html=True,
+                    )
+                elif pdf_exists:
+                    # Embed PDF directly
+                    import base64
+                    pdf_bytes = pdf_path.read_bytes()
+                    b64_pdf = base64.b64encode(pdf_bytes).decode()
+                    st.markdown(
+                        f'<iframe src="data:application/pdf;base64,{b64_pdf}" '
+                        f'width="100%" height="800" style="border:1px solid #ddd;'
+                        f'border-radius:6px;"></iframe>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.info("No preview available. Generate the PDF first.")
 
             st.markdown("---")
 

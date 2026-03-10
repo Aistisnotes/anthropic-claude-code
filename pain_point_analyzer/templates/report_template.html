@@ -417,6 +417,44 @@
   </div>
 
   <div class="subsection-header">Avatar</div>
+  {% if dive.positioning.avatar.narrative %}
+  <div class="callout callout-blue" style="margin-bottom:10px;">
+    <div class="callout-title">Who This Person Is</div>
+    <p>{{ dive.positioning.avatar.narrative }}</p>
+  </div>
+  {% if dive.positioning.avatar.habit_history %}
+  <div class="strategy-grid">
+    <div class="strategy-cell" style="grid-column:1/-1;">
+      <div class="strategy-cell-label">Core Habit / Behavior</div>
+      <div class="strategy-cell-value">{{ dive.positioning.avatar.habit_history }}</div>
+    </div>
+    {% if dive.positioning.avatar.root_cause_connection %}
+    <div class="strategy-cell" style="grid-column:1/-1;">
+      <div class="strategy-cell-label">Why It Matters (Root Cause Connection)</div>
+      <div class="strategy-cell-value">{{ dive.positioning.avatar.root_cause_connection }}</div>
+    </div>
+    {% endif %}
+    {% if dive.positioning.avatar.failed_solutions %}
+    <div class="strategy-cell" style="grid-column:1/-1;">
+      <div class="strategy-cell-label">What They've Tried (And Why It Failed)</div>
+      <div class="strategy-cell-value">
+        <ul style="padding-left:18px;margin:0;">
+          {% for sol in dive.positioning.avatar.failed_solutions %}
+          <li>{{ sol }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+    {% if dive.positioning.avatar.urgency_trigger %}
+    <div class="strategy-cell" style="grid-column:1/-1;">
+      <div class="strategy-cell-label">Why Now (Urgency Trigger)</div>
+      <div class="strategy-cell-value">{{ dive.positioning.avatar.urgency_trigger }}</div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% else %}
   <div class="strategy-grid">
     <div class="strategy-cell">
       <div class="strategy-cell-label">Age</div>
@@ -437,6 +475,7 @@
     </div>
     {% endif %}
   </div>
+  {% endif %}
 
   {% if dive.positioning.daily_symptoms %}
   <div class="subsection-header">Daily Symptoms</div>
