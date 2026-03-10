@@ -446,6 +446,7 @@ class MarketResult(BaseModel):
     competition_level: str = "normal"  # normal / thin / blue_ocean
     blue_ocean_result: Optional[Any] = None  # BlueOceanResult (dict-serialized)
     blue_ocean_confidence: str = ""  # "high|medium|low" — set when competition_level=="blue_ocean"
+    output_dir: Optional[Path] = None  # Actual market subdir path (set by DirectPipeline)
 
 
 # ============================================================================

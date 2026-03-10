@@ -184,6 +184,7 @@ class DirectPipeline:
             total_advertisers=len(brand_entries),
             brands_analyzed=len(brand_reports),
             competition_level="normal" if len(brand_reports) >= 3 else "thin",
+            output_dir=market_subdir,
         )
 
     async def _analyze_brand(

@@ -637,7 +637,7 @@ def direct(
     _display_market_summary(result)
 
     if run_compare and result.brand_reports:
-        _log_kw = keyword or entries[0]["name"]
+        _log_kw = keyword or "direct"
         console.print(f"\n[cyan]Running compare for: {_log_kw}[/]")
         from meta_ads_analyzer.compare_pipeline import ComparePipeline
         cmp = ComparePipeline(config)
@@ -645,6 +645,7 @@ def direct(
             cmp.run(
                 keyword=_log_kw,
                 enhance=True,
+                from_reports=result.output_dir,  # Pass exact market dir — no slug guessing
             )
         )
         if cmp_result.loophole_doc:

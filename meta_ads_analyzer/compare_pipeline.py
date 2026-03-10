@@ -169,19 +169,23 @@ class ComparePipeline:
         if reports_dir is None:
             reports_dir = self.output_dir
 
-        # Find matching market directories
-        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword.lower())[:50]
-        matching_dirs = list(reports_dir.glob(f"market_{keyword_slug}_*"))
+        # If reports_dir is a direct market subdir (contains brand_report_*.json), use it as-is
+        if list(reports_dir.glob("brand_report_*.json")):
+            latest_dir = reports_dir
+            logger.info(f"Loading reports from direct path: {latest_dir}")
+        else:
+            # Fall back to keyword-slug search within reports_dir
+            keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword.lower())[:50]
+            matching_dirs = list(reports_dir.glob(f"market_{keyword_slug}_*"))
 
-        if not matching_dirs:
-            raise ValueError(
-                f"No market reports found for keyword: {keyword}\n"
-                f"Searched in: {reports_dir}/market_{keyword_slug}_*"
-            )
+            if not matching_dirs:
+                raise ValueError(
+                    f"No market reports found for keyword: {keyword}\n"
+                    f"Searched in: {reports_dir}/market_{keyword_slug}_*"
+                )
 
-        # Use most recent directory
-        latest_dir = max(matching_dirs, key=lambda p: p.stat().st_mtime)
-        logger.info(f"Loading reports from: {latest_dir}")
+            latest_dir = max(matching_dirs, key=lambda p: p.stat().st_mtime)
+            logger.info(f"Loading reports from: {latest_dir}")
 
         # Load all brand reports from directory
         brand_reports = []
@@ -244,11 +248,17 @@ class ComparePipeline:
         """Look for a blue_ocean_report.json in the most recent market directory."""
         if reports_dir is None:
             reports_dir = self.output_dir
-        keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword.lower())[:50]
-        matching_dirs = list(reports_dir.glob(f"market_{keyword_slug}_*"))
-        if not matching_dirs:
-            return None
-        latest_dir = max(matching_dirs, key=lambda p: p.stat().st_mtime)
+
+        # If reports_dir is a direct market subdir, use it as-is
+        if (reports_dir / "blue_ocean_report.json").exists() or list(reports_dir.glob("brand_report_*.json")):
+            latest_dir = reports_dir
+        else:
+            keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword.lower())[:50]
+            matching_dirs = list(reports_dir.glob(f"market_{keyword_slug}_*"))
+            if not matching_dirs:
+                return None
+            latest_dir = max(matching_dirs, key=lambda p: p.stat().st_mtime)
+
         bo_path = latest_dir / "blue_ocean_report.json"
         if bo_path.exists():
             with open(bo_path) as f:
