@@ -9,6 +9,10 @@ scroll_pause = 3.0
 max_scroll_attempts = 50
 # Request timeout (seconds)
 request_timeout = 30
+# Delay between Meta Ad Library page requests (seconds) — randomized ±3s
+delay_between_requests = 8
+# Max Ad Library requests per session (prevents IP bans)
+max_requests_per_session = 20
 
 [scraper.filters]
 # Country filter (ISO 2-letter code)

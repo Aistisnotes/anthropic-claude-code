@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import random
 import re
 from pathlib import Path
 from typing import Any
@@ -71,6 +72,9 @@ def _parse_impression_range(text: str) -> tuple[int, int | None]:
 class MetaAdsScraper:
     """Scrape ads from Meta Ads Library."""
 
+    # Class-level session counter shared across instances
+    _session_request_count: int = 0
+
     def __init__(self, config: dict[str, Any]):
         self.config = config
         self.scraper_cfg = config.get("scraper", {})
@@ -79,6 +83,8 @@ class MetaAdsScraper:
         self.scroll_pause = self.scraper_cfg.get("scroll_pause", 2.0)
         self.max_scroll_attempts = self.scraper_cfg.get("max_scroll_attempts", 50)
         self.filters = self.scraper_cfg.get("filters", {})
+        self.delay_between_requests = self.scraper_cfg.get("delay_between_requests", 8)
+        self.max_requests_per_session = self.scraper_cfg.get("max_requests_per_session", 20)
         self.debug_dir: Path | None = None
         self._browser: Browser | None = None
         # Populated during _scrape_ads by scanning the full loaded page for
@@ -105,10 +111,33 @@ class MetaAdsScraper:
             expected_page_name: When set, abort early if no ads match this page_name
                 after 3 scrolls (avoids scraping irrelevant pages in Stage B).
         """
+        # Rate limit: check session cap
+        if MetaAdsScraper._session_request_count >= self.max_requests_per_session:
+            logger.warning(
+                f"Session request cap reached ({self.max_requests_per_session}). "
+                f"Refusing to scrape to avoid IP ban."
+            )
+            return []
+
+        # Rate limit: random delay before each page request (5-10s range)
+        if MetaAdsScraper._session_request_count > 0:
+            delay = self.delay_between_requests + random.uniform(-3, 3)
+            delay = max(5.0, delay)  # floor at 5 seconds
+            logger.info(f"Rate limit: {delay:.1f}s delay before next Ad Library request")
+            await asyncio.sleep(delay)
+
+        MetaAdsScraper._session_request_count += 1
+
         if page_id:
-            logger.info(f"Starting scrape for page_id: {page_id} (max {self.max_ads} ads)")
+            logger.info(
+                f"Starting scrape for page_id: {page_id} (max {self.max_ads} ads) "
+                f"[request {MetaAdsScraper._session_request_count}/{self.max_requests_per_session}]"
+            )
         else:
-            logger.info(f"Starting scrape for query: {query} (max {self.max_ads} ads)")
+            logger.info(
+                f"Starting scrape for query: {query} (max {self.max_ads} ads) "
+                f"[request {MetaAdsScraper._session_request_count}/{self.max_requests_per_session}]"
+            )
 
         async with async_playwright() as p:
             self._browser = await p.chromium.launch(

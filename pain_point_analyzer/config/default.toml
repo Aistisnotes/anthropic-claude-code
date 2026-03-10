@@ -5,6 +5,12 @@ headless = true
 page_timeout = 60
 # Screenshot quality (0-100)
 screenshot_quality = 90
+# Delay between Meta Ad Library requests (seconds) — randomized ±3s
+delay_between_requests = 8
+# Cooldown between scraping different pain points (seconds)
+cooldown_between_brands = 30
+# Max Ad Library requests per session (prevents IP bans)
+max_requests_per_session = 20
 
 [analyzer]
 # Claude model for analysis and vision

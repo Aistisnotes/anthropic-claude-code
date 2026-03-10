@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -325,6 +326,11 @@ class TrendsValidator:
         self.top_n = config.get("pipeline", {}).get("top_pain_points", 3)
         self.model = config.get("analyzer", {}).get("model", "claude-sonnet-4-20250514")
         self.headless = config.get("scraper", {}).get("headless", True)
+        scraper_cfg = config.get("scraper", {})
+        self.delay_between_requests = scraper_cfg.get("delay_between_requests", 8)
+        self.cooldown_between_brands = scraper_cfg.get("cooldown_between_brands", 30)
+        self.max_requests_per_session = scraper_cfg.get("max_requests_per_session", 20)
+        self._session_request_count = 0
         self.client = anthropic.Anthropic()
 
     async def _check_facebook_reachable(self) -> bool:
@@ -404,6 +410,46 @@ class TrendsValidator:
         results: list[TrendResult] = []
 
         for i, pp in enumerate(query_points):
+            # Session request cap — stop making requests to avoid IP ban
+            if self._session_request_count >= self.max_requests_per_session:
+                logger.warning(
+                    f"Hit session request cap ({self.max_requests_per_session}). "
+                    f"Skipping remaining pain points to avoid IP ban."
+                )
+                if progress_cb:
+                    progress_cb(
+                        f"Request cap reached ({self.max_requests_per_session}) — "
+                        f"skipping remaining queries"
+                    )
+                # Add remaining pain points as unknown
+                for remaining_pp in query_points[i:]:
+                    results.append(
+                        TrendResult(
+                            pain_point=remaining_pp,
+                            keywords=[KeywordScore(remaining_pp.name.lower(), -1, "capped")],
+                            best_keyword=remaining_pp.name.lower(),
+                            best_score=-1,
+                            tier=TIER_UNKNOWN,
+                            tier_label=TIER_LABELS[TIER_UNKNOWN],
+                            tier_color=TIER_COLORS[TIER_UNKNOWN],
+                        )
+                    )
+                break
+
+            # 30-second cooldown between different pain points (brands)
+            if i > 0:
+                cooldown = self.cooldown_between_brands
+                logger.info(
+                    f"Rate limit: {cooldown}s cooldown before pain point "
+                    f"'{pp.name}' ({i+1}/{len(query_points)})"
+                )
+                if progress_cb:
+                    progress_cb(
+                        f"Rate limit cooldown ({cooldown}s) before "
+                        f"'{pp.name}' ({i+1}/{len(query_points)})..."
+                    )
+                await asyncio.sleep(cooldown)
+
             if progress_cb:
                 progress_cb(
                     f"Checking Meta Ad Library for '{pp.name}' "
@@ -416,12 +462,25 @@ class TrendsValidator:
 
             scored: list[KeywordScore] = []
             for j, kw in enumerate(keywords):
+                # Check session cap before each request
+                if self._session_request_count >= self.max_requests_per_session:
+                    logger.warning(
+                        f"Session cap reached mid-keyword. "
+                        f"Skipping remaining keywords for '{pp.name}'."
+                    )
+                    break
+
                 variant_type = ["broad", "symptom", "clinical"][j] if j < 3 else "other"
                 count = await _get_ad_count(kw, headless=self.headless)
+                self._session_request_count += 1
                 scored.append(KeywordScore(kw, count, variant_type))
-                # Small pause between queries to avoid rate limiting
+
+                # Random 5-10 second delay between keyword requests
                 if j < len(keywords) - 1:
-                    await asyncio.sleep(2)
+                    delay = self.delay_between_requests + random.uniform(-3, 3)
+                    delay = max(5.0, delay)  # floor at 5 seconds
+                    logger.info(f"Rate limit: {delay:.1f}s delay before next keyword")
+                    await asyncio.sleep(delay)
 
             best = max(scored, key=lambda x: x.score)
             results.append(
