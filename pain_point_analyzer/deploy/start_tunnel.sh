@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-PORT=${STREAMLIT_PORT:-8503}
+PORT=${STREAMLIT_PORT:-8502}
 APP_PY="$PROJECT_DIR/app.py"
 
 STREAMLIT_PID=""
