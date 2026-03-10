@@ -817,9 +817,15 @@ class TrendsValidator:
                     )
                 )
 
-        # Sort by opportunity: Tier 1 first, then Tier 2, etc.
-        # Within same tier, lower ad count = more underserved = better
-        results.sort(key=lambda x: (x.tier, x.best_score))
+        # Sort by opportunity: validated results first (Tier 1→4), skipped/unknown last.
+        # Within same tier, lower ad count = more underserved = better.
+        # Skipped/unvalidated go to bottom regardless of tier.
+        def _sort_key(r):
+            if r.skipped or r.tier == TIER_UNKNOWN:
+                return (1, 99, r.best_score)  # push to bottom
+            return (0, r.tier, r.best_score)   # validated: sort by tier then count
+
+        results.sort(key=_sort_key)
 
         # Select top N — prioritize Tier 1, then Tier 2
         # Never classify as a tier based on failed data
