@@ -427,7 +427,7 @@ class BrandReport(BaseModel):
 
     advertiser: AdvertiserEntry
     keyword: str
-    selection_stats: SelectionStats
+    selection_stats: Optional[SelectionStats] = None
     pattern_report: PatternReport
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     cross_category: bool = False
