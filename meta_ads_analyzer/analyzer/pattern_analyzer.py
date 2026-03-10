@@ -637,17 +637,15 @@ class PatternAnalyzer:
                 "example_ads": combo["ads"][:3],  # First 3 ad IDs as examples
             })
 
-        # Add matrix to report as a new field
-        # Store in executive_summary since we can't modify PatternReport structure easily
+        # Add matrix to the markdown report only — never overwrite executive_summary
         matrix_text = self._format_matrix_text(matrix_rows, total_ads)
 
-        # Prepend matrix to executive summary
-        if report.executive_summary:
-            report.executive_summary = (
-                f"{matrix_text}\n\n---\n\n{report.executive_summary}"
+        if report.full_report_markdown:
+            report.full_report_markdown = (
+                f"{matrix_text}\n\n---\n\n{report.full_report_markdown}"
             )
         else:
-            report.executive_summary = matrix_text
+            report.full_report_markdown = matrix_text
 
         return report
 
