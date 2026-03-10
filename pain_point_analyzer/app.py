@@ -283,15 +283,57 @@ async def _run_remaining_pipeline(extraction, config, url, update):
 # ── Global CSS ────────────────────────────────────────────────────────────────
 GLOBAL_CSS = """
 <style>
-/* Force dark text on light backgrounds for all custom HTML */
-.stMarkdown div[data-testid="stMarkdownContainer"] {
-    color: #1a1a1a;
-}
-/* Ensure metric labels/values are dark */
-[data-testid="stMetricValue"] { color: #1a1a1a !important; }
-[data-testid="stMetricLabel"] { color: #444 !important; }
+/* ═══════════════════════════════════════════════════════════════════════════
+   PERMANENT TEXT COLOR FIX — uses !important on ALL elements to prevent
+   dynamic Streamlit re-renders from overriding colors.
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Tier badge base */
+/* Force dark text on ALL Streamlit markdown containers */
+.stMarkdown div[data-testid="stMarkdownContainer"],
+.stMarkdown div[data-testid="stMarkdownContainer"] *,
+.stMarkdown p,
+.stMarkdown li,
+.stMarkdown td,
+.stMarkdown th,
+.stMarkdown span,
+.stMarkdown div {
+    color: #1a1a1a !important;
+}
+
+/* Metric labels/values */
+[data-testid="stMetricValue"] { color: #1a1a1a !important; }
+[data-testid="stMetricLabel"] { color: #444444 !important; }
+[data-testid="stMetricDelta"] { color: #555555 !important; }
+
+/* All table cells */
+.stDataFrame td, .stDataFrame th,
+table td, table th,
+.dataframe td, .dataframe th {
+    color: #1a1a1a !important;
+}
+
+/* All paragraph, list, header text */
+.element-container p,
+.element-container li,
+.element-container h1,
+.element-container h2,
+.element-container h3,
+.element-container h4,
+.element-container h5 {
+    color: #1a1a1a !important;
+}
+
+/* Expander text */
+.streamlit-expanderContent p,
+.streamlit-expanderContent li,
+.streamlit-expanderContent div,
+.streamlit-expanderContent span,
+.streamlit-expanderContent td,
+.streamlit-expanderContent th {
+    color: #1a1a1a !important;
+}
+
+/* ── Tier badges ───────────────────────────────────────────────────────── */
 .tier-badge {
     display: inline-block;
     padding: 3px 12px;
@@ -300,75 +342,140 @@ GLOBAL_CSS = """
     font-weight: 700;
     letter-spacing: 0.3px;
 }
-/* Tier 1 OPEN — green bg, white text */
 .tier-open {
-    background: #4caf50;
-    color: #ffffff;
+    background: #4caf50 !important;
+    color: #ffffff !important;
 }
-/* Tier 2 SOLID — yellow bg, black text */
 .tier-solid {
-    background: #f9a825;
-    color: #000000;
+    background: #f9a825 !important;
+    color: #000000 !important;
 }
-/* Tier 3 SATURATED — orange bg, white text */
 .tier-saturated {
-    background: #ff9800;
-    color: #ffffff;
+    background: #ff9800 !important;
+    color: #ffffff !important;
 }
-/* Tier 4 SUPER SATURATED — red bg, white text */
 .tier-super-saturated {
-    background: #ef5350;
-    color: #ffffff;
+    background: #ef5350 !important;
+    color: #ffffff !important;
 }
-/* Unknown tier — gray bg, white text */
 .tier-unknown {
-    background: #9e9e9e;
-    color: #ffffff;
+    background: #9e9e9e !important;
+    color: #ffffff !important;
 }
 
-/* Card with dark header, light body */
-.result-card {
-    border-radius: 0 6px 6px 0;
-    margin-bottom: 8px;
-    overflow: hidden;
+/* ── Result cards ──────────────────────────────────────────────────────── */
+.pp-card {
+    background: #fafafa !important;
+    padding: 12px 16px !important;
+    margin-bottom: 8px !important;
+    border-radius: 0 6px 6px 0 !important;
 }
-.result-card-header {
-    padding: 8px 16px;
-    color: #ffffff;
-    font-weight: 700;
+.pp-card strong,
+.pp-card span,
+.pp-card div,
+.pp-card p {
+    color: #1a1a1a !important;
 }
-.result-card-body {
-    padding: 8px 16px;
-    color: #1a1a1a;
-    background: #fafafa;
+/* Override for specific colored spans inside cards */
+.pp-card .tier-badge.tier-open,
+.pp-card .tier-badge.tier-saturated,
+.pp-card .tier-badge.tier-super-saturated,
+.pp-card .tier-badge.tier-unknown {
+    color: #ffffff !important;
+}
+.pp-card .tier-badge.tier-solid {
+    color: #000000 !important;
+}
+.pp-card .top3-badge {
+    background: #1565c0 !important;
+    color: #ffffff !important;
+    font-size: 0.75em !important;
+    padding: 2px 8px !important;
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+}
+.pp-card .cache-tag {
+    color: #888888 !important;
+    font-size: 0.85em !important;
+}
+.pp-card .kw-display {
+    font-size: 0.85em !important;
+    color: #555555 !important;
+    margin-top: 2px !important;
+}
+.pp-card .skip-display {
+    font-size: 0.85em !important;
+    color: #888888 !important;
+    margin-top: 2px !important;
+}
+.pp-card .error-display {
+    color: #c62828 !important;
+    font-weight: 700 !important;
 }
 
-/* Pipeline log */
+/* ── Skipped section ───────────────────────────────────────────────────── */
+.skipped-section summary {
+    cursor: pointer;
+    color: #666666 !important;
+    font-size: 0.9em !important;
+    padding: 8px 0 !important;
+}
+.skipped-section .pp-card {
+    background: #f5f5f5 !important;
+    border-left-color: #9e9e9e !important;
+    opacity: 0.85;
+}
+
+/* ── Pipeline log ──────────────────────────────────────────────────────── */
 .pipeline-log {
-    font-family: monospace;
-    font-size: 0.85em;
-    background: #fafafa;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    padding: 12px;
-    max-height: 400px;
-    overflow-y: auto;
-    color: #333333;
+    font-family: monospace !important;
+    font-size: 0.85em !important;
+    background: #fafafa !important;
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 6px !important;
+    padding: 12px !important;
+    max-height: 400px !important;
+    overflow-y: auto !important;
+    color: #333333 !important;
 }
-.pipeline-log .log-error { color: #c62828; font-weight: 700; }
-.pipeline-log .log-cached { color: #888888; }
-.pipeline-log .log-info { color: #333333; }
+.pipeline-log .log-error { color: #c62828 !important; font-weight: 700 !important; }
+.pipeline-log .log-cached { color: #888888 !important; }
+.pipeline-log .log-info { color: #333333 !important; }
 
-/* Warning/flag text readability */
+/* ── Tier warning flags ────────────────────────────────────────────────── */
 .flag-saturated {
-    color: #e65100;
-    font-weight: 700;
-    font-size: 0.9em;
+    color: #e65100 !important;
+    font-weight: 700 !important;
+    font-size: 0.9em !important;
 }
 .flag-super-saturated {
-    color: #c62828;
-    font-weight: 700;
-    font-size: 0.9em;
+    color: #c62828 !important;
+    font-weight: 700 !important;
+    font-size: 0.9em !important;
+}
+
+/* ── Reports tab text fix ──────────────────────────────────────────────── */
+.stTabs [data-baseweb="tab-panel"] p,
+.stTabs [data-baseweb="tab-panel"] li,
+.stTabs [data-baseweb="tab-panel"] td,
+.stTabs [data-baseweb="tab-panel"] th,
+.stTabs [data-baseweb="tab-panel"] span,
+.stTabs [data-baseweb="tab-panel"] div,
+.stTabs [data-baseweb="tab-panel"] strong,
+.stTabs [data-baseweb="tab-panel"] h1,
+.stTabs [data-baseweb="tab-panel"] h2,
+.stTabs [data-baseweb="tab-panel"] h3 {
+    color: #1a1a1a !important;
+}
+
+/* Deep-dive sections */
+.stExpander p,
+.stExpander li,
+.stExpander span,
+.stExpander div,
+.stExpander td,
+.stExpander th {
+    color: #1a1a1a !important;
 }
 </style>
 """
@@ -419,16 +526,60 @@ def _show_results(report: dict):
     product = report["product"]
 
     # PDF download at the top
-    pdf_path = report.get("_pdf_path")
-    if pdf_path and Path(pdf_path).exists():
-        with open(pdf_path, "rb") as f:
-            st.download_button(
-                label="Download PDF",
-                data=f.read(),
-                file_name=Path(pdf_path).name,
-                mime="application/pdf",
-                use_container_width=True,
-            )
+    pdf_path_str = report.get("_pdf_path")
+    pdf_path = Path(pdf_path_str) if pdf_path_str else None
+
+    if pdf_path and pdf_path.exists():
+        # Copy to reports dir so it shows in Reports tab
+        reports_copy = REPORTS_DIR / pdf_path.name
+        if not reports_copy.exists():
+            try:
+                reports_copy.write_bytes(pdf_path.read_bytes())
+            except Exception:
+                pass
+
+        pdf_bytes = pdf_path.read_bytes()
+        st.download_button(
+            label="Export PDF",
+            data=pdf_bytes,
+            file_name=pdf_path.name,
+            mime="application/pdf",
+            use_container_width=True,
+            key="pdf_download_top",
+        )
+        st.success(f"PDF ready — click above to download ({pdf_path.name})")
+    else:
+        # Try to generate PDF on the fly
+        if st.button("Generate PDF", use_container_width=True, key="gen_pdf_top"):
+            with st.spinner("Generating PDF..."):
+                try:
+                    config = _load_config()
+                    from analyzer.report_generator import ReportGenerator
+                    reporter = ReportGenerator(config)
+                    new_pdf = reporter.generate_pdf(report)
+                    if new_pdf and new_pdf.exists():
+                        report["_pdf_path"] = str(new_pdf)
+                        st.session_state["report"]["_pdf_path"] = str(new_pdf)
+                        # Copy to reports dir
+                        reports_copy = REPORTS_DIR / new_pdf.name
+                        if not reports_copy.exists():
+                            reports_copy.write_bytes(new_pdf.read_bytes())
+                        st.success(f"PDF saved and downloading... ({new_pdf.name})")
+                        st.download_button(
+                            label="Download PDF",
+                            data=new_pdf.read_bytes(),
+                            file_name=new_pdf.name,
+                            mime="application/pdf",
+                            use_container_width=True,
+                            key="pdf_download_generated",
+                        )
+                    else:
+                        st.error(
+                            "PDF generation failed. Ensure Playwright is installed: "
+                            "`python3 -m playwright install chromium`"
+                        )
+                except Exception as e:
+                    st.error(f"PDF generation error: {e}")
 
     st.markdown(f"## {product['name']}")
     st.markdown(f"**Brand:** {product['brand']}")
@@ -471,7 +622,12 @@ def _show_results(report: dict):
             "Try from a different network or wait and retry."
         )
 
-    for t in report["trends"]:
+    # Split validated vs skipped pain points
+    validated_trends = [t for t in report["trends"] if not t.get("skipped", False)]
+    skipped_trends = [t for t in report["trends"] if t.get("skipped", False)]
+
+    def _render_pp_card(t: dict):
+        """Render a single pain point card."""
         tier = t.get("tier", 1)
         tier_label = t.get("tier_label", "OPEN")
         ad_count = t.get("best_score", 0)
@@ -482,60 +638,41 @@ def _show_results(report: dict):
         skip_reason = t.get("skip_reason", "")
 
         badge_class = _tier_badge_class(tier)
+        border_color = {1: "#4caf50", 2: "#f9a825", 3: "#ff9800", 4: "#ef5350"}.get(tier, "#9e9e9e")
 
-        top_badge = (
-            ' <span style="background:#1565c0;color:#ffffff;font-size:0.75em;'
-            'padding:2px 8px;border-radius:10px;font-weight:700;">TOP 3</span>'
-            if is_top else ""
-        )
+        top_badge = ' <span class="top3-badge">TOP 3</span>' if is_top else ""
 
         # Build ad display text
         if ad_count <= 0:
             if ad_count == -2:
-                ad_display = (
-                    '<span style="color:#c62828;font-weight:700;">'
-                    'Could not retrieve</span> — try again later'
-                )
+                ad_display = '<span class="error-display">Could not retrieve</span> — try again later'
             else:
-                ad_display = (
-                    '<span style="color:#888;">N/A</span>'
-                )
+                ad_display = '<span class="cache-tag">N/A</span>'
         else:
-            cache_tag = ""
             if from_cache and cache_date:
-                cache_tag = f' <span style="color:#888;font-size:0.85em;">(cached, checked {cache_date})</span>'
+                cache_tag = f' <span class="cache-tag">(cached, checked {cache_date})</span>'
             else:
-                cache_tag = ' <span style="color:#888;font-size:0.85em;">(fresh)</span>'
-            ad_display = (
-                f'{ad_count:,} active ads{cache_tag}'
-            )
+                cache_tag = ' <span class="cache-tag">(fresh)</span>'
+            ad_display = f'{ad_count:,} active ads{cache_tag}'
 
         # Keyword display
         kw_display = ""
         if ad_count > 0 and t.get("keywords"):
-            kw_display = (
-                f'<div style="font-size:0.85em;color:#555;margin-top:2px;">'
-                f'Keywords: {", ".join(kw["keyword"] + " (" + str(kw["score"]) + ")" for kw in t.get("keywords", []))}'
-                f'</div>'
+            kw_list = ", ".join(
+                f'{kw["keyword"]} ({kw["score"]})' for kw in t.get("keywords", [])
             )
+            kw_display = f'<div class="kw-display">Keywords: {kw_list}</div>'
 
         # Skip info
         skip_display = ""
         if skipped and skip_reason:
-            skip_display = (
-                f'<div style="font-size:0.85em;color:#888;margin-top:2px;">'
-                f'{skip_reason}'
-                f'</div>'
-            )
+            skip_display = f'<div class="skip-display">{skip_reason}</div>'
 
-        # Light card background, dark text
         st.markdown(
-            f'<div style="background:#fafafa;border-left:5px solid '
-            f'{"#4caf50" if tier == 1 else "#f9a825" if tier == 2 else "#ff9800" if tier == 3 else "#ef5350" if tier == 4 else "#9e9e9e"};'
-            f'padding:12px 16px;margin-bottom:8px;border-radius:0 6px 6px 0;">'
-            f'<strong style="color:#111;">{t["pain_point"]}</strong>{top_badge}<br>'
+            f'<div class="pp-card" style="border-left:5px solid {border_color};">'
+            f'<strong>{t["pain_point"]}</strong>{top_badge}<br>'
             f'<span class="tier-badge {badge_class}">{tier_label}</span> — '
-            f'<span style="color:#333;">{ad_display}</span><br>'
+            f'{ad_display}<br>'
             f'{kw_display}'
             f'{skip_display}'
             f'</div>',
@@ -558,11 +695,33 @@ def _show_results(report: dict):
                 unsafe_allow_html=True,
             )
 
+    # Render validated pain points first
+    for t in validated_trends:
+        _render_pp_card(t)
+
+    # Render skipped pain points in collapsed accordion at bottom
+    if skipped_trends:
+        st.markdown(
+            f'<div class="skipped-section">'
+            f'<details>'
+            f'<summary>Skipped Pain Points — single ingredient support '
+            f'({len(skipped_trends)} items)</summary>'
+            f'</details>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        with st.expander(
+            f"Skipped Pain Points ({len(skipped_trends)} items)",
+            expanded=False,
+        ):
+            for t in skipped_trends:
+                _render_pp_card(t)
+
     # Check if ALL pain points had scraper errors
     all_scraper_errors = all(
-        t.get("best_score", 0) <= 0 for t in report["trends"]
+        t.get("best_score", 0) <= 0 for t in validated_trends
     )
-    if all_scraper_errors and report["trends"] and meta_reachable:
+    if all_scraper_errors and validated_trends and meta_reachable:
         st.warning(
             "Could not validate demand — Meta Ad Library unreachable for "
             "these keywords. Run again or check manually."
@@ -907,6 +1066,9 @@ def main():
         return
 
     st.title("Pain Point Analyzer")
+
+    # Inject global CSS at app top — BEFORE any dynamic content renders
+    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
     # Check for API key
     if not os.environ.get("ANTHROPIC_API_KEY"):
