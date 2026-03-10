@@ -68,7 +68,7 @@ def _check_auth() -> bool:
         with st.form("login_form"):
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Login", use_container_width=True)
+            submitted = st.form_submit_button("Login", width='stretch')
             if submitted:
                 if username == expected_user and password == expected_pass:
                     st.session_state["authenticated"] = True
@@ -269,7 +269,7 @@ async def _run_remaining_pipeline(extraction, config, url, update):
     )
 
     # Try PDF
-    pdf_path = reporter.generate_pdf(report)
+    pdf_path = await reporter.generate_pdf(report)
     report["_pdf_path"] = str(pdf_path) if pdf_path else None
 
     elapsed = time.time() - pipeline_start
@@ -544,19 +544,19 @@ def _show_results(report: dict):
             data=pdf_bytes,
             file_name=pdf_path.name,
             mime="application/pdf",
-            use_container_width=True,
+            width='stretch',
             key="pdf_download_top",
         )
         st.success(f"PDF ready — click above to download ({pdf_path.name})")
     else:
         # Try to generate PDF on the fly
-        if st.button("Generate PDF", use_container_width=True, key="gen_pdf_top"):
+        if st.button("Generate PDF", width='stretch', key="gen_pdf_top"):
             with st.spinner("Generating PDF..."):
                 try:
                     config = _load_config()
                     from analyzer.report_generator import ReportGenerator
                     reporter = ReportGenerator(config)
-                    new_pdf = reporter.generate_pdf(report)
+                    new_pdf = asyncio.run(reporter.generate_pdf(report))
                     if new_pdf and new_pdf.exists():
                         report["_pdf_path"] = str(new_pdf)
                         st.session_state["report"]["_pdf_path"] = str(new_pdf)
@@ -570,7 +570,7 @@ def _show_results(report: dict):
                             data=new_pdf.read_bytes(),
                             file_name=new_pdf.name,
                             mime="application/pdf",
-                            use_container_width=True,
+                            width='stretch',
                             key="pdf_download_generated",
                         )
                     else:
@@ -596,7 +596,7 @@ def _show_results(report: dict):
             "Amount": amount,
             "Sources": ", ".join(ing["sources"]),
         })
-    st.dataframe(ing_data, use_container_width=True)
+    st.dataframe(ing_data, width='stretch')
 
     # Pain points overview
     st.markdown("### All Pain Points Discovered")
@@ -608,7 +608,7 @@ def _show_results(report: dict):
             "# Ingredients": pp["ingredient_count"],
             "Supporting": ", ".join(pp["supporting_ingredients"]),
         })
-    st.dataframe(pp_data, use_container_width=True)
+    st.dataframe(pp_data, width='stretch')
 
     # Meta Ad Library Demand Validation
     st.markdown("### Meta Ad Library — Market Demand")
@@ -679,21 +679,7 @@ def _show_results(report: dict):
             unsafe_allow_html=True,
         )
 
-        # Tier warnings
-        if tier == 3:
-            st.markdown(
-                '<div class="flag-saturated">'
-                'Saturated — strong rootcause/mechanism required'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-        elif tier == 4:
-            st.markdown(
-                '<div class="flag-super-saturated">'
-                'Super saturated — extremely difficult to stand out'
-                '</div>',
-                unsafe_allow_html=True,
-            )
+        # Tier warnings removed from list view — shown only in deep dive section
 
     # Render validated pain points first
     for t in validated_trends:
@@ -753,6 +739,22 @@ def _show_results(report: dict):
         if dive.get("science"):
             with st.expander("Scientific Evidence", expanded=True):
                 st.info(dive["science"]["summary"])
+
+                # THE PATHWAY
+                pathway = dive["science"].get("pathway", [])
+                if pathway:
+                    st.markdown("**THE PATHWAY:**")
+                    pathway_display = " → ".join(pathway)
+                    st.markdown(
+                        f'<div style="background:#1a2332;border:1px solid #2563eb;'
+                        f'border-radius:6px;padding:12px 16px;margin:8px 0;'
+                        f'color:#93c5fd;font-weight:600;">'
+                        f'{pathway_display}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                # KEY STUDIES
+                st.markdown("**KEY STUDIES:**")
                 for ev in dive["science"]["ingredient_evidence"]:
                     st.markdown(f"**{ev['ingredient']}** — Evidence: `{ev['strength']}`")
                     st.markdown(f"_{ev['mechanism']}_")
@@ -766,6 +768,18 @@ def _show_results(report: dict):
                         )
                     if ev.get("contraindications"):
                         st.warning("Contraindications: " + ", ".join(ev["contraindications"]))
+
+                # ELI10
+                eli10 = dive["science"].get("eli10", "")
+                if eli10:
+                    st.markdown("**ELI10 (Explain Like I'm 10):**")
+                    st.markdown(
+                        f'<div style="background:#1c1917;border-left:4px solid '
+                        f'#f59e0b;padding:12px 16px;margin:8px 0;border-radius:4px;'
+                        f'color:#fde68a;font-style:italic;">'
+                        f'{eli10}</div>',
+                        unsafe_allow_html=True,
+                    )
 
                 if dive["science"].get("synergies"):
                     st.markdown("**Synergies:**")
@@ -812,6 +826,24 @@ def _show_results(report: dict):
                 if avatar.get("urgency_trigger"):
                     st.markdown(f"**Why Now:** {avatar['urgency_trigger']}")
 
+                # Avatar Profiles
+                avatar_profiles = pos.get("avatar_profiles", [])
+                if avatar_profiles:
+                    st.markdown("**Avatar Profiles:**")
+                    for ap_idx, profile in enumerate(avatar_profiles, 1):
+                        habit = profile.get("habit", "")
+                        rcc = profile.get("root_cause_connection", "")
+                        why_failed = profile.get("why_solutions_failed", "")
+                        st.markdown(
+                            f'<div style="background:#1e293b;border-left:4px solid '
+                            f'#3b82f6;padding:10px 14px;margin:6px 0;border-radius:4px;">'
+                            f'<strong style="color:#60a5fa;">Avatar #{ap_idx}</strong><br>'
+                            f'<span style="color:#fafafa;">'
+                            f'{habit} {rcc} {why_failed}'
+                            f'</span></div>',
+                            unsafe_allow_html=True,
+                        )
+
                 if pos.get("daily_symptoms"):
                     st.markdown("**Daily Symptoms:**")
                     for s in pos["daily_symptoms"]:
@@ -824,6 +856,58 @@ def _show_results(report: dict):
                     st.markdown("**Hook Examples:**")
                     for h in pos["hooks"]:
                         st.markdown(f'> "{h}"')
+
+                # Multi-layer connection (tier 3-4 only)
+                mlc = pos.get("multi_layer_connection", {})
+                if mlc and mlc.get("layer1"):
+                    st.markdown("---")
+                    st.markdown(
+                        '<h4 style="color:#f59e0b !important;">'
+                        'Edge Angle — Multi-Layer Connection</h4>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        f'<div style="background:#1a2332;border:1px solid #f59e0b;'
+                        f'border-radius:6px;padding:14px 18px;margin:8px 0;">'
+                        f'<span style="color:#fafafa;">'
+                        f'<strong style="color:#60a5fa;">Layer 1:</strong> {mlc.get("layer1", "")}<br>'
+                        f'<strong style="color:#60a5fa;">Layer 2:</strong> {mlc.get("layer2", "")}<br>'
+                        f'<strong style="color:#60a5fa;">Layer 3:</strong> {mlc.get("layer3", "")}'
+                        f'</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                    if mlc.get("why_new"):
+                        st.markdown(f"**Why This Is New:** {mlc['why_new']}")
+                    if mlc.get("new_hope_hook"):
+                        st.markdown(
+                            f'<div style="background:#1c1917;border-left:4px solid '
+                            f'#f59e0b;padding:10px 14px;margin:6px 0;border-radius:4px;'
+                            f'color:#fde68a;font-style:italic;">'
+                            f'"New Hope" Hook: {mlc["new_hope_hook"]}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    hook_examples = mlc.get("hook_examples", [])
+                    if hook_examples:
+                        st.markdown("**Multi-Layer Hook Examples:**")
+                        for he in hook_examples:
+                            st.markdown(f'> "{he}"')
+
+            # Tier warnings in deep dive section
+            tier = dive.get("tier", 0)
+            if tier == 3:
+                st.markdown(
+                    '<div class="flag-saturated">'
+                    'Saturated — strong rootcause/mechanism required'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+            elif tier == 4:
+                st.markdown(
+                    '<div class="flag-super-saturated">'
+                    'Super saturated — extremely difficult to stand out'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
 
         st.markdown("---")
 
@@ -909,7 +993,7 @@ def _generate_pdf_for_report(entry: dict) -> None:
         config = _load_config()
         from analyzer.report_generator import ReportGenerator
         reporter = ReportGenerator(config)
-        pdf_path = reporter.generate_pdf(report_data)
+        pdf_path = asyncio.run(reporter.generate_pdf(report_data))
         if pdf_path:
             idx = _load_reports_index()
             for e in idx:
@@ -989,7 +1073,7 @@ def _show_reports_tab():
 
             with col2:
                 if pdf_exists:
-                    if st.button("Preview", key=f"preview_{i}", use_container_width=True):
+                    if st.button("Preview", key=f"preview_{i}", width='stretch'):
                         st.session_state[f"show_preview_{i}"] = not st.session_state.get(f"show_preview_{i}", False)
 
             with col3:
@@ -1001,15 +1085,15 @@ def _show_reports_tab():
                             file_name=pdf_path.name,
                             mime="application/pdf",
                             key=f"dl_{i}",
-                            use_container_width=True,
+                            width='stretch',
                         )
                 else:
-                    if st.button("Generate PDF", key=f"gen_{i}", use_container_width=True):
+                    if st.button("Generate PDF", key=f"gen_{i}", width='stretch'):
                         _generate_pdf_for_report(entry)
                         st.rerun()
 
             with col4:
-                if st.button("Delete", key=f"del_{i}", use_container_width=True):
+                if st.button("Delete", key=f"del_{i}", width='stretch'):
                     if pdf_exists:
                         pdf_path.unlink(missing_ok=True)
                     if html_path and html_path.is_file():
@@ -1094,7 +1178,7 @@ def main():
         cache_count = len(cache)
         st.markdown(f"**Keyword Cache:** {cache_count} entries")
         if cache_count > 0:
-            if st.button("Clear Cache", use_container_width=True):
+            if st.button("Clear Cache", width='stretch'):
                 clear_cache()
                 st.success("Cache cleared!")
                 st.rerun()
@@ -1156,7 +1240,7 @@ def main():
                     "Product Page URL",
                     placeholder="https://www.example.com/products/supplement",
                 )
-                submitted = st.form_submit_button("Analyze", use_container_width=True)
+                submitted = st.form_submit_button("Analyze", width='stretch')
 
             # Manual ingredient input section
             if st.session_state.get("needs_manual_input"):
@@ -1250,7 +1334,7 @@ def main():
                     ),
                 )
                 text_submitted = st.form_submit_button(
-                    "Analyze", use_container_width=True
+                    "Analyze", width='stretch'
                 )
 
             if text_submitted and ingredient_text.strip():

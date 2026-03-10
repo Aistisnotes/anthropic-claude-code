@@ -19,6 +19,11 @@ from .ingredient_extractor import Ingredient
 
 logger = logging.getLogger(__name__)
 
+CANCER_KEYWORDS = [
+    "cancer", "tumor", "carcinoma", "oncology", "malignant",
+    "chemotherapy", "metastasis", "leukemia", "lymphoma",
+]
+
 
 @dataclass
 class PainPoint:
@@ -85,6 +90,19 @@ class PainPointDiscovery:
             reverse=True,
         )
 
+        # Filter out cancer-related pain points
+        pre_filter_count = len(ranked)
+        ranked = [
+            pp for pp in ranked
+            if not any(
+                kw in pp["name"].lower() or kw in pp.get("description", "").lower()
+                for kw in CANCER_KEYWORDS
+            )
+        ]
+        filtered_count = pre_filter_count - len(ranked)
+        if filtered_count > 0:
+            logger.info(f"Filtered out {filtered_count} cancer-related pain points")
+
         pain_points = [
             PainPoint(
                 name=pp["name"],
@@ -125,6 +143,8 @@ class PainPointDiscovery:
                                 f"- Conditions with published clinical evidence\n"
                                 f"- Traditional/historical uses with some scientific backing\n"
                                 f"- Biological mechanisms that suggest benefit\n\n"
+                                f"IMPORTANT: Do NOT include any cancer-related pain points. "
+                                f"Cancer claims are non-compliant on Meta advertising platforms.\n\n"
                                 f"For each pain point, provide:\n"
                                 f"- name: Short, clear name (e.g., 'High Blood Pressure')\n"
                                 f"- description: One sentence explaining the link\n"

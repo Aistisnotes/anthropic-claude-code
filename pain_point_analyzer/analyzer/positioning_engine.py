@@ -39,9 +39,12 @@ class PositioningDoc:
     avatar_root_cause_connection: str = ""
     avatar_failed_solutions: list[str] = field(default_factory=list)
     avatar_urgency_trigger: str = ""
+    avatar_profiles: list[dict] = field(default_factory=list)
     daily_symptoms: list[str] = field(default_factory=list)
     mass_desire: str = ""
     hooks: list[str] = field(default_factory=list)
+    # Multi-layer connection (tier 3-4 only)
+    multi_layer_connection: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -84,14 +87,15 @@ class PositioningEngine:
                     science = r
                     break
 
-            doc = self._build_single_positioning(pp, science, all_ingredients)
+            tier = result.tier if hasattr(result, 'tier') else 0
+            doc = self._build_single_positioning(pp, science, all_ingredients, tier=tier)
             if doc:
                 docs.append(doc)
 
         return PositioningResult(docs=docs)
 
     def _build_single_positioning(
-        self, pain_point, science_report, all_ingredients
+        self, pain_point, science_report, all_ingredients, tier: int = 0
     ) -> PositioningDoc | None:
         """Build DR framework positioning for one pain point."""
         # Build context from science report
@@ -164,6 +168,13 @@ class PositioningEngine:
                                 f"   The avatar's HABITS connect to the ROOT CAUSE which "
                                 f"connects to WHY NOTHING ELSE WORKED. It's a story, not "
                                 f"a demographic profile.\n\n"
+                                f"   AVATAR PROFILES: Generate 3-5 distinct avatar profiles. "
+                                f"Each profile is a DIFFERENT person with a DIFFERENT "
+                                f"specific habit, a DIFFERENT root cause connection, and "
+                                f"a DIFFERENT reason why previous solutions failed. "
+                                f"Each profile should be 2-3 sentences showing: "
+                                f"specific habit → root cause connection → why previous "
+                                f"solutions failed for THIS person.\n\n"
                                 f"4. DAILY SYMPTOMS: 5-7 specific symptoms this person "
                                 f"experiences daily\n\n"
                                 f"5. MASS DESIRE — THIS IS CRITICAL:\n"
@@ -196,7 +207,22 @@ class PositioningEngine:
                                 f"root cause + mechanism. These should be specific, "
                                 f"provocative, and based on the molecular root cause. "
                                 f"Pattern: reveal a hidden cause or mechanism.\n\n"
-                                f"Return ONLY valid JSON:\n"
+                                + (
+                                    f"7. MULTI-LAYER CONNECTION (THIS MARKET IS SATURATED "
+                                    f"— you MUST provide a deeper angle):\n"
+                                    f"   This pain point has 15,000+ active ads. Competitors "
+                                    f"only talk about the obvious Layer 1 effect. You need "
+                                    f"to go deeper:\n"
+                                    f"   - Layer 1: The obvious effect everyone talks about\n"
+                                    f"   - Layer 2: The deeper biological consequence\n"
+                                    f"   - Layer 3: The specific, surprising outcome most "
+                                    f"people don't know about\n"
+                                    f"   - Why this is new: What competitors miss\n"
+                                    f"   - A 'new hope' hook sentence\n"
+                                    f"   - 3 hook examples using the multi-layer angle\n\n"
+                                    if tier >= 3 else ""
+                                )
+                                + f"Return ONLY valid JSON:\n"
                                 f"```json\n"
                                 f"{{\n"
                                 f'  "root_cause_surface": "...",\n'
@@ -216,10 +242,26 @@ class PositioningEngine:
                                 f'  ],\n'
                                 f'  "avatar_urgency_trigger": "Life situation making this '
                                 f'urgent now",\n'
+                                f'  "avatar_profiles": [\n'
+                                f'    {{"habit": "specific long-term habit", '
+                                f'"root_cause_connection": "how it caused the problem", '
+                                f'"why_solutions_failed": "why previous attempts failed"}}\n'
+                                f'  ],\n'
                                 f'  "daily_symptoms": ["..."],\n'
                                 f'  "mass_desire": "...",\n'
                                 f'  "hooks": ["..."]\n'
-                                f"}}\n"
+                                + (
+                                    f',  "multi_layer_connection": {{\n'
+                                    f'    "layer1": "obvious effect",\n'
+                                    f'    "layer2": "deeper biological consequence",\n'
+                                    f'    "layer3": "specific surprising outcome",\n'
+                                    f'    "why_new": "what competitors miss",\n'
+                                    f'    "new_hope_hook": "one sentence new hope hook",\n'
+                                    f'    "hook_examples": ["hook 1", "hook 2", "hook 3"]\n'
+                                    f'  }}\n'
+                                    if tier >= 3 else ""
+                                )
+                                + f"}}\n"
                                 f"```"
                             ),
                         }
@@ -248,9 +290,11 @@ class PositioningEngine:
                     avatar_root_cause_connection=data.get("avatar_root_cause_connection", ""),
                     avatar_failed_solutions=data.get("avatar_failed_solutions", []),
                     avatar_urgency_trigger=data.get("avatar_urgency_trigger", ""),
+                    avatar_profiles=data.get("avatar_profiles", []),
                     daily_symptoms=data.get("daily_symptoms", []),
                     mass_desire=data.get("mass_desire", ""),
                     hooks=data.get("hooks", []),
+                    multi_layer_connection=data.get("multi_layer_connection", {}),
                 )
 
             except Exception as e:

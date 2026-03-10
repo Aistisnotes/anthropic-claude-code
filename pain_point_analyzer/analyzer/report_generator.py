@@ -68,7 +68,7 @@ class ReportGenerator:
         report["_json_path"] = str(json_path)
         return report
 
-    def generate_pdf(self, report: dict[str, Any]) -> Path | None:
+    async def generate_pdf(self, report: dict[str, Any]) -> Path | None:
         """Generate PDF from report data using Jinja2 + Playwright."""
         try:
             env = Environment(
@@ -87,9 +87,9 @@ class ReportGenerator:
             html_path = self.output_dir / f"{timestamp}_report.html"
             html_path.write_text(html, encoding="utf-8")
 
-            # Convert to PDF with Playwright
+            # Convert to PDF with Playwright (async API)
             pdf_path = html_path.with_suffix(".pdf")
-            self._html_to_pdf(html_path, pdf_path)
+            await self._html_to_pdf(html_path, pdf_path)
 
             logger.info(f"PDF report saved: {pdf_path}")
             return pdf_path
@@ -98,25 +98,25 @@ class ReportGenerator:
             logger.error(f"PDF generation failed: {e}")
             return None
 
-    def _html_to_pdf(self, html_path: Path, pdf_path: Path) -> None:
-        """Convert HTML file to PDF using Playwright (sync API)."""
-        from playwright.sync_api import sync_playwright
+    async def _html_to_pdf(self, html_path: Path, pdf_path: Path) -> None:
+        """Convert HTML file to PDF using Playwright (async API)."""
+        from playwright.async_api import async_playwright
 
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto(
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(
                 f"file://{html_path.resolve()}",
                 wait_until="networkidle",
             )
-            page.pdf(
+            await page.pdf(
                 path=str(pdf_path),
                 format="A4",
                 margin={"top": "14mm", "bottom": "14mm",
                         "left": "15mm", "right": "15mm"},
                 print_background=True,
             )
-            browser.close()
+            await browser.close()
 
     def _build_report_dict(
         self,
@@ -213,6 +213,8 @@ class ReportGenerator:
                 dive["science"] = {
                     "summary": science.summary,
                     "overall_evidence": science.overall_evidence_strength,
+                    "pathway": science.pathway,
+                    "eli10": science.eli10,
                     "ingredient_evidence": [
                         {
                             "ingredient": ev.ingredient_name,
@@ -261,6 +263,8 @@ class ReportGenerator:
                         "failed_solutions": pos.avatar_failed_solutions,
                         "urgency_trigger": pos.avatar_urgency_trigger,
                     },
+                    "avatar_profiles": pos.avatar_profiles,
+                    "multi_layer_connection": pos.multi_layer_connection,
                     "daily_symptoms": pos.daily_symptoms,
                     "mass_desire": pos.mass_desire,
                     "hooks": pos.hooks,
