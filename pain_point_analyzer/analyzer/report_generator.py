@@ -168,6 +168,10 @@ class ReportGenerator:
                 "tier": r.tier,
                 "tier_label": r.tier_label,
                 "tier_color": r.tier_color,
+                "from_cache": r.from_cache,
+                "cache_date": r.cache_date,
+                "skipped": r.skipped,
+                "skip_reason": r.skip_reason,
                 "keywords": [
                     {
                         "keyword": ks.keyword,
@@ -282,4 +286,5 @@ class ReportGenerator:
             "trends": trends_data,
             "top_deep_dives": top_deep_dives,
             "synergy_map": synergy_map,
+            "_meta_reachable": trends.meta_reachable,
         }

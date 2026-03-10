@@ -1,7 +1,7 @@
 """Pain Point Analyzer — Streamlit Web UI.
 
 Takes a product page URL, extracts ingredients, discovers pain points,
-validates with Google Trends, runs scientific research, and builds
+validates with Meta Ad Library, runs scientific research, and builds
 root cause + mechanism positioning for the top 3 pain points.
 """
 
@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import sys
+import time
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -32,7 +33,7 @@ REPORTS_INDEX = REPORTS_DIR / "reports_index.json"
 # Add project root to path
 sys.path.insert(0, str(PROJECT_ROOT.parent))
 
-# Load .env file if present (so users don't need to export ANTHROPIC_API_KEY every time)
+# Load .env file if present
 _env_file = PROJECT_ROOT / ".env"
 if _env_file.exists():
     for line in _env_file.read_text().splitlines():
@@ -77,6 +78,27 @@ def _check_auth() -> bool:
     return False
 
 
+# ── Time estimation ───────────────────────────────────────────────────────────
+def _estimate_time(num_pain_points: int, num_cached: int, num_top: int = 3) -> str:
+    """Estimate total pipeline time in minutes."""
+    step1 = 30  # ingredient extraction
+    step2 = 45  # pain point discovery
+    step3 = (num_pain_points - num_cached) * 20  # Meta Ad Library (cached = 0s)
+    step4 = num_top * 60  # scientific research
+    step5 = num_top * 90  # positioning
+    step6 = 30  # report generation
+    total = step1 + step2 + step3 + step4 + step5 + step6
+    minutes = total / 60
+    return f"~{minutes:.0f} minutes"
+
+
+def _format_elapsed(seconds: float) -> str:
+    """Format seconds as M:SS."""
+    m = int(seconds) // 60
+    s = int(seconds) % 60
+    return f"{m}:{s:02d}"
+
+
 # ── Pipeline runner ────────────────────────────────────────────────────────────
 async def _run_pipeline(url: str, config: dict, status_placeholder):
     """Run the full 6-step pipeline."""
@@ -118,7 +140,6 @@ async def _run_pipeline(url: str, config: dict, status_placeholder):
     if len(extraction.ingredients) == 0:
         st.session_state["needs_manual_input"] = True
         st.session_state["pipeline_paused"] = True
-        # Show raw sources info to help debug
         sources_info = ", ".join(
             f"{k}: {len(v)} chars" for k, v in extraction.raw_sources.items()
         ) if extraction.raw_sources else "none"
@@ -177,48 +198,71 @@ async def _run_pipeline_from_text(
 async def _run_remaining_pipeline(extraction, config, url, update):
     """Run steps 2-6 after ingredients are confirmed."""
     from analyzer.pain_point_discovery import PainPointDiscovery
-    from analyzer.trends_validator import TrendsValidator
+    from analyzer.trends_validator import TrendsValidator, _get_cached
     from analyzer.scientific_researcher import ScientificResearcher
     from analyzer.positioning_engine import PositioningEngine
     from analyzer.report_generator import ReportGenerator
 
+    pipeline_start = time.time()
+    log_entries = []
+
+    def log_and_update(msg: str, pct: float | None = None, level: str = "info"):
+        elapsed = time.time() - pipeline_start
+        timestamp = _format_elapsed(elapsed)
+        log_entries.append({"time": timestamp, "msg": msg, "level": level})
+        if pct is not None:
+            update(msg, pct)
+        else:
+            update(msg)
+
+    include_single = st.session_state.get("include_single_ingredient", False)
+
     # Step 2: Discover pain points
-    update("Step 2/6: Discovering pain points...", 0.20)
+    log_and_update("Step 2/6: Discovering pain points...", 0.20)
     discovery_engine = PainPointDiscovery(config)
     discovery = await discovery_engine.discover(
         extraction.ingredients,
-        progress_cb=lambda m: update(f"Step 2/6: {m}", 0.30),
+        progress_cb=lambda m: log_and_update(f"Step 2/6: {m}", 0.30),
     )
 
+    # Count cached pain points for time estimate
+    num_pp = len(discovery.pain_points)
+    num_cached = sum(
+        1 for pp in discovery.pain_points if _get_cached(pp.name)
+    )
+    est = _estimate_time(num_pp, num_cached)
+    log_and_update(f"Estimated remaining time: {est}", 0.32)
+
     # Step 3: Meta Ad Library demand validation
-    update("Step 3/6: Validating demand via Meta Ad Library...", 0.40)
+    log_and_update("Step 3/6: Validating demand via Meta Ad Library...", 0.35)
     trends_engine = TrendsValidator(config)
     trends = await trends_engine.validate(
         discovery.pain_points,
-        progress_cb=lambda m: update(f"Step 3/6: {m}", 0.50),
+        progress_cb=lambda m: log_and_update(f"Step 3/6: {m}", 0.50),
+        include_single_ingredient=include_single,
     )
 
     # Step 4: Scientific research
-    update("Step 4/6: Running scientific research...", 0.55)
+    log_and_update("Step 4/6: Running scientific research...", 0.55)
     researcher = ScientificResearcher(config)
     research = await researcher.research(
         trends.top_results,
         extraction.ingredients,
-        progress_cb=lambda m: update(f"Step 4/6: {m}", 0.65),
+        progress_cb=lambda m: log_and_update(f"Step 4/6: {m}", 0.65),
     )
 
     # Step 5: Positioning
-    update("Step 5/6: Building positioning...", 0.75)
+    log_and_update("Step 5/6: Building positioning...", 0.75)
     positioning_engine = PositioningEngine(config)
     positioning = await positioning_engine.build_positioning(
         trends.top_results,
         research.reports,
         extraction.ingredients,
-        progress_cb=lambda m: update(f"Step 5/6: {m}", 0.85),
+        progress_cb=lambda m: log_and_update(f"Step 5/6: {m}", 0.85),
     )
 
     # Step 6: Generate report
-    update("Step 6/6: Generating report...", 0.90)
+    log_and_update("Step 6/6: Generating report...", 0.90)
     reporter = ReportGenerator(config)
     report = reporter.generate(
         extraction, discovery, trends, research, positioning, url
@@ -228,28 +272,149 @@ async def _run_remaining_pipeline(extraction, config, url, update):
     pdf_path = reporter.generate_pdf(report)
     report["_pdf_path"] = str(pdf_path) if pdf_path else None
 
-    update("Analysis complete!", 1.0)
+    elapsed = time.time() - pipeline_start
+    log_and_update(f"Analysis complete in {_format_elapsed(elapsed)}", 1.0)
+
+    report["_pipeline_log"] = log_entries
+    report["_elapsed"] = elapsed
     return report
+
+
+# ── Global CSS ────────────────────────────────────────────────────────────────
+GLOBAL_CSS = """
+<style>
+/* Force dark text on light backgrounds for all custom HTML */
+.stMarkdown div[data-testid="stMarkdownContainer"] {
+    color: #1a1a1a;
+}
+/* Ensure metric labels/values are dark */
+[data-testid="stMetricValue"] { color: #1a1a1a !important; }
+[data-testid="stMetricLabel"] { color: #444 !important; }
+
+/* Tier badge base */
+.tier-badge {
+    display: inline-block;
+    padding: 3px 12px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+/* Tier 1 OPEN — green bg, white text */
+.tier-open {
+    background: #4caf50;
+    color: #ffffff;
+}
+/* Tier 2 SOLID — yellow bg, black text */
+.tier-solid {
+    background: #f9a825;
+    color: #000000;
+}
+/* Tier 3 SATURATED — orange bg, white text */
+.tier-saturated {
+    background: #ff9800;
+    color: #ffffff;
+}
+/* Tier 4 SUPER SATURATED — red bg, white text */
+.tier-super-saturated {
+    background: #ef5350;
+    color: #ffffff;
+}
+/* Unknown tier — gray bg, white text */
+.tier-unknown {
+    background: #9e9e9e;
+    color: #ffffff;
+}
+
+/* Card with dark header, light body */
+.result-card {
+    border-radius: 0 6px 6px 0;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+.result-card-header {
+    padding: 8px 16px;
+    color: #ffffff;
+    font-weight: 700;
+}
+.result-card-body {
+    padding: 8px 16px;
+    color: #1a1a1a;
+    background: #fafafa;
+}
+
+/* Pipeline log */
+.pipeline-log {
+    font-family: monospace;
+    font-size: 0.85em;
+    background: #fafafa;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+    color: #333333;
+}
+.pipeline-log .log-error { color: #c62828; font-weight: 700; }
+.pipeline-log .log-cached { color: #888888; }
+.pipeline-log .log-info { color: #333333; }
+
+/* Warning/flag text readability */
+.flag-saturated {
+    color: #e65100;
+    font-weight: 700;
+    font-size: 0.9em;
+}
+.flag-super-saturated {
+    color: #c62828;
+    font-weight: 700;
+    font-size: 0.9em;
+}
+</style>
+"""
+
+
+def _tier_badge_class(tier: int) -> str:
+    """Return the CSS class for a tier badge."""
+    return {
+        0: "tier-unknown",
+        1: "tier-open",
+        2: "tier-solid",
+        3: "tier-saturated",
+        4: "tier-super-saturated",
+    }.get(tier, "tier-unknown")
 
 
 # ── Results display ────────────────────────────────────────────────────────────
 def _show_results(report: dict):
     """Display the analysis results inline."""
-    # Inject global CSS to fix text readability on light backgrounds
-    st.markdown(
-        """
-        <style>
-        /* Force dark text on light backgrounds for all custom HTML */
-        .stMarkdown div[data-testid="stMarkdownContainer"] {
-            color: #1a1a1a;
-        }
-        /* Ensure metric labels/values are dark */
-        [data-testid="stMetricValue"] { color: #1a1a1a !important; }
-        [data-testid="stMetricLabel"] { color: #444 !important; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+
+    # Completion banner
+    elapsed = report.get("_elapsed")
+    if elapsed:
+        st.success(f"Analysis complete in {_format_elapsed(elapsed)}")
+
+    # Pipeline log (collapsed)
+    log_entries = report.get("_pipeline_log", [])
+    if log_entries:
+        with st.expander("Pipeline Log (click to expand)", expanded=False):
+            log_html = '<div class="pipeline-log">'
+            for entry in log_entries:
+                level = entry.get("level", "info")
+                if "error" in entry.get("msg", "").lower() or level == "error":
+                    css_class = "log-error"
+                elif "cached" in entry.get("msg", "").lower():
+                    css_class = "log-cached"
+                else:
+                    css_class = "log-info"
+                log_html += (
+                    f'<div class="{css_class}">'
+                    f'[{entry["time"]}] {entry["msg"]}'
+                    f'</div>'
+                )
+            log_html += '</div>'
+            st.markdown(log_html, unsafe_allow_html=True)
 
     product = report["product"]
 
@@ -296,98 +461,118 @@ def _show_results(report: dict):
 
     # Meta Ad Library Demand Validation
     st.markdown("### Meta Ad Library — Market Demand")
+
+    # Check if meta was unreachable
+    meta_reachable = report.get("_meta_reachable", True)
+    if not meta_reachable:
+        st.warning(
+            "Meta Ad Library is unreachable from this network. "
+            "Ad count validation was skipped. Tier classification unavailable. "
+            "Try from a different network or wait and retry."
+        )
+
     for t in report["trends"]:
         tier = t.get("tier", 1)
-        tier_label = t.get("tier_label", "LOOPHOLE")
-        tier_color = t.get("tier_color", "green")
+        tier_label = t.get("tier_label", "OPEN")
         ad_count = t.get("best_score", 0)
         is_top = t.get("is_top", False)
+        from_cache = t.get("from_cache", False)
+        cache_date = t.get("cache_date", "")
+        skipped = t.get("skipped", False)
+        skip_reason = t.get("skip_reason", "")
 
-        # Color-coded tier display — border accent colors
-        border_color_map = {
-            "gray": "#9e9e9e",
-            "green": "#4caf50",
-            "yellow": "#f9a825",
-            "orange": "#ff9800",
-            "red": "#ef5350",
-        }
-        border_hex = border_color_map.get(tier_color, "#666")
-        # Light card backgrounds
-        bg_map = {
-            "gray": "#f5f5f5",
-            "green": "#e8f5e9",
-            "yellow": "#fff8e1",
-            "orange": "#fff3e0",
-            "red": "#ffebee",
-        }
-        bg_color = bg_map.get(tier_color, "#f5f5f5")
-        # Dark text colors readable against each light background
-        text_color_map = {
-            "gray": "#555555",
-            "green": "#1b5e20",
-            "yellow": "#b7840a",
-            "orange": "#e65100",
-            "red": "#b71c1c",
-        }
-        tier_text_color = text_color_map.get(tier_color, "#333")
+        badge_class = _tier_badge_class(tier)
 
         top_badge = (
-            f' <span style="background:#1565c0;color:#fff;font-size:0.75em;'
-            f'padding:2px 8px;border-radius:10px;font-weight:700;">TOP 3</span>'
+            ' <span style="background:#1565c0;color:#ffffff;font-size:0.75em;'
+            'padding:2px 8px;border-radius:10px;font-weight:700;">TOP 3</span>'
             if is_top else ""
         )
 
-        # Handle unknown tier / scraper errors
+        # Build ad display text
         if ad_count <= 0:
             if ad_count == -2:
                 ad_display = (
                     '<span style="color:#c62828;font-weight:700;">'
-                    'SCRAPER ERROR</span> — could not retrieve count'
+                    'Could not retrieve</span> — try again later'
                 )
             else:
-                ad_display = "N/A (Meta Ad Library unavailable)"
-            kw_display = ""
+                ad_display = (
+                    '<span style="color:#888;">N/A</span>'
+                )
         else:
-            ad_display = f"{ad_count:,} active ads (best keyword: \"{t['best_keyword']}\")"
-            kw_display = (
-                f'<span style="font-size:0.85em;color:#555;">'
-                f'Keywords: {", ".join(kw["keyword"] + " (" + str(kw["score"]) + ")" for kw in t.get("keywords", []))}'
-                f'</span>'
+            cache_tag = ""
+            if from_cache and cache_date:
+                cache_tag = f' <span style="color:#888;font-size:0.85em;">(cached, checked {cache_date})</span>'
+            else:
+                cache_tag = ' <span style="color:#888;font-size:0.85em;">(fresh)</span>'
+            ad_display = (
+                f'{ad_count:,} active ads{cache_tag}'
             )
 
+        # Keyword display
+        kw_display = ""
+        if ad_count > 0 and t.get("keywords"):
+            kw_display = (
+                f'<div style="font-size:0.85em;color:#555;margin-top:2px;">'
+                f'Keywords: {", ".join(kw["keyword"] + " (" + str(kw["score"]) + ")" for kw in t.get("keywords", []))}'
+                f'</div>'
+            )
+
+        # Skip info
+        skip_display = ""
+        if skipped and skip_reason:
+            skip_display = (
+                f'<div style="font-size:0.85em;color:#888;margin-top:2px;">'
+                f'{skip_reason}'
+                f'</div>'
+            )
+
+        # Light card background, dark text
         st.markdown(
-            f'<div style="background:{bg_color};border-left:5px solid {border_hex};'
-            f'padding:12px 16px;margin-bottom:8px;border-radius:0 6px 6px 0;'
-            f'color:#1a1a1a;">'
+            f'<div style="background:#fafafa;border-left:5px solid '
+            f'{"#4caf50" if tier == 1 else "#f9a825" if tier == 2 else "#ff9800" if tier == 3 else "#ef5350" if tier == 4 else "#9e9e9e"};'
+            f'padding:12px 16px;margin-bottom:8px;border-radius:0 6px 6px 0;">'
             f'<strong style="color:#111;">{t["pain_point"]}</strong>{top_badge}<br>'
-            f'<span style="color:{tier_text_color};font-weight:700;">'
-            f'{tier_label}</span> — '
+            f'<span class="tier-badge {badge_class}">{tier_label}</span> — '
             f'<span style="color:#333;">{ad_display}</span><br>'
             f'{kw_display}'
+            f'{skip_display}'
             f'</div>',
             unsafe_allow_html=True,
         )
 
         # Tier warnings
         if tier == 3:
-            st.warning(
-                "High sophistication market — deep rootcause/mechanism "
-                "positioning is essential to stand out."
+            st.markdown(
+                '<div class="flag-saturated">'
+                'Saturated — strong rootcause/mechanism required'
+                '</div>',
+                unsafe_allow_html=True,
             )
         elif tier == 4:
-            st.error(
-                "Hyper-saturated. Better to focus on other pain points "
-                "unless you have a breakthrough angle."
+            st.markdown(
+                '<div class="flag-super-saturated">'
+                'Super saturated — extremely difficult to stand out'
+                '</div>',
+                unsafe_allow_html=True,
             )
 
     # Check if ALL pain points had scraper errors
     all_scraper_errors = all(
         t.get("best_score", 0) <= 0 for t in report["trends"]
     )
-    if all_scraper_errors and report["trends"]:
+    if all_scraper_errors and report["trends"] and meta_reachable:
         st.warning(
             "Could not validate demand — Meta Ad Library unreachable for "
             "these keywords. Run again or check manually."
+        )
+
+    # If meta was unreachable, show unavailable message
+    if not meta_reachable:
+        st.info(
+            "Tiers unavailable — Meta Ad Library unreachable. "
+            "Pain points are shown but tier classification was skipped."
         )
 
     # Top deep dives
@@ -398,7 +583,8 @@ def _show_results(report: dict):
         st.markdown(f"### #{i+1}: {dive['pain_point']}")
 
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Active Ads", f"{dive.get('trend_score', 0):,}")
+        ad_score = dive.get('trend_score', 0)
+        col1.metric("Active Ads", f"{ad_score:,}" if ad_score > 0 else "N/A")
         col2.metric("Tier", dive.get("tier_label", "—"))
         if dive.get("science"):
             col3.metric("Evidence", dive["science"]["overall_evidence"].title())
@@ -444,7 +630,6 @@ def _show_results(report: dict):
 
                 st.markdown("**Avatar:**")
                 avatar = pos["avatar"]
-                # Show rich narrative avatar if available, otherwise fall back to structured fields
                 if avatar.get("narrative"):
                     st.markdown(avatar["narrative"])
                 else:
@@ -548,13 +733,11 @@ def _add_to_reports_index(report: dict, pdf_path: str) -> None:
 
 def _generate_pdf_for_report(entry: dict) -> None:
     """Generate a PDF for a report entry that doesn't have one yet."""
-    # Look for matching JSON report file
     report_id = entry.get("id", "")
     json_candidates = list(OUTPUT_DIR.glob(f"*{report_id}*.json")) + list(
         REPORTS_DIR.glob(f"*{report_id}*.json")
     )
     if not json_candidates:
-        # Try to find any JSON file matching the product name
         slug = entry.get("product_name", "").replace(" ", "_")[:30]
         json_candidates = list(OUTPUT_DIR.glob(f"*{slug}*.json"))
 
@@ -569,7 +752,6 @@ def _generate_pdf_for_report(entry: dict) -> None:
         reporter = ReportGenerator(config)
         pdf_path = reporter.generate_pdf(report_data)
         if pdf_path:
-            # Update the index entry with the new PDF path
             idx = _load_reports_index()
             for e in idx:
                 if e.get("id") == entry.get("id"):
@@ -596,7 +778,6 @@ def _show_reports_tab():
     existing_pdfs = {e["pdf_path"] for e in index}
     for pdf_file in sorted(REPORTS_DIR.glob("*.pdf"), reverse=True):
         if str(pdf_file) not in existing_pdfs:
-            # Add orphan PDF with basic metadata
             index.append({
                 "id": pdf_file.stem,
                 "product_name": pdf_file.stem.replace("_", " "),
@@ -619,14 +800,12 @@ def _show_reports_tab():
         pdf_path = Path(pdf_path_str) if pdf_path_str else None
         pdf_exists = pdf_path is not None and pdf_path.is_file()
 
-        # Check for corresponding HTML file (for preview)
         html_path = None
         if pdf_path:
             candidate = pdf_path.with_suffix(".html")
             if candidate.is_file():
                 html_path = candidate
 
-        # Parse date
         try:
             dt = datetime.fromisoformat(entry["date"])
             date_str = dt.strftime("%B %d, %Y at %H:%M")
@@ -666,20 +845,16 @@ def _show_reports_tab():
                             use_container_width=True,
                         )
                 else:
-                    # PDF doesn't exist — offer to generate it
                     if st.button("Generate PDF", key=f"gen_{i}", use_container_width=True):
                         _generate_pdf_for_report(entry)
                         st.rerun()
 
             with col4:
                 if st.button("Delete", key=f"del_{i}", use_container_width=True):
-                    # Remove PDF file
                     if pdf_exists:
                         pdf_path.unlink(missing_ok=True)
-                    # Remove HTML preview too
                     if html_path and html_path.is_file():
                         html_path.unlink(missing_ok=True)
-                    # Remove from index
                     updated = [
                         e for e in _load_reports_index()
                         if e.get("id") != entry.get("id")
@@ -687,11 +862,10 @@ def _show_reports_tab():
                     _save_reports_index(updated)
                     st.rerun()
 
-            # Inline PDF preview (rendered HTML version)
+            # Inline PDF preview
             if st.session_state.get(f"show_preview_{i}", False):
                 if html_path and html_path.is_file():
                     html_content = html_path.read_text(encoding="utf-8")
-                    # Render HTML in an iframe for preview
                     import base64
                     b64_html = base64.b64encode(html_content.encode("utf-8")).decode()
                     st.markdown(
@@ -701,7 +875,6 @@ def _show_reports_tab():
                         unsafe_allow_html=True,
                     )
                 elif pdf_exists:
-                    # Embed PDF directly
                     import base64
                     pdf_bytes = pdf_path.read_bytes()
                     b64_pdf = base64.b64encode(pdf_bytes).decode()
@@ -719,7 +892,6 @@ def _show_reports_tab():
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
-    # Configure logging so errors show in terminal
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -750,6 +922,42 @@ def main():
     if "running" not in st.session_state:
         st.session_state["running"] = False
 
+    # ── Sidebar: Cache management ─────────────────────────────────────────
+    with st.sidebar:
+        st.markdown("### Settings")
+
+        # Cache management
+        from analyzer.trends_validator import CACHE_FILE, clear_cache, _load_cache
+        cache = _load_cache()
+        cache_count = len(cache)
+        st.markdown(f"**Keyword Cache:** {cache_count} entries")
+        if cache_count > 0:
+            if st.button("Clear Cache", use_container_width=True):
+                clear_cache()
+                st.success("Cache cleared!")
+                st.rerun()
+
+        st.markdown("---")
+
+        # Include single-ingredient checkbox
+        include_single = st.checkbox(
+            "Include single-ingredient pain points (slower)",
+            value=False,
+            key="include_single_ingredient",
+        )
+
+        st.markdown("---")
+        st.markdown(
+            "**Time Estimates:**\n"
+            "- Step 1 (Ingredients): ~30s\n"
+            "- Step 2 (Pain Points): ~45s\n"
+            "- Step 3 (Meta Ads): ~20s/each\n"
+            "- Step 4 (Science): ~60s/each\n"
+            "- Step 5 (Positioning): ~90s/each\n"
+            "- Step 6 (Report): ~30s\n\n"
+            "Estimated total: ~8 minutes"
+        )
+
     # ── Tabs ─────────────────────────────────────────────────────────────────
     tab_analyzer, tab_reports = st.tabs(["Analyzer", "Reports"])
 
@@ -761,6 +969,16 @@ def main():
             "Analyze any supplement product page to discover the top pain points, "
             "validate demand via Meta Ad Library, run scientific research, and build "
             "root cause + mechanism positioning."
+        )
+
+        # Time estimate display
+        st.markdown(
+            '<div style="background:#e3f2fd;border-radius:6px;padding:8px 16px;'
+            'margin-bottom:12px;color:#1a1a1a;font-size:0.9em;">'
+            'Estimated time: ~8 minutes '
+            '<span style="color:#666;">(faster with cached data)</span>'
+            '</div>',
+            unsafe_allow_html=True,
         )
 
         # ── Input modes ─────────────────────────────────────────────────────

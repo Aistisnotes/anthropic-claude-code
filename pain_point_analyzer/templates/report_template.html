@@ -22,6 +22,8 @@
     --green-border: #4caf50;
     --yellow: #fff8e1;
     --yellow-border: #ffc107;
+    --orange: #fff3e0;
+    --orange-border: #ff9800;
     --red: #ffebee;
     --red-border: #ef5350;
     --gray-bg: #f8f8f8;
@@ -92,14 +94,16 @@
     font-size: 11px; font-weight: 800; text-transform: uppercase;
     letter-spacing: 0.4px; margin-bottom: 5px;
   }
-  .callout p, .callout li { font-size: 13px; line-height: 1.6; }
+  .callout p, .callout li { font-size: 13px; line-height: 1.6; color: #1a1a1a; }
   .callout ul { padding-left: 18px; }
   .callout-blue { background: var(--primary-light); border-left: 4px solid var(--primary); }
   .callout-blue .callout-title { color: var(--primary); }
   .callout-green { background: var(--green); border-left: 4px solid var(--green-border); }
   .callout-green .callout-title { color: #2e7d32; }
   .callout-yellow { background: var(--yellow); border-left: 4px solid var(--yellow-border); }
-  .callout-yellow .callout-title { color: #b7840a; }
+  .callout-yellow .callout-title { color: #7a5900; }
+  .callout-orange { background: var(--orange); border-left: 4px solid var(--orange-border); }
+  .callout-orange .callout-title { color: #e65100; }
   .callout-red { background: var(--red); border-left: 4px solid var(--red-border); }
   .callout-red .callout-title { color: #c62828; }
 
@@ -114,7 +118,7 @@
   }
   tbody td {
     border: 1px solid var(--gray-line); padding: 8px 10px;
-    vertical-align: top; line-height: 1.45;
+    vertical-align: top; line-height: 1.45; color: #1a1a1a;
   }
   tbody tr:nth-child(even) td { background: #fafafa; }
   .row-highlight td { background: var(--primary-light) !important; font-weight: 600; }
@@ -144,7 +148,7 @@
   /* Hooks */
   .hooks-list { padding-left: 0; list-style: none; margin: 0; }
   .hooks-list li {
-    font-size: 12px; padding: 5px 9px;
+    font-size: 12px; padding: 5px 9px; color: #1a1a1a;
     border-left: 3px solid var(--primary-mid); margin-bottom: 4px;
     background: #fafafa; border-radius: 0 4px 4px 0; line-height: 1.45;
   }
@@ -155,9 +159,25 @@
     font-size: 10.5px; font-weight: 700; border: 1px solid; margin-right: 4px;
   }
   .tag-strong { background: var(--green); color: #2e7d32; border-color: var(--green-border); }
-  .tag-moderate { background: var(--yellow); color: #b7840a; border-color: var(--yellow-border); }
+  .tag-moderate { background: var(--yellow); color: #7a5900; border-color: var(--yellow-border); }
   .tag-weak { background: var(--red); color: #c62828; border-color: var(--red-border); }
   .tag-blue { background: var(--primary-light); color: var(--primary); border-color: var(--primary-mid); }
+
+  /* Tier badges — PDF version */
+  .tier-badge-pdf {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 700;
+  }
+  /* Tier 1 OPEN: green bg, white text */
+  .tier-pdf-open { background: #4caf50; color: #ffffff; }
+  /* Tier 2 SOLID: yellow bg, black text */
+  .tier-pdf-solid { background: #f9a825; color: #000000; }
+  /* Tier 3 SATURATED: orange bg, white text */
+  .tier-pdf-saturated { background: #ff9800; color: #ffffff; }
+  /* Tier 4 SUPER SATURATED: red bg, white text */
+  .tier-pdf-super-saturated { background: #ef5350; color: #ffffff; }
+  /* Unknown: gray bg, white text */
+  .tier-pdf-unknown { background: #9e9e9e; color: #ffffff; }
 
   .page-break { page-break-before: always; }
   .text-muted { color: var(--text-muted); }
@@ -209,7 +229,7 @@
   <div class="section-header"><span class="section-num">1.</span> Product Summary</div>
 
   {% if report.product.description %}
-  <p style="font-size:13px;margin-bottom:12px;">{{ report.product.description }}</p>
+  <p style="font-size:13px;margin-bottom:12px;color:#1a1a1a;">{{ report.product.description }}</p>
   {% endif %}
 
   <table>
@@ -262,6 +282,13 @@
 <div class="section">
   <div class="section-header"><span class="section-num">3.</span> Meta Ad Library — Market Demand</div>
 
+  {% if not report.get('_meta_reachable', true) %}
+  <div class="callout callout-orange" style="margin-bottom:12px;">
+    <div class="callout-title">Meta Ad Library Unreachable</div>
+    <p>Tiers unavailable — Meta Ad Library was unreachable during this analysis. Pain points are shown but tier classification was skipped.</p>
+  </div>
+  {% endif %}
+
   <table>
     <thead>
       <tr>
@@ -275,22 +302,31 @@
     </thead>
     <tbody>
       {% for t in report.trends %}
-      {% set tier_bg = {'green': '#e8f5e9', 'yellow': '#fff8e1', 'orange': '#fff3e0', 'red': '#ffebee'} %}
-      {% set tier_fg = {'green': '#2e7d32', 'yellow': '#b7840a', 'orange': '#e65100', 'red': '#c62828'} %}
+      {% set tier_class_map = {'green': 'tier-pdf-open', 'yellow': 'tier-pdf-solid', 'orange': 'tier-pdf-saturated', 'red': 'tier-pdf-super-saturated', 'gray': 'tier-pdf-unknown'} %}
       <tr {% if t.is_top %}class="row-highlight"{% endif %}>
         <td>{{ loop.index }}</td>
         <td><strong>{{ t.pain_point }}</strong></td>
         <td>
-          <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:{{ tier_bg.get(t.tier_color, '#f5f5f5') }};color:{{ tier_fg.get(t.tier_color, '#666') }};">
+          <span class="tier-badge-pdf {{ tier_class_map.get(t.tier_color, 'tier-pdf-unknown') }}">
             {{ t.tier_label }}
           </span>
         </td>
-        <td>{{ '{:,}'.format(t.best_score) }}</td>
+        <td>
+          {% if t.best_score > 0 %}
+            {{ '{:,}'.format(t.best_score) }}
+            {% if t.get('from_cache', false) %}<br><span style="font-size:10px;color:#888;">(cached{% if t.get('cache_date') %}, {{ t.cache_date }}{% endif %})</span>{% endif %}
+          {% elif t.best_score == -2 %}
+            <span style="color:#c62828;">Could not retrieve</span>
+          {% else %}
+            N/A
+          {% endif %}
+        </td>
         <td>{{ t.best_keyword }}</td>
         <td>
           {% if t.is_top %}<span class="tag tag-blue">TOP {{ report.top_deep_dives | length }}</span>{% endif %}
-          {% if t.tier == 3 %}<br><span style="font-size:10px;color:#e65100;">&#9888;&#65039; High sophistication</span>{% endif %}
-          {% if t.tier == 4 %}<br><span style="font-size:10px;color:#c62828;">&#128721; Do not touch</span>{% endif %}
+          {% if t.get('skipped', false) %}<br><span style="font-size:10px;color:#888;">{{ t.skip_reason }}</span>{% endif %}
+          {% if t.tier == 3 %}<br><span style="font-size:10px;color:#e65100;">&#9888;&#65039; Saturated — strong rootcause/mechanism required</span>{% endif %}
+          {% if t.tier == 4 %}<br><span style="font-size:10px;color:#c62828;">&#128721; Super saturated — extremely difficult to stand out</span>{% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -302,7 +338,7 @@
   {% if loop.first %}
   <div class="subsection-header" style="margin-top:12px;">Keyword Breakdown</div>
   {% endif %}
-  <div style="font-size:11px;margin-bottom:4px;">
+  <div style="font-size:11px;margin-bottom:4px;color:#1a1a1a;">
     <strong>{{ t.pain_point }}:</strong>
     {% for kw in t.keywords %}
     {{ kw.keyword }} ({{ '{:,}'.format(kw.score) }}){% if not loop.last %}, {% endif %}
@@ -321,8 +357,8 @@
   </div>
 
   <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-    {% set tier_tag_map = {1: 'strong', 2: 'moderate', 3: 'weak', 4: 'weak'} %}
-    <span class="tag tag-{{ tier_tag_map.get(dive.tier, 'blue') }}">{{ dive.tier_label | default('') }}</span>
+    {% set tier_class_map = {'green': 'tier-pdf-open', 'yellow': 'tier-pdf-solid', 'orange': 'tier-pdf-saturated', 'red': 'tier-pdf-super-saturated', 'gray': 'tier-pdf-unknown'} %}
+    <span class="tier-badge-pdf {{ tier_class_map.get(dive.tier_color, 'tier-pdf-unknown') }}">{{ dive.tier_label | default('') }}</span>
     <span class="tag tag-blue">{{ '{:,}'.format(dive.trend_score) }} active ads</span>
     {% if dive.science %}
     <span class="tag tag-{{ dive.science.overall_evidence }}">{{ dive.science.overall_evidence | upper }} EVIDENCE</span>
@@ -330,14 +366,14 @@
     <span class="tag tag-blue">{{ dive.supporting_ingredients | length }} ingredients</span>
   </div>
   {% if dive.tier == 3 %}
-  <div class="callout callout-yellow" style="margin-bottom:10px;">
-    <div class="callout-title">&#9888;&#65039; High Sophistication Market</div>
-    <p>Deep rootcause and mechanism positioning is essential in this market to stand out from {{ '{:,}'.format(dive.trend_score) }} competing ads.</p>
+  <div class="callout callout-orange" style="margin-bottom:10px;">
+    <div class="callout-title">&#9888;&#65039; Saturated Market</div>
+    <p>{{ '{:,}'.format(dive.trend_score) }} competing ads. Strong rootcause/mechanism positioning required to stand out.</p>
   </div>
   {% elif dive.tier == 4 %}
   <div class="callout callout-red" style="margin-bottom:10px;">
-    <div class="callout-title">&#128721; Hyper-Saturated Market</div>
-    <p>{{ '{:,}'.format(dive.trend_score) }}+ active ads. Better to focus on other pain points unless you have a truly unique angle.</p>
+    <div class="callout-title">&#128721; Super Saturated Market</div>
+    <p>{{ '{:,}'.format(dive.trend_score) }}+ active ads. Extremely difficult to stand out. Consider focusing on other pain points unless you have a breakthrough angle.</p>
   </div>
   {% endif %}
 
@@ -356,13 +392,13 @@
       Evidence: <span class="tag tag-{{ ev.strength }}">{{ ev.strength | upper }}</span>
       {% if ev.optimal_dosage %}| Optimal Dosage: {{ ev.optimal_dosage }}{% endif %}
     </div>
-    <p style="font-size:12.5px;margin-bottom:8px;">{{ ev.mechanism }}</p>
+    <p style="font-size:12.5px;margin-bottom:8px;color:#1a1a1a;">{{ ev.mechanism }}</p>
 
     {% if ev.studies %}
     <div class="subsection-header">Key Studies</div>
     {% for s in ev.studies %}
     <div style="background:var(--gray-bg);border-radius:4px;padding:6px 10px;margin-bottom:4px;font-size:12px;">
-      <strong>{{ s.description }}</strong><br>
+      <strong style="color:#111;">{{ s.description }}</strong><br>
       <span class="text-muted">Dosage: {{ s.dosage }} | Duration: {{ s.duration }} | Effect: {{ s.effect_size }}</span>
     </div>
     {% endfor %}
@@ -440,7 +476,7 @@
       <div class="strategy-cell-value">
         <ul style="padding-left:18px;margin:0;">
           {% for sol in dive.positioning.avatar.failed_solutions %}
-          <li>{{ sol }}</li>
+          <li style="color:#222;">{{ sol }}</li>
           {% endfor %}
         </ul>
       </div>
@@ -481,7 +517,7 @@
   <div class="subsection-header">Daily Symptoms</div>
   <ul style="padding-left:18px;">
     {% for s in dive.positioning.daily_symptoms %}
-    <li style="font-size:12.5px;margin-bottom:3px;">{{ s }}</li>
+    <li style="font-size:12.5px;margin-bottom:3px;color:#1a1a1a;">{{ s }}</li>
     {% endfor %}
   </ul>
   {% endif %}
@@ -513,7 +549,7 @@
   <div class="card">
     <div class="card-title">{{ syn.ingredients | join(' + ') }}</div>
     <div class="card-subtitle">Pain Point: {{ syn.pain_point }}</div>
-    <p style="font-size:12.5px;">{{ syn.description }}</p>
+    <p style="font-size:12.5px;color:#1a1a1a;">{{ syn.description }}</p>
     <p class="text-muted" style="font-size:11px;margin-top:4px;">{{ syn.mechanism }}</p>
   </div>
   {% endfor %}

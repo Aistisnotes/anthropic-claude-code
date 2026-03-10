@@ -5,10 +5,10 @@ for total active ad counts. Tier the pain points by market saturation and
 select the top N opportunities (lowest saturation first).
 
 Tiers:
-  - Tier 1 LOOPHOLE: 0-2,000 active ads (green)
-  - Tier 2 AVERAGE: 2,000-5,000 active ads (yellow)
-  - Tier 3 HIGH SOPHISTICATION: 5,000-15,000 active ads (orange)
-  - Tier 4 DO NOT TOUCH: 15,000+ active ads (red)
+  - Tier 1 OPEN: 1-5,000 active ads (green)
+  - Tier 2 SOLID: 5,000-15,000 active ads (yellow)
+  - Tier 3 SATURATED: 15,000-50,000 active ads (orange)
+  - Tier 4 SUPER SATURATED: 50,000+ active ads (red)
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ import logging
 import random
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -30,47 +32,113 @@ logger = logging.getLogger(__name__)
 
 # ── Tier definitions ──────────────────────────────────────────────────────────
 TIER_UNKNOWN = 0
-TIER_LOOPHOLE = 1
-TIER_AVERAGE = 2
-TIER_HIGH_SOPHISTICATION = 3
-TIER_DO_NOT_TOUCH = 4
+TIER_OPEN = 1
+TIER_SOLID = 2
+TIER_SATURATED = 3
+TIER_SUPER_SATURATED = 4
 
 TIER_LABELS = {
     TIER_UNKNOWN: "UNKNOWN",
-    TIER_LOOPHOLE: "LOOPHOLE",
-    TIER_AVERAGE: "AVERAGE",
-    TIER_HIGH_SOPHISTICATION: "HIGH SOPHISTICATION",
-    TIER_DO_NOT_TOUCH: "DO NOT TOUCH",
+    TIER_OPEN: "OPEN",
+    TIER_SOLID: "SOLID",
+    TIER_SATURATED: "SATURATED",
+    TIER_SUPER_SATURATED: "SUPER SATURATED",
 }
 
 TIER_COLORS = {
     TIER_UNKNOWN: "gray",
-    TIER_LOOPHOLE: "green",
-    TIER_AVERAGE: "yellow",
-    TIER_HIGH_SOPHISTICATION: "orange",
-    TIER_DO_NOT_TOUCH: "red",
+    TIER_OPEN: "green",
+    TIER_SOLID: "yellow",
+    TIER_SATURATED: "orange",
+    TIER_SUPER_SATURATED: "red",
 }
 
-
 SCRAPER_ERROR = -2  # Sentinel: scraper returned 0, likely a failure
+
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+CACHE_DIR = Path(__file__).parent.parent / "output"
+CACHE_FILE = CACHE_DIR / "keyword_cache.json"
+CACHE_TTL_DAYS = 14
+
+
+def _load_cache() -> dict:
+    """Load the keyword cache from disk."""
+    if CACHE_FILE.exists():
+        try:
+            return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _save_cache(cache: dict) -> None:
+    """Save the keyword cache to disk."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    CACHE_FILE.write_text(
+        json.dumps(cache, indent=2, default=str), encoding="utf-8"
+    )
+
+
+def _get_cached(pain_point_name: str) -> dict | None:
+    """Return cached data for a pain point if valid (within TTL)."""
+    cache = _load_cache()
+    key = pain_point_name.lower().strip()
+    if key not in cache:
+        return None
+    entry = cache[key]
+    try:
+        last_checked = datetime.fromisoformat(entry["last_checked"])
+        if datetime.utcnow() - last_checked < timedelta(days=CACHE_TTL_DAYS):
+            return entry
+    except (KeyError, ValueError):
+        pass
+    return None
+
+
+def _set_cached(pain_point_name: str, ad_count: int, keywords_checked: list[str]) -> None:
+    """Save a pain point result to cache."""
+    cache = _load_cache()
+    key = pain_point_name.lower().strip()
+    now = datetime.utcnow()
+    cache[key] = {
+        "ad_count": ad_count,
+        "keywords_checked": keywords_checked,
+        "last_checked": now.isoformat(),
+        "expires": (now + timedelta(days=CACHE_TTL_DAYS)).isoformat(),
+    }
+    _save_cache(cache)
+
+
+def clear_cache() -> None:
+    """Clear the entire keyword cache."""
+    if CACHE_FILE.exists():
+        CACHE_FILE.unlink()
 
 
 def _classify_tier(ad_count: int) -> int:
     """Classify an ad count into a market tier.
 
-    CRITICAL: 0 ad count means the scraper failed, NOT that there's no
-    competition.  We must never classify 0 as LOOPHOLE.
+    Tiers:
+      Tier 1 OPEN: 1-5,000 active ads
+      Tier 2 SOLID: 5,000-15,000 active ads
+      Tier 3 SATURATED: 15,000-50,000 active ads
+      Tier 4 SUPER SATURATED: 50,000+ active ads
+
+    CRITICAL: 0 or negative ad count means the scraper failed, NOT that
+    there's no competition.  We must never classify 0 as a real tier.
     """
     if ad_count <= 0:
         return TIER_UNKNOWN
-    if ad_count < 2000:
-        return TIER_LOOPHOLE
-    elif ad_count < 5000:
-        return TIER_AVERAGE
-    elif ad_count < 15000:
-        return TIER_HIGH_SOPHISTICATION
+    if ad_count <= 5000:
+        return TIER_OPEN
+    elif ad_count <= 15000:
+        return TIER_SOLID
+    elif ad_count < 50000:
+        return TIER_SATURATED
     else:
-        return TIER_DO_NOT_TOUCH
+        # Meta caps at 50k — treat 50,000 or "50,000+" as SUPER SATURATED
+        return TIER_SUPER_SATURATED
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -87,9 +155,13 @@ class TrendResult:
     keywords: list[KeywordScore]
     best_keyword: str
     best_score: int  # highest ad count across keyword variants
-    tier: int = TIER_LOOPHOLE
+    tier: int = TIER_OPEN
     tier_label: str = ""
     tier_color: str = "green"
+    from_cache: bool = False
+    cache_date: str = ""
+    skipped: bool = False
+    skip_reason: str = ""
 
     def __post_init__(self):
         self.tier = _classify_tier(self.best_score)
@@ -101,6 +173,7 @@ class TrendResult:
 class ValidationResult:
     all_results: list[TrendResult]  # all pain points with scores
     top_results: list[TrendResult]  # top N by opportunity (lower ads = better)
+    meta_reachable: bool = True  # whether Meta Ad Library was reachable
 
 
 # ── Ad count scraper ──────────────────────────────────────────────────────────
@@ -164,8 +237,7 @@ async def _get_ad_count(keyword: str, headless: bool = True) -> int:
                     except Exception:
                         pass
 
-                # Wait for actual ad content to load — look for signs
-                # that the SPA has rendered results
+                # Wait for actual ad content to load
                 for wait_selector in [
                     'div[role="article"]',
                     'a[href*="/ads/library/"]',
@@ -185,8 +257,7 @@ async def _get_ad_count(keyword: str, headless: bool = True) -> int:
 
                 await asyncio.sleep(5)
 
-                # Debug: log page title and snippet of text to diagnose
-                # blank/login pages
+                # Debug: log page title and snippet
                 page_title = await page.title()
                 body_snippet = await page.evaluate(
                     "(document.body.innerText || '').substring(0, 300)"
@@ -197,22 +268,16 @@ async def _get_ad_count(keyword: str, headless: bool = True) -> int:
                 )
 
                 # Strategy 1: Extract total_count from embedded JSON in script tags
-                # Meta embeds Relay-style JSON with total ad counts
                 ad_count = await page.evaluate(
                     r"""
                     () => {
                         let bestCount = 0;
 
-                        // Strategy 1: Parse embedded JSON in script tags
-                        // Meta embeds data like "total_count":12345 or
-                        // "count":12345 in script[type="application/json"]
-                        // and script[data-sjs] tags
                         const scripts = document.querySelectorAll(
                             'script[type="application/json"], script[data-sjs]'
                         );
                         for (const script of scripts) {
                             const text = script.textContent || '';
-                            // Look for total_count patterns
                             const countPatterns = [
                                 /"total_count"\s*:\s*(\d+)/g,
                                 /"count"\s*:\s*(\d+)/g,
@@ -232,7 +297,7 @@ async def _get_ad_count(keyword: str, headless: bool = True) -> int:
 
                         if (bestCount > 0) return bestCount;
 
-                        // Strategy 2: Also check ALL script tags (not just typed ones)
+                        // Strategy 2: ALL script tags fallback
                         const allScripts = document.querySelectorAll('script');
                         for (const script of allScripts) {
                             const text = script.textContent || '';
@@ -341,7 +406,10 @@ class TrendsValidator:
         self.client = anthropic.Anthropic()
 
     async def _check_facebook_reachable(self) -> bool:
-        """Quick check if facebook.com is reachable (not blocked by proxy)."""
+        """Quick check if facebook.com is reachable (not blocked by proxy).
+
+        Uses a test keyword 'supplement' as a pre-flight check.
+        """
         from playwright.async_api import async_playwright
 
         try:
@@ -352,7 +420,9 @@ class TrendsValidator:
                 )
                 page = await browser.new_page()
                 resp = await page.goto(
-                    "https://www.facebook.com/ads/library/",
+                    "https://www.facebook.com/ads/library/"
+                    "?active_status=active&ad_type=all&country=US"
+                    "&q=supplement",
                     wait_until="commit",
                     timeout=15000,
                 )
@@ -361,202 +431,337 @@ class TrendsValidator:
                 await browser.close()
                 if status == 407 or html_len == 0:
                     return False
+                if status == 403:
+                    logger.warning(
+                        "Meta Ad Library returned 403 — possible IP ban"
+                    )
+                    return False
                 return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Meta Ad Library pre-flight check failed: {e}")
             return False
 
     async def validate(
-        self, pain_points: list[PainPoint], progress_cb=None
+        self,
+        pain_points: list[PainPoint],
+        progress_cb=None,
+        max_to_search: int = 20,
+        include_single_ingredient: bool = False,
     ) -> ValidationResult:
-        """Query Meta Ad Library for all pain points, rank by opportunity."""
+        """Query Meta Ad Library for pain points, rank by opportunity.
 
-        # Pre-flight: check if Facebook is reachable
+        Args:
+            pain_points: All discovered pain points
+            progress_cb: Progress callback
+            max_to_search: Maximum pain points to search on Meta Ad Library
+            include_single_ingredient: Whether to include single-ingredient pain points
+        """
+
+        # ── Smart prioritization (Change 6) ──────────────────────────────
+        # Determine which pain points to actually search
+        total_ingredients = set()
+        for pp in pain_points:
+            total_ingredients.update(pp.supporting_ingredients)
+        num_ingredients = len(total_ingredients)
+
+        multi_ingredient = [pp for pp in pain_points if pp.ingredient_count >= 2]
+        single_ingredient = [pp for pp in pain_points if pp.ingredient_count < 2]
+
+        # Sort each group by ingredient count desc, then alphabetical
+        multi_ingredient.sort(key=lambda pp: (-pp.ingredient_count, pp.name))
+        single_ingredient.sort(key=lambda pp: (-pp.ingredient_count, pp.name))
+
+        if num_ingredients >= 10:
+            # Only search 2+ ingredient pain points
+            search_points = multi_ingredient[:max_to_search]
+            skipped_points = single_ingredient
+            skip_reason = "Not validated — single ingredient support only"
+        elif num_ingredients >= 4:
+            # Prioritize 2+ ingredient, fill up to 10 minimum with single
+            search_points = multi_ingredient[:max_to_search]
+            if len(search_points) < 10:
+                remaining = 10 - len(search_points)
+                search_points += single_ingredient[:remaining]
+                skipped_points = single_ingredient[remaining:]
+            else:
+                skipped_points = single_ingredient
+            search_points = search_points[:max_to_search]
+            skip_reason = "Not validated — single ingredient support only"
+        else:
+            # 1-3 ingredients: search all
+            search_points = (multi_ingredient + single_ingredient)[:max_to_search]
+            skipped_points = []
+            skip_reason = ""
+
+        # If user opted in to single-ingredient, include all
+        if include_single_ingredient:
+            search_points = (multi_ingredient + single_ingredient)[:max_to_search]
+            skipped_points = (multi_ingredient + single_ingredient)[max_to_search:]
+            skip_reason = "Not validated — search cap reached"
+
+        skipped_count = len(skipped_points)
+        searched_count = len(search_points)
+
         if progress_cb:
-            progress_cb("Checking Meta Ad Library connectivity...")
-        reachable = await self._check_facebook_reachable()
-        if not reachable:
-            logger.warning(
-                "Meta Ad Library unreachable (proxy/network block) — "
-                "skipping demand validation. Run locally for full results."
-            )
-            if progress_cb:
+            if skipped_count > 0:
                 progress_cb(
-                    "Meta Ad Library unreachable — skipping demand validation"
+                    f"Found {len(pain_points)} pain points. "
+                    f"Searching {searched_count} with multi-ingredient support "
+                    f"({skipped_count} single-ingredient skipped)"
                 )
-            # Return all pain points as unknown tier, preserve original order
-            results = []
-            for pp in pain_points:
-                results.append(
+            else:
+                progress_cb(
+                    f"Found {len(pain_points)} pain points. "
+                    f"Searching {searched_count}..."
+                )
+
+        # ── Check cache first ─────────────────────────────────────────────
+        to_search_fresh: list[PainPoint] = []
+        cached_results: list[TrendResult] = []
+
+        for pp in search_points:
+            cached = _get_cached(pp.name)
+            if cached:
+                ad_count = cached["ad_count"]
+                days_ago = (
+                    datetime.utcnow() - datetime.fromisoformat(cached["last_checked"])
+                ).days
+                cache_date = datetime.fromisoformat(
+                    cached["last_checked"]
+                ).strftime("%b %d")
+                if progress_cb:
+                    progress_cb(
+                        f"Using cached data for '{pp.name}' "
+                        f"(checked {days_ago} days ago, {ad_count:,} ads)"
+                    )
+                cached_results.append(
                     TrendResult(
                         pain_point=pp,
-                        keywords=[KeywordScore(pp.name.lower(), -1, "unknown")],
+                        keywords=[
+                            KeywordScore(kw, ad_count, "cached")
+                            for kw in cached.get("keywords_checked", [pp.name.lower()])
+                        ],
+                        best_keyword=cached.get("keywords_checked", [pp.name.lower()])[0],
+                        best_score=ad_count,
+                        from_cache=True,
+                        cache_date=cache_date,
+                    )
+                )
+            else:
+                to_search_fresh.append(pp)
+
+        # ── Pre-flight: check if Facebook is reachable ────────────────────
+        meta_reachable = True
+        if to_search_fresh:
+            if progress_cb:
+                progress_cb("Checking Meta Ad Library connectivity...")
+            meta_reachable = await self._check_facebook_reachable()
+            if not meta_reachable:
+                logger.warning(
+                    "Meta Ad Library unreachable (proxy/network block) — "
+                    "skipping demand validation."
+                )
+                if progress_cb:
+                    progress_cb(
+                        "⚠️ Meta Ad Library is unreachable from this network. "
+                        "Ad count validation will be skipped. "
+                        "Try from a different network or wait and retry."
+                    )
+
+        # ── Query Meta Ad Library for fresh pain points ───────────────────
+        fresh_results: list[TrendResult] = []
+
+        if meta_reachable and to_search_fresh:
+            # Generate broad keyword variants
+            if progress_cb:
+                progress_cb("Generating broad search keywords...")
+            keyword_map = self._generate_keywords(to_search_fresh)
+
+            for i, pp in enumerate(to_search_fresh):
+                # Session request cap
+                if self._session_request_count >= self.max_requests_per_session:
+                    logger.warning(
+                        f"Hit session request cap ({self.max_requests_per_session}). "
+                        f"Skipping remaining pain points to avoid IP ban."
+                    )
+                    if progress_cb:
+                        progress_cb(
+                            f"Request cap reached ({self.max_requests_per_session}) — "
+                            f"skipping remaining queries"
+                        )
+                    for remaining_pp in to_search_fresh[i:]:
+                        fresh_results.append(
+                            TrendResult(
+                                pain_point=remaining_pp,
+                                keywords=[KeywordScore(remaining_pp.name.lower(), -1, "capped")],
+                                best_keyword=remaining_pp.name.lower(),
+                                best_score=-1,
+                                tier=TIER_UNKNOWN,
+                                tier_label=TIER_LABELS[TIER_UNKNOWN],
+                                tier_color=TIER_COLORS[TIER_UNKNOWN],
+                            )
+                        )
+                    break
+
+                # 15-second delay + random 5-15s jitter between pain points
+                if i > 0:
+                    cooldown = 15 + random.uniform(5, 15)
+                    logger.info(
+                        f"Rate limit: {cooldown:.0f}s cooldown before pain point "
+                        f"'{pp.name}' ({i+1}/{len(to_search_fresh)})"
+                    )
+                    if progress_cb:
+                        progress_cb(
+                            f"Rate limit cooldown ({cooldown:.0f}s) before "
+                            f"'{pp.name}' ({i+1}/{len(to_search_fresh)})..."
+                        )
+                    await asyncio.sleep(cooldown)
+
+                if progress_cb:
+                    progress_cb(
+                        f"Checking Meta Ad Library for '{pp.name}' "
+                        f"({i+1}/{len(to_search_fresh)})..."
+                    )
+
+                keywords = keyword_map.get(pp.name, [])
+                if not keywords:
+                    keywords = [pp.name.lower()]
+
+                scored: list[KeywordScore] = []
+                for j, kw in enumerate(keywords):
+                    if self._session_request_count >= self.max_requests_per_session:
+                        break
+
+                    variant_type = ["broad", "symptom", "clinical"][j] if j < 3 else "other"
+                    count = await _get_ad_count(kw, headless=self.headless)
+                    self._session_request_count += 1
+
+                    # Retry once with 30s delay if count is 0
+                    if count == 0:
+                        logger.warning(
+                            f"Got 0 ads for '{kw}' — retrying in 30s "
+                            f"(broad keywords should never be 0)"
+                        )
+                        await asyncio.sleep(30)
+                        count = await _get_ad_count(kw, headless=self.headless)
+                        self._session_request_count += 1
+                        if count == 0:
+                            logger.warning(
+                                f"Still 0 ads for '{kw}' after retry — "
+                                f"marking as could not retrieve"
+                            )
+                            count = SCRAPER_ERROR
+
+                    scored.append(KeywordScore(kw, count, variant_type))
+
+                    # 15s delay + 5-15s jitter between keyword requests
+                    if j < len(keywords) - 1:
+                        delay = 15 + random.uniform(5, 15)
+                        logger.info(f"Rate limit: {delay:.1f}s delay before next keyword")
+                        await asyncio.sleep(delay)
+
+                # Check if ALL keywords returned errors
+                all_failed = all(ks.score <= 0 for ks in scored) if scored else True
+                best = max(scored, key=lambda x: x.score) if scored else KeywordScore(pp.name.lower(), SCRAPER_ERROR, "unknown")
+
+                if all_failed:
+                    logger.warning(
+                        f"ALL keyword variants for '{pp.name}' returned 0/error — "
+                        f"Meta Ad Library may be unreachable for these keywords"
+                    )
+                    best_score = SCRAPER_ERROR
+                else:
+                    best_score = best.score
+                    # Cache successful results
+                    keywords_checked = [ks.keyword for ks in scored]
+                    _set_cached(pp.name, best_score, keywords_checked)
+
+                fresh_results.append(
+                    TrendResult(
+                        pain_point=pp,
+                        keywords=scored,
+                        best_keyword=best.keyword,
+                        best_score=best_score,
+                    )
+                )
+        elif not meta_reachable:
+            # Meta unreachable — mark all fresh pain points
+            for pp in to_search_fresh:
+                fresh_results.append(
+                    TrendResult(
+                        pain_point=pp,
+                        keywords=[KeywordScore(pp.name.lower(), -1, "unreachable")],
                         best_keyword=pp.name.lower(),
                         best_score=-1,
                         tier=TIER_UNKNOWN,
-                        tier_label=TIER_LABELS[TIER_UNKNOWN],
-                        tier_color=TIER_COLORS[TIER_UNKNOWN],
+                        tier_label="Unavailable",
+                        tier_color="gray",
                     )
                 )
-            top = results[: self.top_n]
-            return ValidationResult(all_results=results, top_results=top)
 
-        max_queries = self.config.get("trends", {}).get("max_pain_points", 15)
-        query_points = pain_points[:max_queries]
+        # ── Combine cached + fresh results ────────────────────────────────
+        results = cached_results + fresh_results
 
-        if len(pain_points) > max_queries:
-            logger.info(
-                f"Capping demand queries to top {max_queries} pain points "
-                f"(skipping {len(pain_points) - max_queries} lower-priority ones)"
-            )
-
-        # Generate broad keyword variants
-        if progress_cb:
-            progress_cb("Generating broad search keywords...")
-        keyword_map = self._generate_keywords(query_points)
-
-        results: list[TrendResult] = []
-
-        for i, pp in enumerate(query_points):
-            # Session request cap — stop making requests to avoid IP ban
-            if self._session_request_count >= self.max_requests_per_session:
-                logger.warning(
-                    f"Hit session request cap ({self.max_requests_per_session}). "
-                    f"Skipping remaining pain points to avoid IP ban."
+        # Add skipped pain points
+        for pp in skipped_points:
+            # Check cache for skipped ones too
+            cached = _get_cached(pp.name)
+            if cached:
+                ad_count = cached["ad_count"]
+                cache_date = datetime.fromisoformat(
+                    cached["last_checked"]
+                ).strftime("%b %d")
+                results.append(
+                    TrendResult(
+                        pain_point=pp,
+                        keywords=[KeywordScore(pp.name.lower(), ad_count, "cached")],
+                        best_keyword=pp.name.lower(),
+                        best_score=ad_count,
+                        from_cache=True,
+                        cache_date=cache_date,
+                        skipped=True,
+                        skip_reason=skip_reason,
+                    )
                 )
-                if progress_cb:
-                    progress_cb(
-                        f"Request cap reached ({self.max_requests_per_session}) — "
-                        f"skipping remaining queries"
-                    )
-                # Add remaining pain points as unknown
-                for remaining_pp in query_points[i:]:
-                    results.append(
-                        TrendResult(
-                            pain_point=remaining_pp,
-                            keywords=[KeywordScore(remaining_pp.name.lower(), -1, "capped")],
-                            best_keyword=remaining_pp.name.lower(),
-                            best_score=-1,
-                            tier=TIER_UNKNOWN,
-                            tier_label=TIER_LABELS[TIER_UNKNOWN],
-                            tier_color=TIER_COLORS[TIER_UNKNOWN],
-                        )
-                    )
-                break
-
-            # 30-second cooldown between different pain points (brands)
-            if i > 0:
-                cooldown = self.cooldown_between_brands
-                logger.info(
-                    f"Rate limit: {cooldown}s cooldown before pain point "
-                    f"'{pp.name}' ({i+1}/{len(query_points)})"
-                )
-                if progress_cb:
-                    progress_cb(
-                        f"Rate limit cooldown ({cooldown}s) before "
-                        f"'{pp.name}' ({i+1}/{len(query_points)})..."
-                    )
-                await asyncio.sleep(cooldown)
-
-            if progress_cb:
-                progress_cb(
-                    f"Checking Meta Ad Library for '{pp.name}' "
-                    f"({i+1}/{len(query_points)})..."
-                )
-
-            keywords = keyword_map.get(pp.name, [])
-            if not keywords:
-                keywords = [pp.name.lower()]
-
-            scored: list[KeywordScore] = []
-            for j, kw in enumerate(keywords):
-                # Check session cap before each request
-                if self._session_request_count >= self.max_requests_per_session:
-                    logger.warning(
-                        f"Session cap reached mid-keyword. "
-                        f"Skipping remaining keywords for '{pp.name}'."
-                    )
-                    break
-
-                variant_type = ["broad", "symptom", "clinical"][j] if j < 3 else "other"
-                count = await _get_ad_count(kw, headless=self.headless)
-                self._session_request_count += 1
-
-                # Retry once with 10s delay if count is 0 (likely scraper failure)
-                if count == 0:
-                    logger.warning(
-                        f"Got 0 ads for '{kw}' — retrying in 10s "
-                        f"(broad keywords should never be 0)"
-                    )
-                    await asyncio.sleep(10)
-                    count = await _get_ad_count(kw, headless=self.headless)
-                    self._session_request_count += 1
-                    if count == 0:
-                        logger.warning(
-                            f"Still 0 ads for '{kw}' after retry — "
-                            f"marking as SCRAPER ERROR"
-                        )
-                        count = SCRAPER_ERROR
-
-                scored.append(KeywordScore(kw, count, variant_type))
-
-                # Random 5-10 second delay between keyword requests
-                if j < len(keywords) - 1:
-                    delay = self.delay_between_requests + random.uniform(-3, 3)
-                    delay = max(5.0, delay)  # floor at 5 seconds
-                    logger.info(f"Rate limit: {delay:.1f}s delay before next keyword")
-                    await asyncio.sleep(delay)
-
-            # Check if ALL keywords for this pain point returned errors
-            all_failed = all(ks.score <= 0 for ks in scored) if scored else True
-            best = max(scored, key=lambda x: x.score) if scored else KeywordScore(pp.name.lower(), SCRAPER_ERROR, "unknown")
-
-            if all_failed:
-                logger.warning(
-                    f"ALL keyword variants for '{pp.name}' returned 0/error — "
-                    f"Meta Ad Library may be unreachable for these keywords"
-                )
-                best_score = SCRAPER_ERROR
             else:
-                best_score = best.score
-
-            results.append(
-                TrendResult(
-                    pain_point=pp,
-                    keywords=scored,
-                    best_keyword=best.keyword,
-                    best_score=best_score,
+                results.append(
+                    TrendResult(
+                        pain_point=pp,
+                        keywords=[KeywordScore(pp.name.lower(), 0, "skipped")],
+                        best_keyword=pp.name.lower(),
+                        best_score=0,
+                        skipped=True,
+                        skip_reason=skip_reason,
+                    )
                 )
-            )
-
-        # Add skipped pain points with score 0
-        for pp in pain_points[max_queries:]:
-            results.append(
-                TrendResult(
-                    pain_point=pp,
-                    keywords=[KeywordScore(pp.name.lower(), 0, "unknown")],
-                    best_keyword=pp.name.lower(),
-                    best_score=0,
-                )
-            )
 
         # Sort by opportunity: Tier 1 first, then Tier 2, etc.
         # Within same tier, lower ad count = more underserved = better
         results.sort(key=lambda x: (x.tier, x.best_score))
 
         # Select top N — prioritize Tier 1, then Tier 2
-        top = results[: self.top_n]
+        # Never classify as a tier based on failed data
+        eligible_top = [
+            r for r in results
+            if r.best_score > 0 and not r.skipped
+        ]
+        top = eligible_top[: self.top_n]
 
-        return ValidationResult(all_results=results, top_results=top)
+        # If we don't have enough eligible, fill from remaining non-skipped
+        if len(top) < self.top_n:
+            remaining = [r for r in results if r not in top and not r.skipped]
+            top += remaining[: self.top_n - len(top)]
+
+        return ValidationResult(
+            all_results=results,
+            top_results=top,
+            meta_reachable=meta_reachable,
+        )
 
     def _generate_keywords(
         self, pain_points: list[PainPoint]
     ) -> dict[str, list[str]]:
-        """Use Claude to generate 2-3 BROAD keyword variants per pain point.
-
-        These should be the words that appear in ad copy, headlines, and
-        landing pages of ANY brand targeting this pain point — not niche
-        supplement keywords.
-        """
+        """Use Claude to generate 2-3 BROAD keyword variants per pain point."""
         pp_names = [pp.name for pp in pain_points]
 
         response = self.client.messages.create(
