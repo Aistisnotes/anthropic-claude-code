@@ -1,13 +1,14 @@
-"""Direct brand pipeline — analyze specific brands by page_id without keyword discovery.
+"""Direct brand pipeline — analyze specific brands by domain search.
 
 Instead of running a keyword scan to discover brands, the user provides:
   - Brand name (label for report)
-  - Meta Ads Library URL or raw page_id
+  - Domain, e.g. elarebeauty.com
 
-The pipeline scrapes each brand directly via view_all_page_id, runs the full
-download → transcribe → filter → analyze → pattern analysis → report flow,
-saves brand_report_*.json + PDF for each brand, and returns a MarketResult
-compatible with the compare pipeline.
+The pipeline searches Meta Ads Library using the domain as the query, which
+surfaces ALL active ads linking to that domain — including ads run by 3rd party
+affiliates, influencers, and media buyers — sorted by impressions.
+
+This captures the full competitive picture for a brand, not just its own page ads.
 """
 
 from __future__ import annotations
@@ -15,8 +16,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
-from urllib.parse import parse_qs, urlparse
+from typing import Any
 
 from rich.console import Console
 
@@ -30,53 +30,37 @@ logger = get_logger(__name__)
 console = Console()
 
 
-def extract_page_id(input_str: str) -> Optional[str]:
-    """Extract a Facebook page_id from a Meta Ads Library URL or raw numeric string.
+def parse_domain(input_str: str) -> str:
+    """Normalise a brand domain input to a bare domain string.
 
-    Accepts:
-      - Full URL with view_all_page_id param
-      - Raw numeric string (page_id directly)
+    Accepts any of:
+      elarebeauty.com
+      www.elarebeauty.com
+      https://elarebeauty.com
+      https://www.elarebeauty.com/products/...
 
-    Returns:
-      The page_id string, or None if not found.
+    Returns the bare domain (e.g. "elarebeauty.com") stripped of www / https.
     """
     s = input_str.strip()
-    if not s:
-        return None
-
-    # Raw numeric ID
-    if re.fullmatch(r"\d+", s):
-        return s
-
-    # URL containing view_all_page_id=...
-    if "view_all_page_id" in s:
-        try:
-            qs = parse_qs(urlparse(s).query)
-            ids = qs.get("view_all_page_id", [])
-            if ids:
-                return ids[0]
-        except Exception:
-            pass
-
-    # Try extracting any long number from the URL as fallback
-    m = re.search(r"view_all_page_id=(\d+)", s)
-    if m:
-        return m.group(1)
-
-    return None
+    # Strip scheme
+    s = re.sub(r"^https?://", "", s, flags=re.IGNORECASE)
+    # Strip www.
+    s = re.sub(r"^www\.", "", s, flags=re.IGNORECASE)
+    # Strip path / query / fragment
+    s = s.split("/")[0].split("?")[0].split("#")[0]
+    return s.lower().strip()
 
 
 def parse_brand_entries(raw_lines: list[str]) -> list[dict[str, str]]:
     """Parse a list of raw text lines into brand entries.
 
     Accepted formats (one per line):
-      Brand Name: https://www.facebook.com/ads/library/?view_all_page_id=123
-      Brand Name: 123456789
-      https://www.facebook.com/ads/library/?view_all_page_id=123  (brand name inferred)
-      123456789  (brand name = page_id)
+      Brand Name: elarebeauty.com
+      Brand Name: https://www.elarebeauty.com
+      elarebeauty.com              (brand name inferred from domain)
 
-    Returns:
-      List of {"name": str, "page_id": str} dicts (only entries with valid page_ids).
+    Returns list of {"name": str, "domain": str} dicts.
+    Lines that can't be parsed or produce an empty domain are skipped.
     """
     entries = []
     for line in raw_lines:
@@ -85,34 +69,33 @@ def parse_brand_entries(raw_lines: list[str]) -> list[dict[str, str]]:
             continue
 
         brand_name = None
-        url_part = line
+        domain_part = line
 
-        # Try splitting on first colon that isn't part of https://
-        # Format: "Brand Name: URL_or_id"
+        # Split on ": " — left side is brand name, right side is domain/URL
         if ": " in line:
             colon_idx = line.index(": ")
             candidate_name = line[:colon_idx].strip()
-            candidate_url = line[colon_idx + 2:].strip()
-            # Only treat left side as brand name if it doesn't look like a URL
-            if "http" not in candidate_name and len(candidate_name) > 0:
+            candidate_domain = line[colon_idx + 2:].strip()
+            if candidate_name and "." not in candidate_name:
                 brand_name = candidate_name
-                url_part = candidate_url
+                domain_part = candidate_domain
 
-        page_id = extract_page_id(url_part)
-        if not page_id:
-            logger.warning(f"Could not extract page_id from: {line!r}")
+        domain = parse_domain(domain_part)
+        if not domain or "." not in domain:
+            logger.warning(f"Could not parse domain from: {line!r}")
             continue
 
         if not brand_name:
-            brand_name = f"Brand {page_id}"
+            # Use the domain root as the brand name (e.g. "elarebeauty")
+            brand_name = domain.split(".")[0].replace("-", " ").title()
 
-        entries.append({"name": brand_name, "page_id": page_id})
+        entries.append({"name": brand_name, "domain": domain})
 
     return entries
 
 
 class DirectPipeline:
-    """Analyze specific brands by direct page_id without keyword discovery."""
+    """Analyze specific brands by domain search — captures all advertisers for that domain."""
 
     def __init__(self, config: dict[str, Any]):
         self.config = config
@@ -128,9 +111,9 @@ class DirectPipeline:
         """Run full analysis for a list of directly-specified brands.
 
         Args:
-            brand_entries: List of {"name": brand_name, "page_id": page_id} dicts
+            brand_entries: List of {"name": brand_name, "domain": domain} dicts
             keyword: Research topic / report naming context (optional)
-            ads_per_brand: Max ads to scrape per brand
+            ads_per_brand: Max ads to scrape per brand (sorted by impressions)
 
         Returns:
             MarketResult with brand_reports list (same structure as market pipeline)
@@ -154,32 +137,44 @@ class DirectPipeline:
         market_subdir.mkdir(parents=True, exist_ok=True)
 
         console.print(f"\n[bold]Direct Brand Analysis[/]")
-        console.print(f"Brands: [cyan]{len(brand_entries)}[/]  |  Topic: [cyan]{keyword or 'direct'}[/]")
+        console.print(
+            f"Brands: [cyan]{len(brand_entries)}[/]  |  "
+            f"Topic: [cyan]{keyword or 'direct'}[/]  |  "
+            f"Ads/brand: [cyan]{ads_per_brand}[/] (sorted by impressions)"
+        )
         console.print(f"Output: [dim]{market_subdir}[/]\n")
 
         brand_reports: list[BrandReport] = []
 
         for i, entry in enumerate(brand_entries, 1):
             brand_name = entry["name"]
-            page_id = entry["page_id"]
+            domain = entry["domain"]
 
-            console.print(f"[bold]── Brand {i}/{len(brand_entries)}: {brand_name} (page_id={page_id}) ──[/]")
+            console.print(
+                f"[bold]── Brand {i}/{len(brand_entries)}: {brand_name} ({domain}) ──[/]"
+            )
 
             try:
                 report = await self._analyze_brand(
                     brand_name=brand_name,
-                    page_id=page_id,
+                    domain=domain,
                     keyword=keyword or brand_name,
                     ads_per_brand=ads_per_brand,
                     market_subdir=market_subdir,
                 )
                 brand_reports.append(report)
-                console.print(f"  [green]✓[/] {brand_name}: {report.pattern_report.total_ads_analyzed} ads analyzed")
+                console.print(
+                    f"  [green]✓[/] {brand_name}: "
+                    f"{report.pattern_report.total_ads_analyzed} ads analyzed"
+                )
             except Exception as e:
                 logger.error(f"Failed to analyze {brand_name}: {e}")
                 console.print(f"  [red]✗ {brand_name}: {e}[/]")
 
-        console.print(f"\n[bold green]Direct analysis complete:[/] {len(brand_reports)}/{len(brand_entries)} brands")
+        console.print(
+            f"\n[bold green]Direct analysis complete:[/] "
+            f"{len(brand_reports)}/{len(brand_entries)} brands"
+        )
         console.print(f"Reports in: [dim]{market_subdir}[/]")
 
         return MarketResult(
@@ -193,30 +188,30 @@ class DirectPipeline:
     async def _analyze_brand(
         self,
         brand_name: str,
-        page_id: str,
+        domain: str,
         keyword: str,
         ads_per_brand: int,
         market_subdir: Path,
     ) -> BrandReport:
-        """Scrape a brand by page_id and run the full analysis pipeline."""
+        """Search by domain and run the full analysis pipeline."""
         import copy
 
-        # Build scraper config with ads_per_brand override
         scrape_cfg = copy.deepcopy(self.config)
         scrape_cfg.setdefault("scraper", {})["max_ads"] = ads_per_brand
 
         scraper = MetaAdsScraper(scrape_cfg)
 
-        console.print(f"  [cyan]Scraping {brand_name} (page_id={page_id})...[/]")
-        scraped_ads = await scraper.scrape(query=brand_name, page_id=page_id)
-        console.print(f"  [green]✓[/] Scraped {len(scraped_ads)} ads")
+        console.print(f"  [cyan]Searching ads for domain: {domain}...[/]")
+        scraped_ads = await scraper.scrape(
+            query=domain,
+            sort_by_impressions=True,
+        )
+        console.print(f"  [green]✓[/] Found {len(scraped_ads)} ads across all advertisers")
 
         if not scraped_ads:
-            # Return empty report
             from meta_ads_analyzer.models import PatternReport
             return BrandReport(
                 advertiser=AdvertiserEntry(
-                    page_id=page_id,
                     page_name=brand_name,
                     ad_count=0,
                 ),
@@ -224,25 +219,27 @@ class DirectPipeline:
                 pattern_report=PatternReport(
                     search_query=keyword,
                     brand=brand_name,
-                    executive_summary=f"No ads found for {brand_name} (page_id={page_id}).",
+                    executive_summary=f"No active ads found for domain: {domain}",
                 ),
                 generated_at=datetime.utcnow(),
             )
 
-        # Run full pipeline (download, transcribe, filter, analyze, report)
+        # Collect unique advertiser page names found
+        page_names = list(dict.fromkeys(
+            ad.page_name for ad in scraped_ads if ad.page_name
+        ))
+
         pattern_report = await self.pipeline.run_from_scraped_ads(
             scraped_ads=scraped_ads,
             query=keyword,
             brand=brand_name,
         )
 
-        # Build AdvertiserEntry from scraped data
         advertiser = AdvertiserEntry(
-            page_id=page_id,
             page_name=brand_name,
             ad_count=len(scraped_ads),
             active_ad_count=len(scraped_ads),
-            all_page_names=[brand_name],
+            all_page_names=page_names[:10],
         )
 
         brand_report = BrandReport(
@@ -252,7 +249,6 @@ class DirectPipeline:
             generated_at=datetime.utcnow(),
         )
 
-        # Save JSON + PDF
         await self.reporter.save_brand_report(brand_report, market_subdir)
 
         return brand_report

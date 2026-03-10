@@ -590,8 +590,8 @@ def direct(
     brands: list[str] = typer.Argument(
         ...,
         help=(
-            'Brand entries as "Brand Name: URL_or_page_id". '
-            'Example: "Elare: https://www.facebook.com/ads/library/?view_all_page_id=123"'
+            'Brand entries as "Brand Name: domain.com". '
+            'Example: "Elare: elarebeauty.com"'
         ),
     ),
     keyword: str = typer.Option("", "--keyword", "-k", help="Research topic for report naming"),
@@ -601,12 +601,13 @@ def direct(
     headless: bool = typer.Option(True, "--headless/--no-headless"),
     log_level: str = typer.Option("INFO", "--log-level", "-l"),
 ):
-    """Analyze specific brands by direct Ads Library URL — no keyword discovery needed.
+    """Analyze specific brands by domain — finds all active ads across every advertiser page.
 
-    Each argument should be "Brand Name: URL_or_page_id", e.g.:
+    Searches Meta Ads Library by domain (captures 1st and 3rd party ads), sorted by impressions.
+    Each argument should be "Brand Name: domain.com", e.g.:
 
-        meta-ads direct "Elare: https://facebook.com/ads/library/?view_all_page_id=123" \\
-                        "Competitor: 987654321" \\
+        meta-ads direct "Elare: elarebeauty.com" \\
+                        "Competitor: sculptique.com" \\
                         --keyword "collagen eye mask"
     """
     from meta_ads_analyzer.direct_pipeline import DirectPipeline, parse_brand_entries
@@ -617,12 +618,12 @@ def direct(
 
     entries = parse_brand_entries(list(brands))
     if not entries:
-        console.print("[red]No valid brand entries found. Use format: \"Brand Name: URL_or_page_id\"[/]")
+        console.print("[red]No valid brand entries found. Use format: \"Brand Name: domain.com\"[/]")
         raise typer.Exit(1)
 
     console.print(f"\n[bold]Direct Brand Analysis[/]")
     for e in entries:
-        console.print(f"  • {e['name']}: page_id={e['page_id']}")
+        console.print(f"  • {e['name']}: {e['domain']}")
 
     dp = DirectPipeline(config)
     result = asyncio.run(

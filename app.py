@@ -627,26 +627,27 @@ def page_home():
     # ── Tab 1: Direct Brand URLs (primary) ───────────────────────────────────
     with tab_direct:
         st.markdown(
-            "Paste the **Meta Ads Library links** for the brands you want to analyze. "
-            "One brand per line. Format: `Brand Name: URL_or_page_id`"
+            "Enter the **domain** of each brand you want to analyze — one per line. "
+            "This searches all active ads running to that domain across every advertiser page, "
+            "sorted by impressions."
         )
 
         col1, col2 = st.columns([3, 2])
 
         with col1:
             brands_text = st.text_area(
-                "Brand URLs",
+                "Brand domains",
                 placeholder=(
-                    "My Brand: https://www.facebook.com/ads/library/?view_all_page_id=123456789\n"
-                    "Competitor A: https://www.facebook.com/ads/library/?view_all_page_id=987654321\n"
-                    "Competitor B: 111222333444"
+                    "My Brand: elarebeauty.com\n"
+                    "Competitor A: sculptique.com\n"
+                    "Competitor B: trylumine.com"
                 ),
                 height=160,
                 label_visibility="collapsed",
                 key="input_direct_brands",
             )
             keyword_direct = st.text_input(
-                "Research topic (for report naming)",
+                "Research topic (optional — for report naming)",
                 placeholder="collagen eye mask, vertigo supplement, ...",
                 key="input_direct_keyword",
             )
@@ -656,8 +657,9 @@ def page_home():
             ads_direct = st.slider("Ads per brand", 10, 100, 50, key="direct_ads")
             compare_direct = st.checkbox("Run compare after analysis", value=True, key="direct_compare")
             st.caption(
-                "How to get a URL: go to Meta Ads Library → search brand → "
-                "click 'See all ads from this advertiser' → copy the page URL."
+                "Format: `Brand Name: domain.com` or just `domain.com`.\n\n"
+                "Captures ads from the brand's own pages **and** 3rd party affiliates/influencers — "
+                "all sorted by impressions so the highest-reach ads get analyzed first."
             )
 
         st.markdown("---")
@@ -665,7 +667,7 @@ def page_home():
         with run_col:
             if st.button("▶ Run Direct Analysis", disabled=st.session_state.running, use_container_width=True, key="btn_direct"):
                 if not brands_text.strip():
-                    st.error("Please enter at least one brand URL.")
+                    st.error("Please enter at least one brand domain.")
                 else:
                     _run_pipeline_direct(
                         brands_text=brands_text.strip(),
