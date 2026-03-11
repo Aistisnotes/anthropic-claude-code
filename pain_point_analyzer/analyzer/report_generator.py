@@ -283,6 +283,37 @@ class ReportGenerator:
                     "mechanism": syn.mechanism,
                 })
 
+        # Connections
+        connections_data = []
+        for conn in getattr(positioning, 'connections', []) or []:
+            connections_data.append({
+                "name": conn.name,
+                "chain": conn.chain,
+                "connected_pain_points": conn.connected_pain_points,
+                "shared_root_cause": conn.shared_root_cause,
+                "why_treating_individually_fails": conn.why_treating_individually_fails,
+                "hook_sentence": conn.hook_sentence,
+                "ad_hooks": conn.ad_hooks,
+                "supporting_ingredients": conn.supporting_ingredients,
+            })
+
+        # Saturated loopholes
+        loopholes_data = []
+        for lh in getattr(positioning, 'saturated_loopholes', []) or []:
+            loopholes_data.append({
+                "pain_point_name": lh.pain_point_name,
+                "tier": lh.tier,
+                "tier_label": lh.tier_label,
+                "ad_count": lh.ad_count,
+                "ingredient_coverage": lh.ingredient_coverage,
+                "standard_angle": lh.standard_angle,
+                "your_angle": lh.your_angle,
+                "connection_name": lh.connection_name,
+                "connection_boost": lh.connection_boost,
+                "why_it_works": lh.why_it_works,
+                "hook_examples": lh.hook_examples,
+            })
+
         return {
             "generated_at": datetime.utcnow().isoformat(),
             "product": product,
@@ -290,5 +321,7 @@ class ReportGenerator:
             "trends": trends_data,
             "top_deep_dives": top_deep_dives,
             "synergy_map": synergy_map,
+            "connections": connections_data,
+            "saturated_loopholes": loopholes_data,
             "_meta_reachable": trends.meta_reachable,
         }

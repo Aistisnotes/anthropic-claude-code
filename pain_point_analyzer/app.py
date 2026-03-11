@@ -252,17 +252,37 @@ async def _run_remaining_pipeline(extraction, config, url, update):
     )
 
     # Step 5: Positioning
-    log_and_update("Step 5/6: Building positioning...", 0.75)
+    log_and_update("Step 5/8: Building positioning...", 0.65)
     positioning_engine = PositioningEngine(config)
     positioning = await positioning_engine.build_positioning(
         trends.top_results,
         research.reports,
         extraction.ingredients,
-        progress_cb=lambda m: log_and_update(f"Step 5/6: {m}", 0.85),
+        progress_cb=lambda m: log_and_update(f"Step 5/8: {m}", 0.70),
     )
 
-    # Step 6: Generate report
-    log_and_update("Step 6/6: Generating report...", 0.90)
+    # Step 6: Generate connections
+    log_and_update("Step 6/8: Finding multi-pain-point connections...", 0.75)
+    connections = positioning_engine.generate_connections(
+        trends.all_results,
+        extraction.ingredients,
+        research.reports,
+        progress_cb=lambda m: log_and_update(f"Step 6/8: {m}", 0.80),
+    )
+    positioning.connections = connections
+
+    # Step 7: Generate saturated loopholes
+    log_and_update("Step 7/8: Scanning for saturated market loopholes...", 0.85)
+    loopholes = positioning_engine.generate_saturated_loopholes(
+        trends.all_results,
+        extraction.ingredients,
+        connections,
+        progress_cb=lambda m: log_and_update(f"Step 7/8: {m}", 0.88),
+    )
+    positioning.saturated_loopholes = loopholes
+
+    # Step 8: Generate report
+    log_and_update("Step 8/8: Generating report...", 0.90)
     reporter = ReportGenerator(config)
     report = reporter.generate(
         extraction, discovery, trends, research, positioning, url
@@ -803,28 +823,6 @@ def _show_results(report: dict):
 
                 st.markdown("**Avatar:**")
                 avatar = pos["avatar"]
-                if avatar.get("narrative"):
-                    st.markdown(avatar["narrative"])
-                else:
-                    st.markdown(
-                        f"Age: {avatar.get('age', 'N/A')} | "
-                        f"Gender: {avatar.get('gender', 'N/A')} | "
-                        f"Lifestyle: {avatar.get('lifestyle', 'N/A')}"
-                    )
-                if avatar.get("habit_history"):
-                    st.markdown(f"**Core Habit:** {avatar['habit_history']}")
-                if avatar.get("root_cause_connection"):
-                    st.markdown(f"**Why It Matters:** {avatar['root_cause_connection']}")
-                if avatar.get("failed_solutions"):
-                    st.markdown("**What They've Tried (And Why It Failed):**")
-                    for sol in avatar["failed_solutions"]:
-                        st.markdown(f"- {sol}")
-                elif avatar.get("tried_before"):
-                    st.markdown(
-                        f"_Tried before:_ {', '.join(avatar['tried_before'])}"
-                    )
-                if avatar.get("urgency_trigger"):
-                    st.markdown(f"**Why Now:** {avatar['urgency_trigger']}")
 
                 # Avatar Profiles
                 avatar_profiles = pos.get("avatar_profiles", [])
@@ -911,6 +909,80 @@ def _show_results(report: dict):
 
         st.markdown("---")
 
+    # ── Saturated Market Loopholes (after deep dives, before skipped) ────
+    loopholes = report.get("saturated_loopholes", [])
+    if loopholes:
+        st.markdown("---")
+        st.markdown(
+            '<h3 style="color:#f59e0b !important;">'
+            '\U0001f513 Saturated Market Loopholes — High competition but '
+            'your formula has an edge</h3>',
+            unsafe_allow_html=True,
+        )
+        for lh in loopholes:
+            tier_class = _tier_badge_class(lh.get("tier", 3))
+            coverage_pct = lh.get("ingredient_coverage", 0)
+            ad_count = lh.get("ad_count", 0)
+            conn_name = lh.get("connection_name", "")
+            conn_boost = lh.get("connection_boost", "")
+
+            st.markdown(
+                f'<div style="background:#262730;border:1px solid #f59e0b;'
+                f'border-radius:8px;padding:16px 20px;margin-bottom:16px;">'
+                f'<div style="margin-bottom:8px;">'
+                f'<strong style="color:#fafafa;font-size:1.1em;">'
+                f'{lh.get("pain_point_name", "")}</strong> '
+                f'<span class="tier-badge {tier_class}">'
+                f'{lh.get("tier_label", "")}</span> '
+                f'<span style="color:#888;font-size:0.9em;">'
+                f'{ad_count:,} active ads</span>'
+                f'</div>'
+                f'<div style="background:#1e3a5f;border-radius:4px;'
+                f'padding:8px 12px;margin-bottom:10px;">'
+                f'<strong style="color:#60a5fa;">Ingredient Coverage:</strong> '
+                f'<span style="color:#4caf50;font-weight:700;">'
+                f'{coverage_pct:.0%}</span>'
+                f'</div>'
+                f'<div style="margin-bottom:8px;">'
+                f'<strong style="color:#888;">Standard angle '
+                f'(competitors):</strong> '
+                f'<span style="color:#ccc;">{lh.get("standard_angle", "")}'
+                f'</span></div>'
+                f'<div style="margin-bottom:8px;">'
+                f'<strong style="color:#f59e0b;">YOUR angle:</strong> '
+                f'<span style="color:#fafafa;">{lh.get("your_angle", "")}'
+                f'</span></div>'
+                + (
+                    f'<div style="background:#1c2f1c;border-left:4px solid '
+                    f'#4caf50;padding:8px 12px;margin:8px 0;border-radius:4px;">'
+                    f'<span style="color:#81c784;">\U0001f517 {conn_boost}'
+                    f'</span></div>'
+                    if conn_boost else ""
+                )
+                + f'<div style="margin-bottom:8px;">'
+                f'<strong style="color:#60a5fa;">Why this works:</strong> '
+                f'<span style="color:#fafafa;">'
+                f'{lh.get("why_it_works", "")}</span></div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Hook examples
+            hooks = lh.get("hook_examples", [])
+            if hooks:
+                for h in hooks:
+                    st.markdown(f'> "{h}"')
+
+            st.markdown(
+                '<div style="background:#3e2723;border-radius:4px;'
+                'padding:8px 12px;margin:4px 0 16px 0;font-size:0.85em;'
+                'color:#ffab91;">'
+                '\u26a0\ufe0f High competition but strong formula '
+                'differentiation. Test with $500 budget first.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
     # Synergy map
     if report.get("synergy_map"):
         st.markdown("### Ingredient Synergy Map")
@@ -920,6 +992,129 @@ def _show_results(report: dict):
                 f"{syn['description']}"
             )
 
+
+
+# ── Connections tab ───────────────────────────────────────────────────────────
+def _show_connections_tab():
+    """Display the Connections tab — multi-pain-point connections."""
+    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+
+    report = st.session_state.get("report")
+    if not report:
+        st.info(
+            "No analysis results yet. Run an analysis in the Analyzer tab "
+            "to discover multi-pain-point connections."
+        )
+        return
+
+    connections = report.get("connections", [])
+    if not connections:
+        st.info(
+            "No multi-pain-point connections found in the current analysis. "
+            "Connections require multiple pain points to share 2+ ingredients."
+        )
+        return
+
+    st.markdown("## \U0001f517 Multi-Pain-Point Connections")
+    st.markdown(
+        "Each connection shows how ONE mechanism chain from the product's "
+        "ingredients explains multiple pain points simultaneously."
+    )
+
+    for idx, conn in enumerate(connections):
+        st.markdown(
+            f'<div style="background:#262730;border:2px solid #3b82f6;'
+            f'border-radius:10px;padding:20px 24px;margin-bottom:20px;">'
+            f'<h3 style="color:#60a5fa !important;margin-bottom:12px;">'
+            f'{conn.get("name", f"Connection {idx+1}")}</h3>',
+            unsafe_allow_html=True,
+        )
+
+        # Connected pain points with badges
+        st.markdown("**Connected Pain Points:**")
+        for cpp in conn.get("connected_pain_points", []):
+            tier = cpp.get("tier", 0)
+            badge_class = _tier_badge_class(tier)
+            ad_count = cpp.get("ad_count", 0)
+            st.markdown(
+                f'<div style="background:#1e293b;border-left:4px solid #3b82f6;'
+                f'padding:8px 12px;margin:4px 0;border-radius:0 4px 4px 0;">'
+                f'<strong style="color:#fafafa;">{cpp.get("name", "")}</strong> '
+                f'<span class="tier-badge {badge_class}">'
+                f'{cpp.get("tier_label", "")}</span> '
+                f'<span style="color:#888;font-size:0.9em;">'
+                f'{ad_count:,} ads</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        # Visual chain
+        chain = conn.get("chain", "")
+        if chain:
+            st.markdown(
+                f'<div style="background:#1a2332;border:1px solid #2563eb;'
+                f'border-radius:6px;padding:14px 18px;margin:12px 0;'
+                f'color:#93c5fd;font-weight:600;font-size:0.95em;">'
+                f'\U0001f9ec {chain}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        # Shared root cause
+        root = conn.get("shared_root_cause", "")
+        if root:
+            st.markdown(
+                f'<div style="margin:8px 0;">'
+                f'<strong style="color:#f59e0b;">Why nobody else sees this:</strong> '
+                f'<span style="color:#fafafa;">{root}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+        # Why treating individually fails
+        why_fail = conn.get("why_treating_individually_fails", "")
+        if why_fail:
+            st.markdown(
+                f'<div style="margin:8px 0;">'
+                f'<strong style="color:#ef5350;">Why treating separately fails:</strong> '
+                f'<span style="color:#fafafa;">{why_fail}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+        # Hook sentence
+        hook = conn.get("hook_sentence", "")
+        if hook:
+            st.markdown(
+                f'<div style="background:#1c1917;border-left:4px solid '
+                f'#f59e0b;padding:12px 16px;margin:10px 0;border-radius:4px;'
+                f'color:#fde68a;font-style:italic;font-size:1.05em;">'
+                f'"{hook}"</div>',
+                unsafe_allow_html=True,
+            )
+
+        # Ad hooks
+        ad_hooks = conn.get("ad_hooks", [])
+        if ad_hooks:
+            st.markdown("**Ad Hook Examples:**")
+            for h in ad_hooks:
+                st.markdown(f'> "{h}"')
+
+        # Supporting ingredients
+        ings = conn.get("supporting_ingredients", [])
+        if ings:
+            ing_tags = " ".join(
+                f'<span style="background:#1e3a5f;color:#93c5fd;'
+                f'padding:3px 10px;border-radius:12px;font-size:0.85em;'
+                f'margin-right:4px;">{ing}</span>'
+                for ing in ings
+            )
+            st.markdown(
+                f'<div style="margin-top:10px;">'
+                f'<strong style="color:#888;">Supporting ingredients:</strong> '
+                f'{ing_tags}</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ── Reports index ─────────────────────────────────────────────────────────────
@@ -1205,10 +1400,15 @@ def main():
         )
 
     # ── Tabs ─────────────────────────────────────────────────────────────────
-    tab_analyzer, tab_reports = st.tabs(["Analyzer", "Reports"])
+    tab_analyzer, tab_connections, tab_reports = st.tabs(
+        ["Analyzer", "\U0001f517 Connections", "Reports"]
+    )
 
     with tab_reports:
         _show_reports_tab()
+
+    with tab_connections:
+        _show_connections_tab()
 
     with tab_analyzer:
         st.markdown(

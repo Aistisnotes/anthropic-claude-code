@@ -452,65 +452,16 @@
     </div>
   </div>
 
-  <div class="subsection-header">Avatar</div>
-  {% if dive.positioning.avatar.narrative %}
-  <div class="callout callout-blue" style="margin-bottom:10px;">
-    <div class="callout-title">Who This Person Is</div>
-    <p>{{ dive.positioning.avatar.narrative }}</p>
+  <div class="subsection-header">Avatar Profiles</div>
+  {% if dive.positioning.avatar_profiles %}
+  {% for profile in dive.positioning.avatar_profiles %}
+  <div class="card" style="border-left-color:#3b82f6;margin-bottom:8px;">
+    <div class="card-title" style="font-size:13px;">Avatar #{{ loop.index }}</div>
+    <p style="font-size:12.5px;color:#1a1a1a;">
+      {{ profile.habit }} {{ profile.root_cause_connection }} {{ profile.why_solutions_failed }}
+    </p>
   </div>
-  {% if dive.positioning.avatar.habit_history %}
-  <div class="strategy-grid">
-    <div class="strategy-cell" style="grid-column:1/-1;">
-      <div class="strategy-cell-label">Core Habit / Behavior</div>
-      <div class="strategy-cell-value">{{ dive.positioning.avatar.habit_history }}</div>
-    </div>
-    {% if dive.positioning.avatar.root_cause_connection %}
-    <div class="strategy-cell" style="grid-column:1/-1;">
-      <div class="strategy-cell-label">Why It Matters (Root Cause Connection)</div>
-      <div class="strategy-cell-value">{{ dive.positioning.avatar.root_cause_connection }}</div>
-    </div>
-    {% endif %}
-    {% if dive.positioning.avatar.failed_solutions %}
-    <div class="strategy-cell" style="grid-column:1/-1;">
-      <div class="strategy-cell-label">What They've Tried (And Why It Failed)</div>
-      <div class="strategy-cell-value">
-        <ul style="padding-left:18px;margin:0;">
-          {% for sol in dive.positioning.avatar.failed_solutions %}
-          <li style="color:#222;">{{ sol }}</li>
-          {% endfor %}
-        </ul>
-      </div>
-    </div>
-    {% endif %}
-    {% if dive.positioning.avatar.urgency_trigger %}
-    <div class="strategy-cell" style="grid-column:1/-1;">
-      <div class="strategy-cell-label">Why Now (Urgency Trigger)</div>
-      <div class="strategy-cell-value">{{ dive.positioning.avatar.urgency_trigger }}</div>
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
-  {% else %}
-  <div class="strategy-grid">
-    <div class="strategy-cell">
-      <div class="strategy-cell-label">Age</div>
-      <div class="strategy-cell-value">{{ dive.positioning.avatar.age }}</div>
-    </div>
-    <div class="strategy-cell">
-      <div class="strategy-cell-label">Gender</div>
-      <div class="strategy-cell-value">{{ dive.positioning.avatar.gender }}</div>
-    </div>
-    <div class="strategy-cell" style="grid-column:1/-1;">
-      <div class="strategy-cell-label">Lifestyle</div>
-      <div class="strategy-cell-value">{{ dive.positioning.avatar.lifestyle }}</div>
-    </div>
-    {% if dive.positioning.avatar.tried_before %}
-    <div class="strategy-cell" style="grid-column:1/-1;">
-      <div class="strategy-cell-label">What They've Tried Before</div>
-      <div class="strategy-cell-value">{{ dive.positioning.avatar.tried_before | join(', ') }}</div>
-    </div>
-    {% endif %}
-  </div>
+  {% endfor %}
   {% endif %}
 
   {% if dive.positioning.daily_symptoms %}
@@ -551,6 +502,119 @@
     <div class="card-subtitle">Pain Point: {{ syn.pain_point }}</div>
     <p style="font-size:12.5px;color:#1a1a1a;">{{ syn.description }}</p>
     <p class="text-muted" style="font-size:11px;margin-top:4px;">{{ syn.mechanism }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 6. SATURATED MARKET LOOPHOLES -->
+{% if report.saturated_loopholes %}
+<div class="section page-break">
+  <div class="section-header"><span class="section-num">6.</span> Saturated Market Loopholes</div>
+  <p style="font-size:12px;color:#666;margin-bottom:12px;">High competition but your formula has an edge.</p>
+
+  {% for lh in report.saturated_loopholes %}
+  <div class="card" style="border-left-color:#ff9800;">
+    <div class="card-title">
+      {{ lh.pain_point_name }}
+      {% set tier_class_map = {3: 'tier-pdf-saturated', 4: 'tier-pdf-super-saturated'} %}
+      <span class="tier-badge-pdf {{ tier_class_map.get(lh.tier, 'tier-pdf-unknown') }}">{{ lh.tier_label }}</span>
+      <span style="font-size:11px;color:#888;margin-left:6px;">{{ '{:,}'.format(lh.ad_count) }} ads</span>
+    </div>
+    <div class="card-subtitle">Ingredient Coverage: {{ '{:.0%}'.format(lh.ingredient_coverage) }}</div>
+
+    <div class="strategy-grid">
+      <div class="strategy-cell">
+        <div class="strategy-cell-label">Standard Angle (Competitors)</div>
+        <div class="strategy-cell-value">{{ lh.standard_angle }}</div>
+      </div>
+      <div class="strategy-cell">
+        <div class="strategy-cell-label">Your Angle</div>
+        <div class="strategy-cell-value" style="font-weight:700;">{{ lh.your_angle }}</div>
+      </div>
+    </div>
+
+    {% if lh.connection_boost %}
+    <div class="callout callout-green" style="margin-top:8px;">
+      <div class="callout-title">&#128279; Connection Boost</div>
+      <p>{{ lh.connection_boost }}</p>
+    </div>
+    {% endif %}
+
+    <p style="font-size:12px;color:#1a1a1a;margin-top:8px;">{{ lh.why_it_works }}</p>
+
+    {% if lh.hook_examples %}
+    <ul class="hooks-list" style="margin-top:8px;">
+      {% for h in lh.hook_examples %}
+      <li>"{{ h }}"</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <div class="callout callout-orange" style="margin-top:8px;">
+      <p style="font-size:11px;">&#9888;&#65039; High competition but strong formula differentiation. Test with $500 budget first.</p>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 7. MULTI-PAIN-POINT CONNECTIONS -->
+{% if report.connections %}
+<div class="section page-break">
+  <div class="section-header"><span class="section-num">7.</span> Multi-Pain-Point Connections</div>
+  <p style="font-size:12px;color:#666;margin-bottom:12px;">One mechanism chain explains multiple pain points simultaneously.</p>
+
+  {% for conn in report.connections %}
+  <div class="card" style="border-left-color:#3b82f6;margin-bottom:16px;">
+    <div class="card-title">{{ conn.name }}</div>
+
+    <div class="subsection-header">Connected Pain Points</div>
+    {% for cpp in conn.connected_pain_points %}
+    <div style="display:inline-block;margin-right:8px;margin-bottom:4px;">
+      <strong>{{ cpp.name }}</strong>
+      {% set tier_class_map = {1: 'tier-pdf-open', 2: 'tier-pdf-solid', 3: 'tier-pdf-saturated', 4: 'tier-pdf-super-saturated'} %}
+      <span class="tier-badge-pdf {{ tier_class_map.get(cpp.tier, 'tier-pdf-unknown') }}">{{ cpp.tier_label }}</span>
+      <span style="font-size:10px;color:#888;">{{ '{:,}'.format(cpp.ad_count) }} ads</span>
+    </div>
+    {% endfor %}
+
+    {% if conn.chain %}
+    <div class="callout callout-blue" style="margin-top:10px;">
+      <div class="callout-title">Mechanism Chain</div>
+      <p style="font-weight:700;">{{ conn.chain }}</p>
+    </div>
+    {% endif %}
+
+    {% if conn.shared_root_cause %}
+    <p style="font-size:12px;margin-top:8px;"><strong>Why nobody else sees this:</strong> {{ conn.shared_root_cause }}</p>
+    {% endif %}
+
+    {% if conn.why_treating_individually_fails %}
+    <p style="font-size:12px;"><strong>Why treating separately fails:</strong> {{ conn.why_treating_individually_fails }}</p>
+    {% endif %}
+
+    {% if conn.hook_sentence %}
+    <div class="callout callout-yellow" style="margin-top:8px;">
+      <div class="callout-title">The Hook</div>
+      <p style="font-weight:700;font-style:italic;">"{{ conn.hook_sentence }}"</p>
+    </div>
+    {% endif %}
+
+    {% if conn.ad_hooks %}
+    <div class="subsection-header">Ad Hook Examples</div>
+    <ul class="hooks-list">
+      {% for h in conn.ad_hooks %}
+      <li>"{{ h }}"</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if conn.supporting_ingredients %}
+    <p style="font-size:11px;color:#666;margin-top:8px;">
+      <strong>Supporting ingredients:</strong> {{ conn.supporting_ingredients | join(', ') }}
+    </p>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

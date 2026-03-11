@@ -48,8 +48,40 @@ class PositioningDoc:
 
 
 @dataclass
+class Connection:
+    """A multi-pain-point connection through shared mechanism."""
+    name: str = ""
+    chain: str = ""
+    connected_pain_points: list[dict] = field(default_factory=list)
+    shared_root_cause: str = ""
+    why_treating_individually_fails: str = ""
+    hook_sentence: str = ""
+    ad_hooks: list[str] = field(default_factory=list)
+    supporting_ingredients: list[str] = field(default_factory=list)
+    score: float = 0.0
+
+
+@dataclass
+class SaturatedLoophole:
+    """A saturated pain point where the formula has a unique edge."""
+    pain_point_name: str = ""
+    tier: int = 0
+    tier_label: str = ""
+    ad_count: int = 0
+    ingredient_coverage: float = 0.0
+    standard_angle: str = ""
+    your_angle: str = ""
+    connection_name: str = ""
+    connection_boost: str = ""
+    why_it_works: str = ""
+    hook_examples: list[str] = field(default_factory=list)
+
+
+@dataclass
 class PositioningResult:
     docs: list[PositioningDoc]
+    connections: list[Connection] = field(default_factory=list)
+    saturated_loopholes: list[SaturatedLoophole] = field(default_factory=list)
 
 
 class PositioningEngine:
@@ -304,3 +336,351 @@ class PositioningEngine:
                 )
 
         return None
+
+    def generate_connections(
+        self,
+        all_trend_results: list[TrendResult],
+        all_ingredients: list[Ingredient],
+        science_reports: list["ScientificReport"],
+        progress_cb=None,
+    ) -> list[Connection]:
+        """Find multi-pain-point connections through shared ingredient mechanisms."""
+        if progress_cb:
+            progress_cb("Finding multi-pain-point connections...")
+
+        # Step 1: Group pain points by supporting ingredients
+        ingredient_to_pps: dict[str, list[dict]] = {}
+        for tr in all_trend_results:
+            pp = tr.pain_point
+            for ing_name in pp.supporting_ingredients:
+                if ing_name not in ingredient_to_pps:
+                    ingredient_to_pps[ing_name] = []
+                ingredient_to_pps[ing_name].append({
+                    "name": pp.name,
+                    "tier": tr.tier,
+                    "tier_label": tr.tier_label,
+                    "ad_count": tr.best_score,
+                    "supporting_ingredients": pp.supporting_ingredients,
+                })
+
+        # Step 2: Find clusters where 3+ pain points share 2+ ingredients
+        pp_pairs: dict[tuple, set] = {}  # (pp1, pp2) -> shared ingredients
+        all_pp_names = list({
+            pp_info["name"]
+            for pps in ingredient_to_pps.values()
+            for pp_info in pps
+        })
+
+        pp_info_map = {}
+        for tr in all_trend_results:
+            pp_info_map[tr.pain_point.name] = {
+                "name": tr.pain_point.name,
+                "tier": tr.tier,
+                "tier_label": tr.tier_label,
+                "ad_count": tr.best_score,
+                "supporting_ingredients": tr.pain_point.supporting_ingredients,
+            }
+
+        for ing_name, pps in ingredient_to_pps.items():
+            pp_names = [p["name"] for p in pps]
+            for i in range(len(pp_names)):
+                for j in range(i + 1, len(pp_names)):
+                    key = tuple(sorted([pp_names[i], pp_names[j]]))
+                    if key not in pp_pairs:
+                        pp_pairs[key] = set()
+                    pp_pairs[key].add(ing_name)
+
+        # Build clusters: groups of 2-3+ pain points that share 2+ ingredients
+        clusters = []
+        visited = set()
+        for (pp1, pp2), shared_ings in sorted(
+            pp_pairs.items(), key=lambda x: len(x[1]), reverse=True
+        ):
+            if len(shared_ings) < 2:
+                continue
+            # Try to extend to a 3rd pain point
+            cluster_pps = {pp1, pp2}
+            for pp3 in all_pp_names:
+                if pp3 in cluster_pps:
+                    continue
+                key1 = tuple(sorted([pp1, pp3]))
+                key2 = tuple(sorted([pp2, pp3]))
+                shared_with_1 = pp_pairs.get(key1, set())
+                shared_with_2 = pp_pairs.get(key2, set())
+                common = shared_ings & shared_with_1 & shared_with_2
+                if len(common) >= 2:
+                    cluster_pps.add(pp3)
+                    shared_ings = common
+                    if len(cluster_pps) >= 3:
+                        break
+
+            if len(cluster_pps) < 2:
+                continue
+
+            cluster_key = frozenset(cluster_pps)
+            if cluster_key in visited:
+                continue
+            visited.add(cluster_key)
+
+            clusters.append({
+                "pain_points": [pp_info_map[n] for n in cluster_pps if n in pp_info_map],
+                "shared_ingredients": list(shared_ings),
+            })
+
+        # Rank clusters
+        def cluster_score(c):
+            n_pps = len(c["pain_points"])
+            n_ings = len(c["shared_ingredients"])
+            total_ads = sum(p.get("ad_count", 0) for p in c["pain_points"])
+            saturation_bonus = sum(
+                1 for p in c["pain_points"] if p.get("tier", 0) >= 3
+            )
+            return n_pps * 3 + n_ings * 2 + saturation_bonus * 2 + total_ads / 10000
+
+        clusters.sort(key=cluster_score, reverse=True)
+        top_clusters = clusters[:5]
+
+        # Step 3: Ask Claude for each cluster
+        connections: list[Connection] = []
+        ingredient_list_full = ", ".join(i.name for i in all_ingredients)
+
+        # Build science context
+        science_context = ""
+        for sr in science_reports:
+            science_context += f"\n{sr.pain_point_name}: {sr.summary}\n"
+            for ev in sr.ingredient_evidence:
+                science_context += f"  - {ev.ingredient_name}: {ev.mechanism}\n"
+
+        for idx, cluster in enumerate(top_clusters):
+            if progress_cb:
+                progress_cb(
+                    f"Generating connection {idx+1}/{len(top_clusters)}..."
+                )
+
+            pp_descriptions = "\n".join(
+                f"- {p['name']} (Tier: {p.get('tier_label', 'unknown')}, "
+                f"~{p.get('ad_count', 0):,} active ads)"
+                for p in cluster["pain_points"]
+            )
+            shared_ings = ", ".join(cluster["shared_ingredients"])
+
+            for attempt in range(self.max_retries):
+                try:
+                    response = self.client.messages.create(
+                        model=self.model,
+                        max_tokens=4096,
+                        temperature=self.temperature,
+                        messages=[{
+                            "role": "user",
+                            "content": (
+                                f"You are a direct response marketing strategist "
+                                f"specializing in health supplements.\n\n"
+                                f"A product has these ingredients: {ingredient_list_full}\n\n"
+                                f"Scientific research found:\n{science_context}\n\n"
+                                f"These pain points share the ingredients [{shared_ings}]:\n"
+                                f"{pp_descriptions}\n\n"
+                                f"Find the SHARED MECHANISM CHAIN — ONE biological "
+                                f"pathway that these shared ingredients affect, which "
+                                f"causes ALL of these different symptoms.\n\n"
+                                f"Think about:\n"
+                                f"- What biological pathway do these ingredients affect?\n"
+                                f"- How does that ONE pathway cause ALL these symptoms?\n"
+                                f"- What's the root cause that connects everything?\n"
+                                f"- Why did treating each symptom separately fail?\n\n"
+                                f"Return ONLY valid JSON:\n"
+                                f"```json\n"
+                                f'{{\n'
+                                f'  "connection_name": "A memorable name like The Inflammation Cascade or The Cortisol Loop",\n'
+                                f'  "chain": "Ingredient action → biological step → root cause → Symptom 1 + Symptom 2 + Symptom 3 (use → arrows)",\n'
+                                f'  "shared_root_cause": "The one root cause nobody else is connecting",\n'
+                                f'  "why_treating_individually_fails": "Why addressing each symptom alone doesn\'t work",\n'
+                                f'  "hook_sentence": "One powerful sentence: the everything-is-connected hook",\n'
+                                f'  "ad_hooks": ["hook 1 using the connection angle", "hook 2", "hook 3", "hook 4", "hook 5"]\n'
+                                f'}}\n'
+                                f"```"
+                            ),
+                        }],
+                    )
+
+                    text = response.content[0].text
+                    json_match = re.search(r"\{[\s\S]*\}", text)
+                    if not json_match:
+                        continue
+
+                    data = json.loads(json_match.group())
+
+                    conn = Connection(
+                        name=data.get("connection_name", f"Connection {idx+1}"),
+                        chain=data.get("chain", ""),
+                        connected_pain_points=cluster["pain_points"],
+                        shared_root_cause=data.get("shared_root_cause", ""),
+                        why_treating_individually_fails=data.get(
+                            "why_treating_individually_fails", ""
+                        ),
+                        hook_sentence=data.get("hook_sentence", ""),
+                        ad_hooks=data.get("ad_hooks", []),
+                        supporting_ingredients=cluster["shared_ingredients"],
+                        score=cluster_score(cluster),
+                    )
+                    connections.append(conn)
+                    break
+
+                except Exception as e:
+                    logger.warning(
+                        f"Connection generation attempt {attempt+1} "
+                        f"failed: {e}"
+                    )
+
+        return connections
+
+    def generate_saturated_loopholes(
+        self,
+        all_trend_results: list[TrendResult],
+        all_ingredients: list[Ingredient],
+        connections: list[Connection],
+        progress_cb=None,
+    ) -> list[SaturatedLoophole]:
+        """Find loopholes in saturated markets where the formula has an edge."""
+        if progress_cb:
+            progress_cb("Scanning for saturated market loopholes...")
+
+        total_ingredients = len(all_ingredients)
+        if total_ingredients == 0:
+            return []
+
+        ingredient_names = {i.name for i in all_ingredients}
+
+        # Find saturated/super-saturated pain points with >= 60% coverage
+        candidates = []
+        for tr in all_trend_results:
+            if tr.tier < 3:  # Only saturated (3) or super-saturated (4)
+                continue
+            pp = tr.pain_point
+            coverage = len(pp.supporting_ingredients) / total_ingredients
+            if coverage < 0.60:
+                continue
+            candidates.append({
+                "trend_result": tr,
+                "coverage": coverage,
+            })
+
+        if not candidates:
+            return []
+
+        # Check which candidates are part of a Connection
+        connection_map: dict[str, Connection] = {}
+        for conn in connections:
+            for cpp in conn.connected_pain_points:
+                connection_map[cpp["name"]] = conn
+
+        # Sort by coverage descending, limit to 3
+        candidates.sort(key=lambda c: c["coverage"], reverse=True)
+        candidates = candidates[:3]
+
+        loopholes: list[SaturatedLoophole] = []
+        ingredient_list_full = ", ".join(i.name for i in all_ingredients)
+
+        for idx, cand in enumerate(candidates):
+            tr = cand["trend_result"]
+            pp = tr.pain_point
+            coverage = cand["coverage"]
+            conn = connection_map.get(pp.name)
+
+            if progress_cb:
+                progress_cb(
+                    f"Analyzing loophole {idx+1}/{len(candidates)}: "
+                    f"'{pp.name}'..."
+                )
+
+            connection_context = ""
+            if conn:
+                connection_context = (
+                    f"\nThis pain point is part of the '{conn.name}' connection, "
+                    f"which links it to {', '.join(c['name'] for c in conn.connected_pain_points)}. "
+                    f"Shared mechanism: {conn.chain}\n"
+                    f"Use this broader story as part of the unique angle.\n"
+                )
+
+            for attempt in range(self.max_retries):
+                try:
+                    response = self.client.messages.create(
+                        model=self.model,
+                        max_tokens=4096,
+                        temperature=self.temperature,
+                        messages=[{
+                            "role": "user",
+                            "content": (
+                                f"You are a direct response marketing strategist.\n\n"
+                                f"The pain point '{pp.name}' is SATURATED ({tr.best_score:,} "
+                                f"active ads, tier: {tr.tier_label}). But this product's "
+                                f"formula covers {coverage:.0%} of its ingredients for "
+                                f"this pain point.\n\n"
+                                f"Product ingredients: {ingredient_list_full}\n"
+                                f"Ingredients supporting this pain point: "
+                                f"{', '.join(pp.supporting_ingredients)}\n"
+                                f"{connection_context}\n"
+                                f"Find the LOOPHOLE — the unique angle that lets this "
+                                f"product compete despite saturation.\n\n"
+                                f"Return ONLY valid JSON:\n"
+                                f"```json\n"
+                                f'{{\n'
+                                f'  "standard_angle": "What most competitors say about this pain point",\n'
+                                f'  "your_angle": "The deeper, unique angle based on ingredient mechanisms",\n'
+                                f'  "why_it_works": "Why this works despite saturation — 2-3 sentences",\n'
+                                f'  "hook_examples": ["hook 1", "hook 2", "hook 3"]\n'
+                                f'}}\n'
+                                f"```"
+                            ),
+                        }],
+                    )
+
+                    text = response.content[0].text
+                    json_match = re.search(r"\{[\s\S]*\}", text)
+                    if not json_match:
+                        continue
+
+                    data = json.loads(json_match.group())
+
+                    conn_boost = ""
+                    conn_name = ""
+                    if conn:
+                        conn_name = conn.name
+                        other_pps = [
+                            c["name"] for c in conn.connected_pain_points
+                            if c["name"] != pp.name
+                        ]
+                        conn_boost = (
+                            f"This loophole is strengthened by the "
+                            f"{conn.name} — your mechanism also addresses "
+                            f"{', '.join(other_pps)}, giving you a broader "
+                            f"story competitors can't match."
+                        )
+
+                    loophole = SaturatedLoophole(
+                        pain_point_name=pp.name,
+                        tier=tr.tier,
+                        tier_label=tr.tier_label,
+                        ad_count=tr.best_score,
+                        ingredient_coverage=coverage,
+                        standard_angle=data.get("standard_angle", ""),
+                        your_angle=data.get("your_angle", ""),
+                        connection_name=conn_name,
+                        connection_boost=conn_boost,
+                        why_it_works=data.get("why_it_works", ""),
+                        hook_examples=data.get("hook_examples", []),
+                    )
+                    loopholes.append(loophole)
+                    break
+
+                except Exception as e:
+                    logger.warning(
+                        f"Loophole generation attempt {attempt+1} "
+                        f"failed for '{pp.name}': {e}"
+                    )
+
+        # Rank: those with connections rank higher
+        loopholes.sort(
+            key=lambda l: (1 if l.connection_name else 0, l.ingredient_coverage),
+            reverse=True,
+        )
+        return loopholes
