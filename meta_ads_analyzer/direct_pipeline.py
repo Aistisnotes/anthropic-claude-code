@@ -108,6 +108,7 @@ class DirectPipeline:
         brand_entries: list[dict[str, str]],
         keyword: str = "",
         ads_per_brand: int = 50,
+        run_compare: bool = True,
     ) -> MarketResult:
         """Run full analysis for a list of directly-specified brands.
 
@@ -177,6 +178,60 @@ class DirectPipeline:
             f"{len(brand_reports)}/{len(brand_entries)} brands"
         )
         console.print(f"Reports in: [dim]{market_subdir}[/]")
+
+        # ── Compare + loophole analysis ──────────────────────────────────────
+        if run_compare and len(brand_reports) >= 2:
+            _kw = keyword or "direct"
+            console.print(f"\n[cyan]Running compare + loophole analysis for: {_kw}[/]")
+            try:
+                from meta_ads_analyzer.compare_pipeline import ComparePipeline
+                from meta_ads_analyzer.reporter.pdf_generator import generate_pdf
+                import os as _os
+
+                cmp = ComparePipeline(self.config)
+                cmp_result = await cmp.run(
+                    keyword=_kw,
+                    from_reports=market_subdir,  # exact path — no slug guessing
+                    enhance=True,
+                )
+
+                if cmp_result.loophole_doc:
+                    # Find the compare output dir (just created by cmp.run)
+                    _reports_base = Path(
+                        self.config.get("reporting", {}).get("output_dir", "output/reports")
+                    )
+                    _kw_slug = "".join(c if c.isalnum() else "_" for c in _kw.lower())[:50]
+                    _cmp_dirs = sorted(
+                        _reports_base.glob(f"compare_{_kw_slug}_*"),
+                        key=lambda p: p.stat().st_mtime,
+                    )
+                    if _cmp_dirs:
+                        _cmp_dir = _cmp_dirs[-1]
+                        _loophole_path = _cmp_dir / "strategic_loophole_doc.json"
+                        _market_map_path = _cmp_dir / "strategic_market_map.json"
+                        if _loophole_path.exists():
+                            _pdf_out = Path(
+                                _os.environ.get(
+                                    "PDF_OUTPUT_DIR",
+                                    str(Path.home() / "Desktop" / "reports"),
+                                )
+                            )
+                            _pdf_out.mkdir(parents=True, exist_ok=True)
+                            try:
+                                pdf_path = await generate_pdf(
+                                    loophole_doc_path=_loophole_path,
+                                    market_map_path=_market_map_path if _market_map_path.exists() else None,
+                                    output_dir=_pdf_out,
+                                )
+                                console.print(f"[bold green]✓[/] PDF saved: {pdf_path}")
+                            except Exception as pdf_e:
+                                logger.warning(f"PDF generation failed: {pdf_e}")
+
+            except Exception as e:
+                logger.error(f"Compare pipeline failed: {e}")
+                console.print(f"[red]✗ Compare failed: {e}[/]")
+        elif run_compare and len(brand_reports) < 2:
+            console.print("[yellow]⚠ Need at least 2 brands for compare — skipping[/]")
 
         return MarketResult(
             keyword=keyword or "direct",
