@@ -113,11 +113,11 @@ async def _run_pipeline(url: str, config: dict, status_placeholder):
             status_placeholder.text(msg)
 
     # Step 1: Extract ingredients
-    update("Step 1/6: Extracting ingredients...", 0.05)
+    update("Step 1/8: Extracting ingredients...", 0.05)
     extractor = IngredientExtractor(config)
     try:
         extraction = await extractor.extract(
-            url, progress_cb=lambda m: update(f"Step 1/6: {m}", 0.10)
+            url, progress_cb=lambda m: update(f"Step 1/8: {m}", 0.10)
         )
     except Exception as e:
         import traceback
@@ -175,10 +175,10 @@ async def _run_pipeline_from_text(
             status_placeholder.text(msg)
 
     # Step 1: Parse pasted ingredients with Claude
-    update("Step 1/6: Parsing ingredients...", 0.05)
+    update("Step 1/8: Parsing ingredients...", 0.05)
     extractor = IngredientExtractor(config)
     ingredients = await extractor.extract_from_text(ingredient_text)
-    update(f"Step 1/6: Found {len(ingredients)} ingredients", 0.15)
+    update(f"Step 1/8: Found {len(ingredients)} ingredients", 0.15)
 
     extraction = ExtractionResult(
         product=ProductInfo(
@@ -218,12 +218,19 @@ async def _run_remaining_pipeline(extraction, config, url, update):
     include_single = st.session_state.get("include_single_ingredient", False)
 
     # Step 2: Discover pain points
-    log_and_update("Step 2/6: Discovering pain points...", 0.20)
+    log_and_update("Step 2/8: Discovering pain points...", 0.20)
     discovery_engine = PainPointDiscovery(config)
     discovery = await discovery_engine.discover(
         extraction.ingredients,
-        progress_cb=lambda m: log_and_update(f"Step 2/6: {m}", 0.30),
+        progress_cb=lambda m: log_and_update(f"Step 2/8: {m}", 0.30),
     )
+    if discovery.from_cache:
+        log_and_update(
+            f"Using cached pain point discovery "
+            f"(generated {discovery.cache_date}) — "
+            f"{len(discovery.pain_points)} pain points",
+            0.32,
+        )
 
     # Count cached pain points for time estimate
     num_pp = len(discovery.pain_points)
@@ -234,21 +241,21 @@ async def _run_remaining_pipeline(extraction, config, url, update):
     log_and_update(f"Estimated remaining time: {est}", 0.32)
 
     # Step 3: Meta Ad Library demand validation
-    log_and_update("Step 3/6: Validating demand via Meta Ad Library...", 0.35)
+    log_and_update("Step 3/8: Validating demand via Meta Ad Library...", 0.35)
     trends_engine = TrendsValidator(config)
     trends = await trends_engine.validate(
         discovery.pain_points,
-        progress_cb=lambda m: log_and_update(f"Step 3/6: {m}", 0.50),
+        progress_cb=lambda m: log_and_update(f"Step 3/8: {m}", 0.50),
         include_single_ingredient=include_single,
     )
 
     # Step 4: Scientific research
-    log_and_update("Step 4/6: Running scientific research...", 0.55)
+    log_and_update("Step 4/8: Running scientific research...", 0.55)
     researcher = ScientificResearcher(config)
     research = await researcher.research(
         trends.top_results,
         extraction.ingredients,
-        progress_cb=lambda m: log_and_update(f"Step 4/6: {m}", 0.65),
+        progress_cb=lambda m: log_and_update(f"Step 4/8: {m}", 0.65),
     )
 
     # Step 5: Positioning
@@ -273,7 +280,7 @@ async def _run_remaining_pipeline(extraction, config, url, update):
 
     # Step 7: Generate saturated loopholes
     log_and_update("Step 7/8: Scanning for saturated market loopholes...", 0.85)
-    loopholes = positioning_engine.generate_saturated_loopholes(
+    loopholes, loophole_meta = positioning_engine.generate_saturated_loopholes(
         trends.all_results,
         extraction.ingredients,
         connections,
@@ -287,6 +294,7 @@ async def _run_remaining_pipeline(extraction, config, url, update):
     report = reporter.generate(
         extraction, discovery, trends, research, positioning, url
     )
+    report["_loophole_meta"] = loophole_meta
 
     # Try PDF
     pdf_path = await reporter.generate_pdf(report)
@@ -911,7 +919,11 @@ def _show_results(report: dict):
 
     # ── Saturated Market Loopholes (after deep dives, before skipped) ────
     loopholes = report.get("saturated_loopholes", [])
-    if loopholes:
+    loophole_meta = report.get("_loophole_meta", {})
+    total_saturated = loophole_meta.get("total_saturated", 0)
+
+    # Always show section header if there are any saturated pain points
+    if total_saturated > 0 or loopholes:
         st.markdown("---")
         st.markdown(
             '<h3 style="color:#f59e0b !important;">'
@@ -919,6 +931,8 @@ def _show_results(report: dict):
             'your formula has an edge</h3>',
             unsafe_allow_html=True,
         )
+
+    if loopholes:
         for lh in loopholes:
             tier_class = _tier_badge_class(lh.get("tier", 3))
             coverage_pct = lh.get("ingredient_coverage", 0)
@@ -983,6 +997,34 @@ def _show_results(report: dict):
                 unsafe_allow_html=True,
             )
 
+    # Messages when fewer than 3 loopholes or zero
+    if total_saturated > 0 and len(loopholes) < 3 and len(loopholes) > 0:
+        n = len(loopholes)
+        st.markdown(
+            f'<div style="background:#3e2723;border-radius:6px;'
+            f'padding:12px 16px;margin:8px 0;color:#ffab91;font-size:0.9em;">'
+            f'\u26a0\ufe0f Only {n} saturated market loophole(s) found. '
+            f'Ingredient coverage for other saturated pain points is below '
+            f'{loophole_meta.get("threshold_used", 0.5):.0%}. Consider:<br>'
+            f'&bull; Scaling through less saturated (OPEN/SOLID tier) pain points instead<br>'
+            f'&bull; Differentiating through deeper avatars, mechanisms, and root cause '
+            f'angles rather than ingredient coverage<br>'
+            f'&bull; Testing the {n} loophole(s) above with a small budget before committing'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    elif total_saturated > 0 and len(loopholes) == 0:
+        st.markdown(
+            '<div style="background:#1e3a5f;border-radius:6px;'
+            'padding:12px 16px;margin:8px 0;color:#93c5fd;font-size:0.9em;">'
+            '\u2139\ufe0f No saturated market loopholes found \u2014 your formula '
+            'doesn\'t have strong enough ingredient coverage (50%+) for '
+            'saturated pain points. Focus on the OPEN and SOLID tier '
+            'opportunities above.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
     # Synergy map
     if report.get("synergy_map"):
         st.markdown("### Ingredient Synergy Map")
@@ -1022,13 +1064,8 @@ def _show_connections_tab():
     )
 
     for idx, conn in enumerate(connections):
-        st.markdown(
-            f'<div style="background:#262730;border:2px solid #3b82f6;'
-            f'border-radius:10px;padding:20px 24px;margin-bottom:20px;">'
-            f'<h3 style="color:#60a5fa !important;margin-bottom:12px;">'
-            f'{conn.get("name", f"Connection {idx+1}")}</h3>',
-            unsafe_allow_html=True,
-        )
+        conn_name = conn.get("name", f"Connection {idx+1}")
+        st.markdown(f"### {conn_name}")
 
         # Connected pain points with badges
         st.markdown("**Connected Pain Points:**")
@@ -1060,43 +1097,120 @@ def _show_connections_tab():
                 unsafe_allow_html=True,
             )
 
-        # Shared root cause
-        root = conn.get("shared_root_cause", "")
-        if root:
-            st.markdown(
-                f'<div style="margin:8px 0;">'
-                f'<strong style="color:#f59e0b;">Why nobody else sees this:</strong> '
-                f'<span style="color:#fafafa;">{root}</span></div>',
-                unsafe_allow_html=True,
-            )
+        # Scientific explanation
+        sci_exp = conn.get("scientific_explanation", "")
+        if sci_exp:
+            with st.expander("Scientific Evidence", expanded=True):
+                st.info(sci_exp)
 
-        # Why treating individually fails
-        why_fail = conn.get("why_treating_individually_fails", "")
-        if why_fail:
-            st.markdown(
-                f'<div style="margin:8px 0;">'
-                f'<strong style="color:#ef5350;">Why treating separately fails:</strong> '
-                f'<span style="color:#fafafa;">{why_fail}</span></div>',
-                unsafe_allow_html=True,
-            )
+                # Root Cause Depth
+                st.markdown("**Root Cause Depth:**")
+                rc_surface = conn.get("root_cause_surface", "")
+                rc_cellular = conn.get("root_cause_cellular", "")
+                rc_molecular = conn.get("root_cause_molecular", "")
+                if rc_surface or rc_cellular:
+                    col1, col2 = st.columns(2)
+                    if rc_surface:
+                        col1.markdown(f"_Surface:_ {rc_surface}")
+                    if rc_cellular:
+                        col2.markdown(f"_Cellular:_ {rc_cellular}")
+                if rc_molecular:
+                    st.markdown(f"_Molecular:_ {rc_molecular}")
 
-        # Hook sentence
-        hook = conn.get("hook_sentence", "")
-        if hook:
-            st.markdown(
-                f'<div style="background:#1c1917;border-left:4px solid '
-                f'#f59e0b;padding:12px 16px;margin:10px 0;border-radius:4px;'
-                f'color:#fde68a;font-style:italic;font-size:1.05em;">'
-                f'"{hook}"</div>',
-                unsafe_allow_html=True,
-            )
+                # Mechanism
+                mech = conn.get("mechanism", "")
+                if mech:
+                    st.markdown(f"**Mechanism:** {mech}")
 
-        # Ad hooks
-        ad_hooks = conn.get("ad_hooks", [])
-        if ad_hooks:
-            st.markdown("**Ad Hook Examples:**")
-            for h in ad_hooks:
-                st.markdown(f'> "{h}"')
+                # Ingredient roles
+                roles = conn.get("ingredient_roles", [])
+                if roles:
+                    st.markdown("**Ingredient Roles in the Chain:**")
+                    for role in roles:
+                        st.markdown(
+                            f'<div style="background:#1e293b;border-left:4px solid '
+                            f'#4caf50;padding:8px 12px;margin:4px 0;border-radius:0 4px 4px 0;">'
+                            f'<strong style="color:#81c784;">{role.get("ingredient", "")}</strong>: '
+                            f'<span style="color:#fafafa;">{role.get("role", "")}</span>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+        # Positioning section
+        with st.expander("Root Cause + Mechanism Positioning", expanded=True):
+            # Why nobody else sees this
+            root = conn.get("shared_root_cause", "")
+            if root:
+                st.markdown(
+                    f'<div style="margin:8px 0;">'
+                    f'<strong style="color:#f59e0b;">Why nobody else sees this:</strong> '
+                    f'<span style="color:#fafafa;">{root}</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Why treating individually fails
+            why_fail = conn.get("why_treating_individually_fails", "")
+            if why_fail:
+                st.markdown(
+                    f'<div style="margin:8px 0;">'
+                    f'<strong style="color:#ef5350;">Why treating separately fails:</strong> '
+                    f'<span style="color:#fafafa;">{why_fail}</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Avatar profiles
+            avatar_profiles = conn.get("avatar_profiles", [])
+            if avatar_profiles:
+                st.markdown("**Avatar Profiles:**")
+                for ap_idx, profile in enumerate(avatar_profiles, 1):
+                    habit = profile.get("habit", "")
+                    rcc = profile.get("root_cause_connection", "")
+                    symptoms = profile.get("connected_symptoms", "")
+                    why_failed = profile.get("why_solutions_failed", "")
+                    st.markdown(
+                        f'<div style="background:#1e293b;border-left:4px solid '
+                        f'#3b82f6;padding:10px 14px;margin:6px 0;border-radius:4px;">'
+                        f'<strong style="color:#60a5fa;">Avatar #{ap_idx}</strong><br>'
+                        f'<span style="color:#fafafa;">'
+                        f'{habit} {rcc}'
+                        f'</span>'
+                        + (f'<br><span style="color:#93c5fd;font-size:0.9em;">'
+                           f'Symptoms: {symptoms}</span>' if symptoms else "")
+                        + (f'<br><span style="color:#f59e0b;font-size:0.9em;">'
+                           f'{why_failed}</span>' if why_failed else "")
+                        + f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # Daily symptoms
+            daily = conn.get("daily_symptoms", [])
+            if daily:
+                st.markdown("**Daily Symptoms (spanning all connected pain points):**")
+                for s in daily:
+                    st.markdown(f"- {s}")
+
+            # Mass desire
+            mass_desire = conn.get("mass_desire", "")
+            if mass_desire:
+                st.info(f"**Mass Desire:** {mass_desire}")
+
+            # Hook sentence
+            hook = conn.get("hook_sentence", "")
+            if hook:
+                st.markdown(
+                    f'<div style="background:#1c1917;border-left:4px solid '
+                    f'#f59e0b;padding:12px 16px;margin:10px 0;border-radius:4px;'
+                    f'color:#fde68a;font-style:italic;font-size:1.05em;">'
+                    f'"{hook}"</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Ad hooks
+            ad_hooks = conn.get("ad_hooks", [])
+            if ad_hooks:
+                st.markdown("**Ad Hook Examples:**")
+                for h in ad_hooks:
+                    st.markdown(f'> "{h}"')
 
         # Supporting ingredients
         ings = conn.get("supporting_ingredients", [])
@@ -1114,7 +1228,7 @@ def _show_connections_tab():
                 unsafe_allow_html=True,
             )
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("---")
 
 
 # ── Reports index ─────────────────────────────────────────────────────────────
@@ -1373,9 +1487,23 @@ def main():
         cache_count = len(cache)
         st.markdown(f"**Keyword Cache:** {cache_count} entries")
         if cache_count > 0:
-            if st.button("Clear Cache", width='stretch'):
+            if st.button("Clear Keyword Cache", width='stretch'):
                 clear_cache()
-                st.success("Cache cleared!")
+                st.success("Keyword cache cleared!")
+                st.rerun()
+
+        # Discovery cache management
+        from analyzer.pain_point_discovery import (
+            _load_discovery_cache,
+            clear_discovery_cache,
+        )
+        disc_cache = _load_discovery_cache()
+        disc_count = len(disc_cache)
+        st.markdown(f"**Discovery Cache:** {disc_count} product(s)")
+        if disc_count > 0:
+            if st.button("Clear Discovery Cache", width='stretch'):
+                clear_discovery_cache()
+                st.success("Discovery cache cleared!")
                 st.rerun()
 
         st.markdown("---")

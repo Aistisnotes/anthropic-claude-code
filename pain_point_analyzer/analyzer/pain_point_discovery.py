@@ -7,10 +7,13 @@ and rank by number of supporting ingredients.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import anthropic
@@ -23,6 +26,43 @@ CANCER_KEYWORDS = [
     "cancer", "tumor", "carcinoma", "oncology", "malignant",
     "chemotherapy", "metastasis", "leukemia", "lymphoma",
 ]
+
+# Discovery cache
+DISCOVERY_CACHE_FILE = (
+    Path(__file__).parent.parent / "output" / "discovery_cache.json"
+)
+DISCOVERY_CACHE_TTL_DAYS = 14
+
+
+def _make_cache_key(ingredients: list[Ingredient]) -> str:
+    """Create a deterministic cache key from sorted ingredient names."""
+    sorted_names = sorted(ing.name.lower().strip() for ing in ingredients)
+    key_str = "|".join(sorted_names)
+    return hashlib.sha256(key_str.encode()).hexdigest()[:16]
+
+
+def _load_discovery_cache() -> dict:
+    """Load the discovery cache from disk."""
+    if DISCOVERY_CACHE_FILE.exists():
+        try:
+            return json.loads(DISCOVERY_CACHE_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _save_discovery_cache(cache: dict) -> None:
+    """Save the discovery cache to disk."""
+    DISCOVERY_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    DISCOVERY_CACHE_FILE.write_text(
+        json.dumps(cache, indent=2, default=str), encoding="utf-8"
+    )
+
+
+def clear_discovery_cache() -> None:
+    """Clear the entire discovery cache."""
+    if DISCOVERY_CACHE_FILE.exists():
+        DISCOVERY_CACHE_FILE.unlink()
 
 
 @dataclass
@@ -38,6 +78,8 @@ class PainPoint:
 class DiscoveryResult:
     pain_points: list[PainPoint]
     ingredient_pain_map: dict[str, list[str]]  # ingredient → pain points
+    from_cache: bool = False
+    cache_date: str = ""
 
 
 class PainPointDiscovery:
@@ -55,6 +97,56 @@ class PainPointDiscovery:
         self, ingredients: list[Ingredient], progress_cb=None
     ) -> DiscoveryResult:
         """Discover pain points for all ingredients, combine, and rank."""
+        # Check discovery cache first
+        cache_key = _make_cache_key(ingredients)
+        cache = _load_discovery_cache()
+        cached_entry = cache.get(cache_key)
+
+        if cached_entry:
+            expires_str = cached_entry.get("expires", "")
+            try:
+                expires_dt = datetime.fromisoformat(expires_str)
+                if datetime.utcnow() < expires_dt:
+                    # Cache hit — use cached pain points
+                    cache_date = cached_entry.get("last_generated", "")
+                    if progress_cb:
+                        progress_cb(
+                            f"Using cached pain point discovery "
+                            f"(generated {cache_date[:10]})"
+                        )
+                    logger.info(
+                        f"Discovery cache hit for {len(ingredients)} ingredients "
+                        f"(generated {cache_date})"
+                    )
+
+                    pain_points = [
+                        PainPoint(
+                            name=pp["name"],
+                            description=pp.get("description", ""),
+                            supporting_ingredients=pp["supporting_ingredients"],
+                            ingredient_count=len(pp["supporting_ingredients"]),
+                            category=pp.get("category", ""),
+                        )
+                        for pp in cached_entry["pain_points"]
+                    ]
+                    ingredient_pain_map = cached_entry.get(
+                        "ingredient_pain_map", {}
+                    )
+                    return DiscoveryResult(
+                        pain_points=pain_points,
+                        ingredient_pain_map=ingredient_pain_map,
+                        from_cache=True,
+                        cache_date=cache_date[:10] if cache_date else "",
+                    )
+            except (ValueError, TypeError):
+                pass  # Expired or bad date — run fresh
+
+        if progress_cb:
+            progress_cb("Running fresh pain point discovery...")
+        logger.info(
+            f"Discovery cache miss — running fresh for {len(ingredients)} ingredients"
+        )
+
         ingredient_pain_map: dict[str, list[str]] = {}
         all_pain_details: dict[str, dict] = {}  # pain_name → details
 
@@ -113,6 +205,26 @@ class PainPointDiscovery:
             )
             for pp in ranked
         ]
+
+        # Save to discovery cache
+        now = datetime.utcnow()
+        cache[cache_key] = {
+            "ingredients": sorted(ing.name for ing in ingredients),
+            "pain_points": [
+                {
+                    "name": pp.name,
+                    "description": pp.description,
+                    "supporting_ingredients": pp.supporting_ingredients,
+                    "category": pp.category,
+                }
+                for pp in pain_points
+            ],
+            "ingredient_pain_map": ingredient_pain_map,
+            "last_generated": now.isoformat(),
+            "expires": (now + timedelta(days=DISCOVERY_CACHE_TTL_DAYS)).isoformat(),
+        }
+        _save_discovery_cache(cache)
+        logger.info(f"Discovery results cached for {len(ingredients)} ingredients")
 
         return DiscoveryResult(
             pain_points=pain_points,

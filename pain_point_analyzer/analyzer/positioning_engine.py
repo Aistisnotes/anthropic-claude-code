@@ -59,6 +59,16 @@ class Connection:
     ad_hooks: list[str] = field(default_factory=list)
     supporting_ingredients: list[str] = field(default_factory=list)
     score: float = 0.0
+    # Full deep-dive fields
+    root_cause_surface: str = ""
+    root_cause_cellular: str = ""
+    root_cause_molecular: str = ""
+    mechanism: str = ""
+    scientific_explanation: str = ""
+    avatar_profiles: list[dict] = field(default_factory=list)
+    daily_symptoms: list[str] = field(default_factory=list)
+    mass_desire: str = ""
+    ingredient_roles: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -468,7 +478,7 @@ class PositioningEngine:
                 try:
                     response = self.client.messages.create(
                         model=self.model,
-                        max_tokens=4096,
+                        max_tokens=8192,
                         temperature=self.temperature,
                         messages=[{
                             "role": "user",
@@ -479,23 +489,63 @@ class PositioningEngine:
                                 f"Scientific research found:\n{science_context}\n\n"
                                 f"These pain points share the ingredients [{shared_ings}]:\n"
                                 f"{pp_descriptions}\n\n"
-                                f"Find the SHARED MECHANISM CHAIN — ONE biological "
-                                f"pathway that these shared ingredients affect, which "
-                                f"causes ALL of these different symptoms.\n\n"
-                                f"Think about:\n"
-                                f"- What biological pathway do these ingredients affect?\n"
-                                f"- How does that ONE pathway cause ALL these symptoms?\n"
-                                f"- What's the root cause that connects everything?\n"
-                                f"- Why did treating each symptom separately fail?\n\n"
+                                f"This is a MULTI-PAIN-POINT CONNECTION — a 'super pain point' "
+                                f"that's more powerful than any individual one because it "
+                                f"explains multiple symptoms at once.\n\n"
+                                f"Build a COMPLETE deep-dive for this connection:\n\n"
+                                f"1. CONNECTION NAME: A memorable name (e.g. 'The Inflammation "
+                                f"Cascade', 'The Cortisol Loop', 'The Gut-Brain Disconnect')\n\n"
+                                f"2. CHAIN: The shared mechanism chain showing how ONE pathway "
+                                f"causes ALL these symptoms (use → arrows)\n\n"
+                                f"3. ROOT CAUSE (3 depth levels):\n"
+                                f"   - Surface: What the person notices across ALL connected symptoms\n"
+                                f"   - Cellular: What's happening at the cellular level that connects them\n"
+                                f"   - Molecular: The deepest upstream molecular cause. Be specific "
+                                f"about pathways, enzymes, proteins.\n\n"
+                                f"4. MECHANISM: How the shared ingredients address this root cause. "
+                                f"Specific biological actions, not generic claims.\n\n"
+                                f"5. SCIENTIFIC EXPLANATION: 2-3 sentences explaining the shared "
+                                f"pathway and why these symptoms are connected biologically.\n\n"
+                                f"6. SHARED ROOT CAUSE: The one root cause nobody else is connecting.\n\n"
+                                f"7. WHY TREATING INDIVIDUALLY FAILS: Why addressing each symptom "
+                                f"alone doesn't work — they share a root cause.\n\n"
+                                f"8. AVATAR PROFILES: 3-5 distinct people who suffer from MULTIPLE "
+                                f"of these connected symptoms. Each profile: specific habit → "
+                                f"how it triggers the shared root cause → which symptoms they get → "
+                                f"why previous solutions failed.\n\n"
+                                f"9. DAILY SYMPTOMS: 5-7 specific symptoms spanning ALL connected "
+                                f"pain points that this person experiences daily.\n\n"
+                                f"10. MASS DESIRE: One powerful emotional, identity-level sentence. "
+                                f"NOT clinical. What would this person say they want at a dinner party?\n\n"
+                                f"11. HOOK SENTENCE: One powerful 'everything is connected' hook.\n\n"
+                                f"12. AD HOOKS: 5 attention-grabbing hooks using the connection angle.\n\n"
+                                f"13. INGREDIENT ROLES: For each shared ingredient, explain its "
+                                f"specific role in the connection chain.\n\n"
                                 f"Return ONLY valid JSON:\n"
                                 f"```json\n"
                                 f'{{\n'
-                                f'  "connection_name": "A memorable name like The Inflammation Cascade or The Cortisol Loop",\n'
-                                f'  "chain": "Ingredient action → biological step → root cause → Symptom 1 + Symptom 2 + Symptom 3 (use → arrows)",\n'
-                                f'  "shared_root_cause": "The one root cause nobody else is connecting",\n'
-                                f'  "why_treating_individually_fails": "Why addressing each symptom alone doesn\'t work",\n'
-                                f'  "hook_sentence": "One powerful sentence: the everything-is-connected hook",\n'
-                                f'  "ad_hooks": ["hook 1 using the connection angle", "hook 2", "hook 3", "hook 4", "hook 5"]\n'
+                                f'  "connection_name": "...",\n'
+                                f'  "chain": "... → ... → ... → Symptom 1 + Symptom 2 + Symptom 3",\n'
+                                f'  "root_cause_surface": "...",\n'
+                                f'  "root_cause_cellular": "...",\n'
+                                f'  "root_cause_molecular": "...",\n'
+                                f'  "mechanism": "...",\n'
+                                f'  "scientific_explanation": "...",\n'
+                                f'  "shared_root_cause": "...",\n'
+                                f'  "why_treating_individually_fails": "...",\n'
+                                f'  "avatar_profiles": [\n'
+                                f'    {{"habit": "specific long-term habit", '
+                                f'"root_cause_connection": "how it triggers the shared cause", '
+                                f'"connected_symptoms": "which symptoms they get", '
+                                f'"why_solutions_failed": "why previous attempts failed"}}\n'
+                                f'  ],\n'
+                                f'  "daily_symptoms": ["symptom spanning multiple pain points", ...],\n'
+                                f'  "mass_desire": "...",\n'
+                                f'  "hook_sentence": "...",\n'
+                                f'  "ad_hooks": ["hook 1", "hook 2", "hook 3", "hook 4", "hook 5"],\n'
+                                f'  "ingredient_roles": [\n'
+                                f'    {{"ingredient": "name", "role": "its role in the chain"}}\n'
+                                f'  ]\n'
                                 f'}}\n'
                                 f"```"
                             ),
@@ -521,6 +571,15 @@ class PositioningEngine:
                         ad_hooks=data.get("ad_hooks", []),
                         supporting_ingredients=cluster["shared_ingredients"],
                         score=cluster_score(cluster),
+                        root_cause_surface=data.get("root_cause_surface", ""),
+                        root_cause_cellular=data.get("root_cause_cellular", ""),
+                        root_cause_molecular=data.get("root_cause_molecular", ""),
+                        mechanism=data.get("mechanism", ""),
+                        scientific_explanation=data.get("scientific_explanation", ""),
+                        avatar_profiles=data.get("avatar_profiles", []),
+                        daily_symptoms=data.get("daily_symptoms", []),
+                        mass_desire=data.get("mass_desire", ""),
+                        ingredient_roles=data.get("ingredient_roles", []),
                     )
                     connections.append(conn)
                     break
@@ -539,33 +598,59 @@ class PositioningEngine:
         all_ingredients: list[Ingredient],
         connections: list[Connection],
         progress_cb=None,
-    ) -> list[SaturatedLoophole]:
-        """Find loopholes in saturated markets where the formula has an edge."""
+    ) -> tuple[list[SaturatedLoophole], dict]:
+        """Find loopholes in saturated markets where the formula has an edge.
+
+        Returns (loopholes, metadata) where metadata contains info about
+        saturated pain points found and threshold used.
+        """
         if progress_cb:
             progress_cb("Scanning for saturated market loopholes...")
 
         total_ingredients = len(all_ingredients)
         if total_ingredients == 0:
-            return []
+            return [], {"total_saturated": 0, "threshold_used": 0.60}
 
-        ingredient_names = {i.name for i in all_ingredients}
+        # Count total saturated pain points
+        saturated_pps = [
+            tr for tr in all_trend_results if tr.tier >= 3
+        ]
+        total_saturated = len(saturated_pps)
 
-        # Find saturated/super-saturated pain points with >= 60% coverage
+        # Try 60% threshold first
         candidates = []
-        for tr in all_trend_results:
-            if tr.tier < 3:  # Only saturated (3) or super-saturated (4)
-                continue
+        for tr in saturated_pps:
             pp = tr.pain_point
             coverage = len(pp.supporting_ingredients) / total_ingredients
-            if coverage < 0.60:
-                continue
-            candidates.append({
-                "trend_result": tr,
-                "coverage": coverage,
-            })
+            if coverage >= 0.60:
+                candidates.append({
+                    "trend_result": tr,
+                    "coverage": coverage,
+                })
+
+        threshold_used = 0.60
+
+        # If fewer than 3, retry at 50%
+        if len(candidates) < 3:
+            candidates = []
+            for tr in saturated_pps:
+                pp = tr.pain_point
+                coverage = len(pp.supporting_ingredients) / total_ingredients
+                if coverage >= 0.50:
+                    candidates.append({
+                        "trend_result": tr,
+                        "coverage": coverage,
+                    })
+            threshold_used = 0.50
+
+        metadata = {
+            "total_saturated": total_saturated,
+            "threshold_used": threshold_used,
+            "candidates_found": len(candidates),
+        }
 
         if not candidates:
-            return []
+            return [], metadata
 
         # Check which candidates are part of a Connection
         connection_map: dict[str, Connection] = {}
@@ -683,4 +768,4 @@ class PositioningEngine:
             key=lambda l: (1 if l.connection_name else 0, l.ingredient_coverage),
             reverse=True,
         )
-        return loopholes
+        return loopholes, metadata

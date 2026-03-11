@@ -295,6 +295,15 @@ class ReportGenerator:
                 "hook_sentence": conn.hook_sentence,
                 "ad_hooks": conn.ad_hooks,
                 "supporting_ingredients": conn.supporting_ingredients,
+                "root_cause_surface": conn.root_cause_surface,
+                "root_cause_cellular": conn.root_cause_cellular,
+                "root_cause_molecular": conn.root_cause_molecular,
+                "mechanism": conn.mechanism,
+                "scientific_explanation": conn.scientific_explanation,
+                "avatar_profiles": conn.avatar_profiles,
+                "daily_symptoms": conn.daily_symptoms,
+                "mass_desire": conn.mass_desire,
+                "ingredient_roles": conn.ingredient_roles,
             })
 
         # Saturated loopholes
