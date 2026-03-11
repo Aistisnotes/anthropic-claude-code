@@ -424,6 +424,7 @@ def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
         return
     st.session_state.running = True
     st.session_state._spawned = True
+    st.session_state.run_start_time = time.time()  # Set in main thread — reliable
     # ───────────────────────────────────────────────────────────────────────
 
     log = st.session_state.run_log
@@ -436,7 +437,6 @@ def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
     def _run():
         st.session_state.last_compare_dir = None
         st.session_state.last_pdf_path = None
-        st.session_state.run_start_time = time.time()
 
         try:
             _log(f"Starting {mode} run for: {keyword}")
@@ -550,6 +550,7 @@ def _run_pipeline_direct(brands_text: str, keyword: str, ads_per_brand: int, run
         return
     st.session_state.running = True
     st.session_state._spawned = True
+    st.session_state.run_start_time = time.time()  # Set in main thread — reliable
 
     log = st.session_state.run_log
     log.clear()
@@ -561,7 +562,6 @@ def _run_pipeline_direct(brands_text: str, keyword: str, ads_per_brand: int, run
     def _run():
         st.session_state.last_compare_dir = None
         st.session_state.last_pdf_path = None
-        st.session_state.run_start_time = time.time()
 
         try:
             lines = [l.strip() for l in brands_text.strip().splitlines() if l.strip()]
