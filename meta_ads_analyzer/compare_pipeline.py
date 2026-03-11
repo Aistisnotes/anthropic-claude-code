@@ -169,8 +169,9 @@ class ComparePipeline:
         if reports_dir is None:
             reports_dir = self.output_dir
 
-        # If reports_dir is a direct market subdir (contains brand_report_*.json), use it as-is
-        if list(reports_dir.glob("brand_report_*.json")):
+        # If reports_dir is a direct market subdir, use it as-is.
+        # Check dir name prefix first (handles zero-reports edge case where glob would be empty).
+        if reports_dir.name.startswith("market_") or list(reports_dir.glob("brand_report_*.json")):
             latest_dir = reports_dir
             logger.info(f"Loading reports from direct path: {latest_dir}")
         else:
@@ -250,7 +251,7 @@ class ComparePipeline:
             reports_dir = self.output_dir
 
         # If reports_dir is a direct market subdir, use it as-is
-        if (reports_dir / "blue_ocean_report.json").exists() or list(reports_dir.glob("brand_report_*.json")):
+        if reports_dir.name.startswith("market_") or (reports_dir / "blue_ocean_report.json").exists() or list(reports_dir.glob("brand_report_*.json")):
             latest_dir = reports_dir
         else:
             keyword_slug = "".join(c if c.isalnum() else "_" for c in keyword.lower())[:50]

@@ -240,6 +240,8 @@ def _init_state():
         "process": None,
         "_spawned": False,  # synchronous guard — prevents duplicate thread launches
         "run_start_time": None,
+        "run_end_time": None,
+        "run_failed": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -412,6 +414,8 @@ def _force_stop():
     st.session_state._spawned = False
     st.session_state.process = None
     st.session_state.run_start_time = None
+    st.session_state.run_end_time = time.time()
+    st.session_state.run_failed = False
 
 
 def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
@@ -425,6 +429,8 @@ def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
     st.session_state.running = True
     st.session_state._spawned = True
     st.session_state.run_start_time = time.time()  # Set in main thread — reliable
+    st.session_state.run_end_time = None
+    st.session_state.run_failed = False
     # ───────────────────────────────────────────────────────────────────────
 
     log = st.session_state.run_log
@@ -532,10 +538,13 @@ def _run_pipeline(keyword: str, brand_url: Optional[str], mode: str,
 
             else:
                 _log(f"✗ Process exited with code {proc.returncode}")
+                st.session_state.run_failed = True
 
         except Exception as e:
             _log(f"✗ Error: {e}")
+            st.session_state.run_failed = True
         finally:
+            st.session_state.run_end_time = time.time()
             st.session_state.running = False
             st.session_state._spawned = False
             st.session_state.process = None
@@ -551,6 +560,8 @@ def _run_pipeline_direct(brands_text: str, keyword: str, ads_per_brand: int, run
     st.session_state.running = True
     st.session_state._spawned = True
     st.session_state.run_start_time = time.time()  # Set in main thread — reliable
+    st.session_state.run_end_time = None
+    st.session_state.run_failed = False
 
     log = st.session_state.run_log
     log.clear()
@@ -629,10 +640,13 @@ def _run_pipeline_direct(brands_text: str, keyword: str, ads_per_brand: int, run
                             _log(f"⚠ PDF generation failed: {e}")
             else:
                 _log(f"✗ Process exited with code {proc.returncode}")
+                st.session_state.run_failed = True
 
         except Exception as e:
             _log(f"✗ Error: {e}")
+            st.session_state.run_failed = True
         finally:
+            st.session_state.run_end_time = time.time()
             st.session_state.running = False
             st.session_state._spawned = False
             st.session_state.process = None
@@ -770,7 +784,7 @@ def page_home():
                 _force_stop()
                 st.rerun()
 
-    # Progress + log (shared across both tabs)
+    # Progress + completion + log (shared across both tabs)
     if st.session_state.running or st.session_state.run_log:
         import re as _pre
 
@@ -781,14 +795,11 @@ def page_home():
             if _m:
                 _cur, _tot = int(_m.group(1)), int(_m.group(2))
 
-        _elapsed = 0.0
-        if st.session_state.run_start_time:
-            _elapsed = time.time() - st.session_state.run_start_time
-
         if st.session_state.running:
+            # Live elapsed + progress bar
+            _elapsed = time.time() - (st.session_state.run_start_time or time.time())
             _e_str = f"{int(_elapsed // 60)}m {int(_elapsed % 60)}s elapsed"
             if _tot > 0:
-                # Progress bar: complete brand = 1.0, in-progress brand counts as 0.5
                 _frac = max(0.0, min(1.0, (_cur - 0.5) / _tot))
                 st.progress(_frac, text=f"Brand {_cur} / {_tot}")
                 if _cur > 1:
@@ -802,21 +813,28 @@ def page_home():
                 st.progress(0.0, text="Starting pipeline…")
                 st.caption(_e_str)
 
+        else:
+            # Completed — show static result banner
+            _start = st.session_state.run_start_time
+            _end = st.session_state.run_end_time
+            _dur = f" in {int((_end - _start) // 60)}m {int((_end - _start) % 60)}s" if _start and _end else ""
+            if st.session_state.run_failed:
+                st.error(f"❌ Run failed{_dur} — expand Pipeline Output below for details.")
+            elif st.session_state.run_log:
+                st.success(f"✅ Analysis complete{_dur}")
+                if st.session_state.last_compare_dir:
+                    if st.button("📊 View Results →", use_container_width=False):
+                        st.session_state.page = "results"
+                        st.rerun()
+
         with st.expander("🔍 Pipeline Output", expanded=False):
             _log_text = "\n".join(st.session_state.run_log[-200:]) or "(waiting for output…)"
             st.code(_log_text, language=None)
 
     # Auto-refresh while running
     if st.session_state.running:
-        time.sleep(1.5)
+        time.sleep(1.0)
         st.rerun()
-
-    # Show "View Results" button when done
-    if not st.session_state.running and st.session_state.last_compare_dir:
-        st.success("Run complete!")
-        if st.button("📊 View Results →", use_container_width=False):
-            st.session_state.page = "results"
-            st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════

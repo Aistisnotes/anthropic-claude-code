@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import re
 from pathlib import Path
 from typing import Any, Optional
@@ -32,7 +33,7 @@ class AdAnalyzer:
     def __init__(self, config: dict[str, Any]):
         a_cfg = config.get("analyzer", {})
         self.model = a_cfg.get("model", "claude-sonnet-4-20250514")
-        self.max_concurrent = a_cfg.get("max_concurrent", 3)
+        self.max_concurrent = a_cfg.get("max_concurrent", 5)
         self.temperature = a_cfg.get("temperature", 0.3)
         self.max_retries = a_cfg.get("max_retries", 3)
         self._client = anthropic.AsyncAnthropic()
@@ -50,10 +51,15 @@ class AdAnalyzer:
         """
         semaphore = asyncio.Semaphore(self.max_concurrent)
         results: dict[str, AdAnalysis | None] = {}
+        _total = len(ads)
+        _done: list[int] = []  # append-based counter (asyncio single-thread safe)
 
         async def _analyze_one(ad: AdContent):
             async with semaphore:
+                _n = len(_done) + 1
+                logger.info(f"Analyzing ad {_n}/{_total} ({ad.ad_id})")
                 result = await self._analyze_single(ad)
+                _done.append(1)
                 results[ad.ad_id] = result
 
         logger.info(f"Analyzing {len(ads)} ads with Claude ({self.model})")
@@ -90,8 +96,12 @@ class AdAnalyzer:
                 logger.warning(f"Failed to parse response for ad {ad.ad_id}, attempt {attempt + 1}")
 
             except anthropic.RateLimitError:
-                wait = 2 ** (attempt + 1)
-                logger.warning(f"Rate limited, waiting {wait}s before retry")
+                jitter = random.uniform(1, 3)
+                wait = 10 + jitter
+                logger.warning(
+                    f"Rate limited on ad {ad.ad_id} (attempt {attempt + 1}/{self.max_retries}), "
+                    f"waiting {wait:.1f}s"
+                )
                 await asyncio.sleep(wait)
             except anthropic.APIError as e:
                 logger.error(f"API error analyzing ad {ad.ad_id}: {e}")
