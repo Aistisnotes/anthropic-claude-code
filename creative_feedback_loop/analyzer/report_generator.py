@@ -1,11 +1,11 @@
 """Report Generator — generates PDF reports from analysis results.
 
-Uses HTML template + weasyprint for PDF generation.
+Uses HTML template + Playwright (headless Chromium) for PDF generation.
 """
 
 from __future__ import annotations
 
-import json
+import asyncio
 import os
 from datetime import datetime
 from pathlib import Path
@@ -226,6 +226,33 @@ def generate_html_report(
     return html
 
 
+async def _render_pdf_async(html_content: str, output_path: Path) -> None:
+    """Render HTML to PDF using headless Chromium via Playwright."""
+    from playwright.async_api import async_playwright
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content(html_content, wait_until="networkidle")
+        await page.pdf(
+            path=str(output_path),
+            format="A4",
+            margin={"top": "20mm", "bottom": "20mm", "left": "15mm", "right": "15mm"},
+        )
+        await browser.close()
+
+
+def _render_pdf(html_content: str, output_path: Path) -> None:
+    """Sync wrapper around the async Playwright PDF renderer."""
+    try:
+        loop = asyncio.get_running_loop()
+        # Already inside an event loop (e.g. Streamlit) — use nest_asyncio
+        import nest_asyncio
+        nest_asyncio.apply()
+        loop.run_until_complete(_render_pdf_async(html_content, output_path))
+    except RuntimeError:
+        asyncio.run(_render_pdf_async(html_content, output_path))
+
+
 def save_report(
     brand_name: str,
     html_content: str,
@@ -237,14 +264,9 @@ def save_report(
     safe_name = brand_name.replace(" ", "_").replace("/", "_")
 
     if format == "pdf":
-        try:
-            from weasyprint import HTML
-            pdf_path = REPORTS_DIR / f"{safe_name}_{timestamp}.pdf"
-            HTML(string=html_content).write_pdf(str(pdf_path))
-            return pdf_path
-        except ImportError:
-            # Fallback to HTML if weasyprint not available
-            format = "html"
+        pdf_path = REPORTS_DIR / f"{safe_name}_{timestamp}.pdf"
+        _render_pdf(html_content, pdf_path)
+        return pdf_path
 
     html_path = REPORTS_DIR / f"{safe_name}_{timestamp}.html"
     html_path.write_text(html_content, encoding="utf-8")

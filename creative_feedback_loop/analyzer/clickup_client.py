@@ -98,35 +98,41 @@ def get_folderless_lists(space_id: str) -> list[dict]:
     return data.get("lists", [])
 
 
-def find_creative_team_list(space_id: str) -> Optional[dict]:
-    """Find the 'Creative Team' list inside [BRAND] - Tasks folder."""
-    folders = get_folders(space_id)
-    for folder in folders:
-        folder_name = folder.get("name", "")
-        # Look for the Tasks folder (e.g., "Eskiin - Tasks" or just "Tasks")
-        if "tasks" in folder_name.lower() or "task" in folder_name.lower():
-            lists = get_lists_in_folder(folder["id"])
-            for lst in lists:
-                if "creative team" in lst.get("name", "").lower():
-                    return lst
-            # If no "Creative Team" list, return the first list as fallback
-            if lists:
-                return lists[0]
+def find_creative_lists(space_id: str) -> tuple[Optional[dict], Optional[dict]]:
+    """Find both 'Creative Team' and 'Media Buying' lists inside [BRAND] - Tasks folder.
 
-    # Fallback: search all folders for Creative Team
-    for folder in folders:
+    Returns: (creative_team_list, media_buying_list) — either may be None.
+    """
+    folders = get_folders(space_id)
+
+    creative_team: Optional[dict] = None
+    media_buying: Optional[dict] = None
+
+    # Search Tasks folder first, then all folders as fallback
+    tasks_folders = [f for f in folders if "task" in f.get("name", "").lower()]
+    search_order = tasks_folders + [f for f in folders if f not in tasks_folders]
+
+    for folder in search_order:
         lists = get_lists_in_folder(folder["id"])
         for lst in lists:
-            if "creative team" in lst.get("name", "").lower():
-                return lst
+            name_lower = lst.get("name", "").lower()
+            if creative_team is None and "creative team" in name_lower:
+                creative_team = lst
+            if media_buying is None and "media buying" in name_lower:
+                media_buying = lst
+        if creative_team and media_buying:
+            break
 
-    # Last resort: folderless lists
-    folderless = get_folderless_lists(space_id)
-    for lst in folderless:
-        if "creative team" in lst.get("name", "").lower():
-            return lst
+    # Fallback: folderless lists
+    if not creative_team or not media_buying:
+        for lst in get_folderless_lists(space_id):
+            name_lower = lst.get("name", "").lower()
+            if creative_team is None and "creative team" in name_lower:
+                creative_team = lst
+            if media_buying is None and "media buying" in name_lower:
+                media_buying = lst
 
-    return None
+    return creative_team, media_buying
 
 
 # ── Task pulling ──────────────────────────────────────────────────────────────
@@ -307,22 +313,59 @@ def find_brand_and_pull_tasks(
     date_range_days: Optional[int] = None,
     fetch_comments: bool = True,
 ) -> tuple[Optional[str], Optional[str], list[CreativeTask]]:
-    """Find a brand space, locate Creative Team list, pull tasks.
+    """Find a brand space, pull tasks from both Creative Team and Media Buying lists.
 
-    Returns: (space_name, list_name, tasks)
+    Returns: (space_name, lists_description, tasks)
     """
+    import sys
+
     spaces = get_spaces()
     space = fuzzy_match_space(brand_name, spaces)
     if not space:
         return None, None, []
 
-    creative_list = find_creative_team_list(space["id"])
-    if not creative_list:
+    creative_list, media_buying_list = find_creative_lists(space["id"])
+    if not creative_list and not media_buying_list:
         return space.get("name"), None, []
 
-    tasks = pull_creative_tasks(
-        creative_list["id"],
-        date_range_days=date_range_days,
-        fetch_comments=fetch_comments,
+    all_tasks: list[CreativeTask] = []
+    seen_ids: set[str] = set()
+    ct_count = 0
+    mb_count = 0
+
+    if creative_list:
+        ct_tasks = pull_creative_tasks(
+            creative_list["id"],
+            date_range_days=date_range_days,
+            fetch_comments=fetch_comments,
+        )
+        for t in ct_tasks:
+            if t.task_id not in seen_ids:
+                seen_ids.add(t.task_id)
+                all_tasks.append(t)
+        ct_count = len(ct_tasks)
+
+    if media_buying_list:
+        mb_tasks = pull_creative_tasks(
+            media_buying_list["id"],
+            date_range_days=date_range_days,
+            fetch_comments=fetch_comments,
+        )
+        for t in mb_tasks:
+            if t.task_id not in seen_ids:
+                seen_ids.add(t.task_id)
+                all_tasks.append(t)
+        mb_count = len(mb_tasks)
+
+    total = len(all_tasks)
+    print(
+        f"Found {ct_count} tasks from Creative Team + {mb_count} tasks from Media Buying"
+        f" = {total} total (after dedup)",
+        file=sys.stderr,
     )
-    return space.get("name"), creative_list.get("name"), tasks
+
+    lists_desc = " + ".join(filter(None, [
+        creative_list.get("name") if creative_list else None,
+        media_buying_list.get("name") if media_buying_list else None,
+    ]))
+    return space.get("name"), lists_desc, all_tasks
