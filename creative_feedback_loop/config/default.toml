@@ -1,0 +1,23 @@
+[clickup]
+team_id = "90152194635"
+workspace_name = "Kandy For Scale"
+
+[thresholds]
+winner_roas = 1.5
+winner_min_spend = 500
+loser_roas = 0.8
+loser_min_spend = 500
+untested_max_spend = 100
+
+[weight_tiers]
+pillar_threshold = 0.10
+strong_threshold = 0.05
+normal_threshold = 0.01
+
+[claude]
+model = "claude-sonnet-4-20250514"
+max_tokens = 4096
+
+[date_ranges]
+options = [7, 14, 30, 60, 90]
+default = 30
