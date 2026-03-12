@@ -63,16 +63,27 @@ def generate_html_report(
     pattern_analysis: PatternAnalysis,
     hypothesis_report: HypothesisReport,
     date_range: Optional[str] = None,
+    top_performers: Optional[list] = None,
 ) -> str:
-    """Generate a full HTML report."""
+    """Generate a full HTML report with dark theme, cover page, and all sections."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # Build classification table rows
+    # ── Executive Summary ──────────────────────────────────────────────────────
+    top3_winners = sorted(classification.winners, key=lambda x: x.match.weighted_roas, reverse=True)[:3]
+    exec_bullets = []
+    for w in top3_winners:
+        exec_bullets.append(f"<li>{w.match.task.name[:60]} — ROAS {w.match.weighted_roas:.2f}x, spend ${w.match.total_spend:,.0f}</li>")
+    exec_bullets.append(f"<li>Total account spend analysed: ${classification.total_account_spend:,.0f}</li>")
+    exec_bullets.append(f"<li>{len(classification.winners)} winners, {len(classification.losers)} losers identified across {len(classification.all_classified)} matched ads</li>")
+    exec_summary_html = "<ul style='color:#fafafa;line-height:1.8;'>" + "".join(exec_bullets) + "</ul>"
+
+    # ── Classification table ───────────────────────────────────────────────────
+    sorted_classified = sorted(classification.all_classified, key=lambda x: x.value_score, reverse=True)
     ad_rows = ""
-    for ad in classification.all_classified:
+    for ad in sorted_classified:
         ad_rows += f"""
-        <tr style="border-bottom:1px solid #333;">
-            <td style="padding:8px;color:#fafafa;">{ad.match.task.name[:60]}</td>
+        <tr>
+            <td style="padding:8px;color:#fafafa;font-size:13px;">{ad.match.task.name[:60]}</td>
             <td style="padding:8px;text-align:center;">{_classification_badge(ad.classification.value)}</td>
             <td style="padding:8px;text-align:center;">{_weight_badge(ad.weight_tier)}</td>
             <td style="padding:8px;text-align:right;color:#fafafa;">${ad.match.total_spend:,.0f}</td>
@@ -81,12 +92,67 @@ def generate_html_report(
             <td style="padding:8px;text-align:right;color:#fafafa;">${ad.value_score:,.0f}</td>
         </tr>"""
 
-    # Build learnings section
+    # ── Pattern split: winner vs loser ────────────────────────────────────────
+    raw = pattern_analysis.raw_analysis
+    loser_marker = "LOSER PATTERNS"
+    if loser_marker in raw.upper():
+        split_idx = raw.upper().index(loser_marker)
+        winner_pattern_raw = raw[:split_idx]
+        loser_pattern_raw = raw[split_idx:]
+    else:
+        winner_pattern_raw = raw
+        loser_pattern_raw = ""
+
+    winner_pattern_html = winner_pattern_raw.replace("\n", "<br>")
+    loser_pattern_html = loser_pattern_raw.replace("\n", "<br>")
+
+    # ── Cross-pattern insights ─────────────────────────────────────────────────
+    cross_html = ""
+    for insight in pattern_analysis.cross_insights:
+        cross_html += f'<div class="card"><p style="color:#fafafa;margin:0;">{insight}</p></div>'
+    if not cross_html:
+        cross_html = '<p style="color:#aaa;">No cross-pattern insights generated.</p>'
+
+    # ── Top performers section ─────────────────────────────────────────────────
+    top_performers_section = ""
+    if top_performers:
+        tp_rows = ""
+        for i, item in enumerate(top_performers, 1):
+            ad = item["ad"]
+            mr = item.get("match_result")
+            cls = item.get("classification") or ""
+            cls_color = {"winner": "#4CAF50", "average": "#FF9800", "loser": "#F44336", "untested": "#888"}.get(cls, "#888")
+            task_name = mr.task.name[:60] if mr else "Not matched to ClickUp"
+            match_note = "" if mr else '<span style="color:#FF9800;">⚠ Unmatched</span>'
+            tp_rows += f"""
+            <tr>
+                <td style="padding:8px;color:#fafafa;font-size:13px;">#{i} {ad.ad_name[:60]}</td>
+                <td style="padding:8px;text-align:right;color:#fafafa;">${ad.spend:,.0f}</td>
+                <td style="padding:8px;text-align:right;color:#fafafa;">{ad.roas:.2f}x</td>
+                <td style="padding:8px;text-align:center;">{_classification_badge(cls) if cls else match_note}</td>
+                <td style="padding:8px;color:#aaa;font-size:12px;">{task_name}</td>
+            </tr>"""
+        top_performers_section = f"""
+    <h2>Top Performers Comparison</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Ad Name</th>
+                <th style="text-align:right;">Spend</th>
+                <th style="text-align:right;">ROAS</th>
+                <th style="text-align:center;">Class</th>
+                <th>ClickUp Task</th>
+            </tr>
+        </thead>
+        <tbody>{tp_rows}</tbody>
+    </table>"""
+
+    # ── Learnings ──────────────────────────────────────────────────────────────
     learnings_html = ""
     for i, learning in enumerate(hypothesis_report.learnings, 1):
         evidence = ", ".join(learning.supporting_evidence) if learning.supporting_evidence else "See pattern analysis"
         learnings_html += f"""
-        <div style="background:#1A1D24;border-radius:8px;padding:16px;margin-bottom:12px;">
+        <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <h4 style="color:#fafafa;margin:0;">Learning {i}</h4>
                 {_confidence_badge(learning.confidence)}
@@ -94,13 +160,15 @@ def generate_html_report(
             <p style="color:#fafafa;margin:4px 0;">{learning.observation}</p>
             <p style="color:#aaa;font-size:13px;margin:4px 0;"><strong>Evidence:</strong> {evidence}</p>
         </div>"""
+    if not learnings_html:
+        learnings_html = '<p style="color:#aaa;">No learnings generated yet.</p>'
 
-    # Build hypotheses section
+    # ── Hypotheses ─────────────────────────────────────────────────────────────
     hypotheses_html = ""
     for i, hyp in enumerate(hypothesis_report.hypotheses, 1):
-        hooks = "".join(f"<li style='color:#fafafa;'>{h}</li>" for h in hyp.suggested_hook_ideas) if hyp.suggested_hook_ideas else "<li style='color:#aaa;'>See pattern analysis for ideas</li>"
+        hooks = "".join(f"<li style='color:#fafafa;font-size:13px;'>{h}</li>" for h in hyp.suggested_hook_ideas) if hyp.suggested_hook_ideas else "<li style='color:#aaa;'>See pattern analysis for ideas</li>"
         hypotheses_html += f"""
-        <div style="background:#1A1D24;border-radius:8px;padding:16px;margin-bottom:12px;">
+        <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <h4 style="color:#fafafa;margin:0;">Hypothesis {i}</h4>
                 {_priority_badge(hyp.priority)}
@@ -109,21 +177,14 @@ def generate_html_report(
             <p style="color:#fafafa;margin:4px 0;"><strong>Test:</strong> {hyp.independent_variable}</p>
             <p style="color:#fafafa;margin:4px 0;"><strong>Expected:</strong> {hyp.expected_outcome}</p>
             <div style="margin-top:8px;padding:12px;background:#0E1117;border-radius:4px;">
-                <p style="color:#6C63FF;margin:0 0 4px 0;font-weight:bold;">Suggested Script Outline</p>
-                <p style="color:#fafafa;margin:2px 0;"><strong>Hook ideas:</strong></p>
-                <ul style="margin:4px 0;">{hooks}</ul>
-                <p style="color:#fafafa;margin:2px 0;"><strong>Body:</strong> {hyp.suggested_body_structure or 'See analysis'}</p>
-                <p style="color:#fafafa;margin:2px 0;"><strong>Format:</strong> {hyp.recommended_format or 'Based on winner patterns'}</p>
+                <p style="color:#6C63FF;margin:0 0 4px 0;font-weight:bold;font-size:13px;">Script Outline</p>
+                <ul style="margin:4px 0;padding-left:16px;">{hooks}</ul>
+                <p style="color:#fafafa;font-size:12px;margin:2px 0;"><strong>Body:</strong> {hyp.suggested_body_structure or 'See analysis'}</p>
+                <p style="color:#fafafa;font-size:12px;margin:2px 0;"><strong>Format:</strong> {hyp.recommended_format or 'Based on winner patterns'}</p>
             </div>
         </div>"""
-
-    # Convert pattern analysis markdown to basic HTML
-    pattern_html = pattern_analysis.raw_analysis.replace("\n", "<br>")
-
-    # Cross-insights
-    cross_html = ""
-    for insight in pattern_analysis.cross_insights:
-        cross_html += f'<li style="color:#fafafa;margin-bottom:8px;">{insight}</li>'
+    if not hypotheses_html:
+        hypotheses_html = '<p style="color:#aaa;">No hypotheses generated yet.</p>'
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -135,55 +196,59 @@ def generate_html_report(
             background: #0E1117;
             color: #fafafa;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            padding: 40px;
+            padding: 32px;
             max-width: 1100px;
             margin: 0 auto;
         }}
-        h1, h2, h3 {{ color: #fafafa; }}
-        h1 {{ border-bottom: 2px solid #6C63FF; padding-bottom: 12px; }}
-        h2 {{ border-bottom: 1px solid #333; padding-bottom: 8px; margin-top: 32px; }}
-        table {{ width: 100%; border-collapse: collapse; }}
-        th {{ text-align: left; padding: 10px 8px; color: #aaa; font-size: 13px; border-bottom: 2px solid #333; }}
-        .stats-grid {{
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin: 20px 0;
-        }}
-        .stat-card {{
-            background: #1A1D24;
-            border-radius: 8px;
-            padding: 16px;
-            text-align: center;
-        }}
-        .stat-value {{ font-size: 28px; font-weight: bold; color: #6C63FF; }}
+        h1 {{ color: #fafafa; border-bottom: 3px solid #6C63FF; padding-bottom: 12px; }}
+        h2 {{ color: #fafafa; border-bottom: 1px solid #333; margin-top: 28px; padding-bottom: 8px; }}
+        h3, h4 {{ color: #fafafa; }}
+        .cover {{ page-break-after: always; padding: 48px; }}
+        .stat-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 20px 0; }}
+        .stat-card {{ background: #1A1D24; border-radius: 8px; padding: 16px; text-align: center; }}
+        .stat-value {{ font-size: 32px; font-weight: 800; color: #6C63FF; }}
         .stat-label {{ font-size: 13px; color: #aaa; margin-top: 4px; }}
+        table {{ width: 100%; border-collapse: collapse; }}
+        th {{ color: #aaa; font-size: 13px; border-bottom: 2px solid #333; padding: 8px; text-align: left; }}
+        tr {{ border-bottom: 1px solid #222; }}
+        .card {{ background: #1A1D24; border-radius: 8px; padding: 16px; margin-bottom: 12px; }}
+        .badge {{ padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }}
+        a {{ color: #6C63FF; }}
     </style>
 </head>
 <body>
-    <h1>Creative Feedback Loop Report — {brand_name}</h1>
-    <p style="color:#aaa;">Generated: {now}{f' | Date range: {date_range}' if date_range else ''}</p>
 
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-value" style="color:#4CAF50;">{len(classification.winners)}</div>
-            <div class="stat-label">Winners ({classification.pillar_winners} pillar, {classification.strong_winners} strong)</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value" style="color:#FF9800;">{len(classification.average)}</div>
-            <div class="stat-label">Average</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value" style="color:#F44336;">{len(classification.losers)}</div>
-            <div class="stat-label">Losers</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${classification.total_account_spend:,.0f}</div>
-            <div class="stat-label">Total Account Spend</div>
+    <!-- COVER PAGE -->
+    <div class="cover">
+        <h1>Creative Feedback Loop Report</h1>
+        <h2 style="border:none;color:#6C63FF;font-size:28px;margin-top:8px;">{brand_name}</h2>
+        <p style="color:#aaa;">Generated: {now}{f' | Date range: {date_range}' if date_range else ''}</p>
+        <div class="stat-grid" style="margin-top:40px;">
+            <div class="stat-card">
+                <div class="stat-value" style="color:#4CAF50;">{len(classification.winners)}</div>
+                <div class="stat-label">Winners ({classification.pillar_winners} pillar, {classification.strong_winners} strong)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color:#FF9800;">{len(classification.average)}</div>
+                <div class="stat-label">Average</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color:#F44336;">{len(classification.losers)}</div>
+                <div class="stat-label">Losers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${classification.total_account_spend:,.0f}</div>
+                <div class="stat-label">Total Account Spend</div>
+            </div>
         </div>
     </div>
 
-    <h2>Ad Classification (by Value Score)</h2>
+    <!-- EXECUTIVE SUMMARY -->
+    <h2>Executive Summary</h2>
+    {exec_summary_html}
+
+    <!-- CLASSIFICATION OVERVIEW -->
+    <h2>Classification Overview</h2>
     <table>
         <thead>
             <tr>
@@ -191,9 +256,9 @@ def generate_html_report(
                 <th style="text-align:center;">Class</th>
                 <th style="text-align:center;">Weight</th>
                 <th style="text-align:right;">Spend</th>
-                <th style="text-align:right;">Share</th>
+                <th style="text-align:right;">Share%</th>
                 <th style="text-align:right;">ROAS</th>
-                <th style="text-align:right;">Value</th>
+                <th style="text-align:right;">Value Score</th>
             </tr>
         </thead>
         <tbody>
@@ -201,25 +266,35 @@ def generate_html_report(
         </tbody>
     </table>
 
-    <h2>Pattern Analysis</h2>
+    <!-- WINNER PATTERNS -->
+    <h2>Winner Patterns</h2>
     <div style="background:#1A1D24;border-radius:8px;padding:20px;color:#fafafa;line-height:1.6;">
-        {pattern_html}
+        {winner_pattern_html if winner_pattern_html else '<p style="color:#aaa;">See full pattern analysis.</p>'}
     </div>
 
+    <!-- LOSER PATTERNS -->
+    {f'<h2>Loser Patterns</h2><div style="background:#1A1D24;border-radius:8px;padding:20px;color:#fafafa;line-height:1.6;">{loser_pattern_html}</div>' if loser_pattern_html else ''}
+
+    <!-- CROSS-PATTERN INSIGHTS -->
     <h2>Cross-Pattern Insights</h2>
-    <ul style="list-style:none;padding:0;">
-        {cross_html if cross_html else '<li style="color:#aaa;">Run full analysis to generate insights</li>'}
-    </ul>
+    {cross_html}
 
+    <!-- TOP PERFORMERS COMPARISON -->
+    {top_performers_section}
+
+    <!-- KEY LEARNINGS -->
     <h2>Key Learnings</h2>
-    {learnings_html if learnings_html else '<p style="color:#aaa;">No learnings generated yet</p>'}
+    {learnings_html}
 
+    <!-- TESTABLE HYPOTHESES -->
     <h2>Testable Hypotheses</h2>
-    {hypotheses_html if hypotheses_html else '<p style="color:#aaa;">No hypotheses generated yet</p>'}
+    {hypotheses_html}
 
+    <!-- FOOTER -->
     <div style="margin-top:40px;padding-top:20px;border-top:1px solid #333;color:#666;font-size:12px;">
-        Creative Feedback Loop Analyzer | {now}
+        Creative Feedback Loop Analyzer | Generated: {now}
     </div>
+
 </body>
 </html>"""
 

@@ -271,3 +271,8 @@ def match_tasks_to_csv(
         total_unmatched_tasks=len(unmatched_tasks),
         total_unmatched_csv=len(unmatched_csv),
     )
+
+
+def get_top_account_ads(ads: list[AdMetrics], n: int = 5) -> list[AdMetrics]:
+    """Return top N ads by spend from the full CSV (regardless of ClickUp match)."""
+    return sorted(ads, key=lambda a: a.spend, reverse=True)[:n]

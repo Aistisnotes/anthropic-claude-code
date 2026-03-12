@@ -41,10 +41,10 @@ WEIGHT_MULTIPLIERS = {
 @dataclass
 class Thresholds:
     """User-configurable classification thresholds."""
-    winner_roas: float = 1.5
-    winner_min_spend: float = 500.0
-    loser_roas: float = 0.8
-    loser_min_spend: float = 500.0
+    winner_roas: float = 2.0
+    winner_min_spend: float = 100.0
+    loser_roas: float = 1.0
+    loser_min_spend: float = 100.0
     untested_max_spend: float = 100.0
     # Average is implicitly between loser_roas and winner_roas
 
