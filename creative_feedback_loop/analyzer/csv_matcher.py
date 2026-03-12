@@ -67,25 +67,28 @@ class MatchSummary:
 
 
 def extract_version_numbers(text: str) -> set[str]:
-    """Extract all V/B numbers from text, expanding ranges.
+    """Extract all V/B identifiers from text, expanding ranges, with prefix attached.
 
     Examples:
-      "V876-V878"        -> {'876', '877', '878'}
-      "B310_V1"          -> {'310', '1'}
-      "[SKN] V876-V878"  -> {'876', '877', '878'}
+      "V876-V878"        -> {'V876', 'V877', 'V878'}
+      "B310_V1"          -> {'B310', 'V1'}
+      "[SKN] V876-V878"  -> {'V876', 'V877', 'V878'}
+      "B310 / V1-V3"     -> {'B310', 'V1', 'V2', 'V3'}
     """
     versions: set[str] = set()
 
-    # Expand ranges first (e.g. V876-V878 -> 876,877,878)
+    # Expand ranges first (e.g. V876-V878 -> V876, V877, V878)
     for match in VERSION_RANGE_PATTERN.finditer(text):
+        prefix = match.group(0)[0].upper()  # V or B
         start, end = int(match.group(1)), int(match.group(2))
         if end >= start and (end - start) <= 50:
             for v in range(start, end + 1):
-                versions.add(str(v))
+                versions.add(f"{prefix}{v}")
 
-    # Then add all individual V/B numbers (ranges already covered above)
+    # Then add all individual V/B identifiers
     for match in VERSION_PATTERN.finditer(text):
-        versions.add(match.group(1))
+        prefix = match.group(0)[0].upper()
+        versions.add(f"{prefix}{match.group(1)}")
 
     return versions
 
