@@ -15,10 +15,10 @@ import pandas as pd
 
 from .clickup_client import CreativeTask
 
-# Pattern to find version numbers like V876, v877, V1234
-VERSION_PATTERN = re.compile(r'[Vv](\d{2,5})')
+# Pattern to find version/batch numbers like V876, v877, B310, b50
+VERSION_PATTERN = re.compile(r'[VvBb](\d+)')
 # Pattern for version ranges like V876-V878, V876-878
-VERSION_RANGE_PATTERN = re.compile(r'[Vv](\d{2,5})\s*[-–—]\s*[Vv]?(\d{2,5})')
+VERSION_RANGE_PATTERN = re.compile(r'[VvBb](\d+)\s*[-–—]\s*[VvBb]?(\d+)')
 
 
 @dataclass
@@ -67,28 +67,23 @@ class MatchSummary:
 
 
 def extract_version_numbers(text: str) -> set[str]:
-    """Extract all version numbers from text.
+    """Extract all V/B numbers from text, expanding ranges.
 
-    Handles: V876, V876-V878 (range), V876-878 (short range), V876/V877.
-    Returns set of version strings like {'876', '877', '878'}.
+    Examples:
+      "V876-V878"        -> {'876', '877', '878'}
+      "B310_V1"          -> {'310', '1'}
+      "[SKN] V876-V878"  -> {'876', '877', '878'}
     """
     versions: set[str] = set()
 
-    # First find ranges
+    # Expand ranges first (e.g. V876-V878 -> 876,877,878)
     for match in VERSION_RANGE_PATTERN.finditer(text):
-        start = int(match.group(1))
-        end_str = match.group(2)
-        end = int(end_str)
-        # Handle short form: V876-878 vs V876-V878
-        if end < start and len(end_str) < len(match.group(1)):
-            # e.g., V876-78 → interpret 78 as 878
-            prefix = match.group(1)[:len(match.group(1)) - len(end_str)]
-            end = int(prefix + end_str)
-        if end >= start and (end - start) <= 20:  # Sanity check: max 20 versions
+        start, end = int(match.group(1)), int(match.group(2))
+        if end >= start and (end - start) <= 50:
             for v in range(start, end + 1):
                 versions.add(str(v))
 
-    # Then find individual versions (excluding those already in ranges)
+    # Then add all individual V/B numbers (ranges already covered above)
     for match in VERSION_PATTERN.finditer(text):
         versions.add(match.group(1))
 
