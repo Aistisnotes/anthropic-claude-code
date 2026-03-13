@@ -1,7 +1,8 @@
 """CSV Matcher — matches Meta Ads Manager CSV rows to ClickUp creative tasks.
 
-Matching uses version numbers (V876, V877) found in both ad names and task names.
-A single ClickUp task can map to multiple CSV rows (e.g., V876-V878 = 3 ads).
+Matching uses batch identifiers (B310, V876) found in both ad names and task names.
+Smart convention: if both B and V exist, B is the batch (V is variant, ignored).
+If only V exists, V IS the batch identifier. See extract_match_keys() for details.
 """
 
 from __future__ import annotations
@@ -84,36 +85,64 @@ class CSVDiagnostics:
     combined_checks: dict[str, int]  # "roas<X_and_spend>Y" → count
 
 
-def extract_version_numbers(text: str) -> set[str]:
-    """Extract all version numbers from text.
+def _extract_all_b(text: str) -> set[str]:
+    """Extract all B-prefixed identifiers (B310, B419, etc.)."""
+    return {f"B{m.group(1)}" for m in B_PATTERN.finditer(text)}
 
-    Handles: V876, V876-V878 (range), V876-878 (short range), V876/V877.
-    Returns set of version strings like {'V876', 'V877', 'V878', 'B310'}.
-    Prefixed with V or B to avoid cross-matching.
-    """
+
+def _extract_all_v(text: str) -> set[str]:
+    """Extract all V-prefixed identifiers, expanding ranges."""
     versions: set[str] = set()
-
-    # First find ranges
-    for match in VERSION_RANGE_PATTERN.finditer(text):
-        start = int(match.group(1))
-        end_str = match.group(2)
+    for m in VERSION_RANGE_PATTERN.finditer(text):
+        start = int(m.group(1))
+        end_str = m.group(2)
         end = int(end_str)
-        if end < start and len(end_str) < len(match.group(1)):
-            prefix = match.group(1)[:len(match.group(1)) - len(end_str)]
+        if end < start and len(end_str) < len(m.group(1)):
+            prefix = m.group(1)[:len(m.group(1)) - len(end_str)]
             end = int(prefix + end_str)
         if end >= start and (end - start) <= 20:
             for v in range(start, end + 1):
                 versions.add(f"V{v}")
-
-    # Individual V-numbers
-    for match in VERSION_PATTERN.finditer(text):
-        versions.add(f"V{match.group(1)}")
-
-    # B-numbers
-    for match in B_PATTERN.finditer(text):
-        versions.add(f"B{match.group(1)}")
-
+    for m in VERSION_PATTERN.finditer(text):
+        versions.add(f"V{m.group(1)}")
     return versions
+
+
+# Small V numbers (V1-V20) are variant indicators, not batch IDs
+_VARIANT_THRESHOLD = 20
+
+
+def extract_match_keys(text: str) -> set[str]:
+    """Extract the primary match keys from an ad/task name.
+
+    Rules:
+      1. If text has BOTH B-numbers and V-numbers → B is the batch, V is variant → return B keys only.
+      2. If text has ONLY V-numbers (no B) → V IS the batch → return V keys (excluding small variant-only numbers).
+      3. If text has ONLY B-numbers → return B keys.
+      4. No B or V → return empty set.
+    """
+    b_ids = _extract_all_b(text)
+    v_ids = _extract_all_v(text)
+
+    if b_ids and v_ids:
+        # Has both → B is the batch identifier, V is variant → use B
+        return b_ids
+    if v_ids and not b_ids:
+        # V-only → V IS the batch identifier
+        # Filter out small variant-only numbers (V1-V20) that appear alongside real batch Vs
+        big_vs = {v for v in v_ids if int(v[1:]) > _VARIANT_THRESHOLD}
+        if big_vs:
+            return big_vs
+        # If ALL V numbers are small (unlikely for batch IDs), return them anyway
+        return v_ids
+    if b_ids:
+        return b_ids
+    return set()
+
+
+def extract_version_numbers(text: str) -> set[str]:
+    """Legacy wrapper — delegates to extract_match_keys."""
+    return extract_match_keys(text)
 
 
 # ── Column name mapping ───────────────────────────────────────────────────────
@@ -254,7 +283,7 @@ def parse_meta_csv(csv_content: str | bytes) -> tuple[list[AdMetrics], float, CS
         spend = _safe_float(row.get(col_spend)) if col_spend else 0.0
         total_spend += spend
 
-        versions = extract_version_numbers(ad_name)
+        versions = extract_match_keys(ad_name)
 
         ad = AdMetrics(
             ad_name=ad_name,
@@ -345,7 +374,7 @@ def match_tasks_to_csv(
     match_log: list[str] = []
 
     for task in sorted_tasks:
-        task_versions = extract_version_numbers(task.name)
+        task_versions = extract_match_keys(task.name)
         if not task_versions:
             unmatched_tasks.append(task)
             match_log.append(f"SKIP: '{task.name[:50]}' — no version identifiers found")
@@ -356,7 +385,7 @@ def match_tasks_to_csv(
         for idx, ad in enumerate(ads):
             if idx in matched_ad_indices:
                 continue
-            ad_versions = extract_version_numbers(ad.ad_name)
+            ad_versions = extract_match_keys(ad.ad_name)
 
             overlap = task_versions & ad_versions
             if overlap:
