@@ -1,11 +1,8 @@
 """Creative Feedback Loop Analyzer — Streamlit App
 
-Pulls creative briefs from ClickUp, matches with Meta Ads Manager CSV performance data,
-generates pattern analysis + learnings + hypotheses across winners vs losers.
-
 Tabs:
-  1. Recent Creative — analysis of recently launched ads
-  2. Top 50 Account Ads — deep analysis of top 50 by spend (all-time)
+  1. Recent Creative — analysis of recently launched ads (filtered by date + thresholds)
+  2. Top 50 Account Ads — top 50 by spend, all-time, ROAS-only classification
   3. Recent vs All-Time Comparison — drift detection
   4. Reports — history and export
 """
@@ -18,7 +15,6 @@ from pathlib import Path
 
 import streamlit as st
 
-# ── Page config (must be first Streamlit call) ────────────────────────────────
 st.set_page_config(
     page_title="Creative Feedback Loop",
     page_icon="🔄",
@@ -26,7 +22,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Dark mode CSS ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
     .stApp { background-color: #0E1117; }
@@ -58,8 +53,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ── Login gate ────────────────────────────────────────────────────────────────
-
 def check_login() -> bool:
     password = os.environ.get("CFL_PASSWORD", "")
     if not password:
@@ -89,22 +82,15 @@ def check_env_vars() -> list[str]:
     return missing
 
 
-# ── Session state init ────────────────────────────────────────────────────────
-
 def init_state():
     defaults = {
-        # Data ingestion
         "tasks": None, "space_name": None, "list_name": None, "brand_name": None,
-        "csv_ads": None, "csv_total_spend": 0,
-        # Recent creative pipeline
+        "csv_ads": None, "csv_total_spend": 0, "csv_diagnostics": None,
         "match_summary": None, "classification": None,
         "scripts": None, "pattern_analysis": None, "hypothesis_report": None,
-        # Top 50 all-time pipeline
         "top50_match_summary": None, "top50_classification": None,
         "top50_scripts": None, "top50_pattern_analysis": None, "top50_hypothesis_report": None,
-        # Comparison
         "comparison_analysis": None,
-        # Thresholds (shared)
         "thresholds_set": False,
     }
     for k, v in defaults.items():
@@ -112,15 +98,12 @@ def init_state():
             st.session_state[k] = v
 
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-
 def render_sidebar():
     with st.sidebar:
         st.markdown('<h2 style="color:#fafafa;">🔄 Creative Feedback Loop</h2>', unsafe_allow_html=True)
         st.markdown('<p style="color:#aaa;font-size:13px;">Pull briefs → Match performance → Find patterns → Detect drift</p>', unsafe_allow_html=True)
         st.markdown("---")
 
-        # Data ingestion section
         st.markdown('<p style="color:#aaa;font-size:12px;">Data Ingestion</p>', unsafe_allow_html=True)
         for label, key in [("ClickUp Tasks", "tasks"), ("Meta CSV", "csv_ads")]:
             icon = "✅" if st.session_state.get(key) is not None else "⬜"
@@ -129,21 +112,20 @@ def render_sidebar():
         st.markdown("---")
         st.markdown('<p style="color:#aaa;font-size:12px;">Recent Creative</p>', unsafe_allow_html=True)
         for label, key in [("Match & Classify", "classification"), ("Read Scripts", "scripts"),
-                           ("Pattern Analysis", "pattern_analysis"), ("Hypotheses", "hypothesis_report")]:
+                           ("Patterns", "pattern_analysis"), ("Hypotheses", "hypothesis_report")]:
             icon = "✅" if st.session_state.get(key) is not None else "⬜"
             st.markdown(f'<p style="color:#fafafa;font-size:13px;margin:2px 0;">{icon} {label}</p>', unsafe_allow_html=True)
 
         st.markdown("---")
         st.markdown('<p style="color:#aaa;font-size:12px;">Top 50 All-Time</p>', unsafe_allow_html=True)
         for label, key in [("Match & Classify", "top50_classification"), ("Read Scripts", "top50_scripts"),
-                           ("Pattern Analysis", "top50_pattern_analysis")]:
+                           ("Patterns", "top50_pattern_analysis")]:
             icon = "✅" if st.session_state.get(key) is not None else "⬜"
             st.markdown(f'<p style="color:#fafafa;font-size:13px;margin:2px 0;">{icon} {label}</p>', unsafe_allow_html=True)
 
         st.markdown("---")
-        st.markdown('<p style="color:#aaa;font-size:12px;">Comparison</p>', unsafe_allow_html=True)
         icon = "✅" if st.session_state.get("comparison_analysis") is not None else "⬜"
-        st.markdown(f'<p style="color:#fafafa;font-size:13px;margin:2px 0;">{icon} Drift Detection</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="color:#fafafa;font-size:13px;margin:2px 0;">{icon} Comparison</p>', unsafe_allow_html=True)
 
         st.markdown("---")
         if st.button("🔄 Reset All", use_container_width=True):
@@ -153,15 +135,12 @@ def render_sidebar():
             st.rerun()
 
 
-# ── Shared: Data Ingestion ────────────────────────────────────────────────────
+# ── Data Ingestion ────────────────────────────────────────────────────────────
 
 def render_data_ingestion():
-    """Shared data ingestion section shown at top of dashboard."""
     st.markdown('<h2 style="color:#fafafa;">Data Ingestion</h2>', unsafe_allow_html=True)
-
     col_left, col_right = st.columns(2)
 
-    # ClickUp Tasks
     with col_left:
         st.markdown('<h4 style="color:#fafafa;">ClickUp Tasks</h4>', unsafe_allow_html=True)
         if st.session_state.get("tasks") is not None:
@@ -174,7 +153,6 @@ def render_data_ingestion():
             with c2:
                 date_range = st.selectbox("Date Range", [None, 7, 14, 30, 60, 90], index=0,
                                           format_func=lambda x: "All time" if x is None else f"Last {x}d", key="date_range_input")
-
             if st.button("🔍 Pull Tasks", use_container_width=True, disabled=not brand_name, key="pull_tasks_btn"):
                 if "CLICKUP_API_KEY" not in check_env_vars():
                     from analyzer.clickup_client import find_brand_and_pull_tasks
@@ -190,49 +168,59 @@ def render_data_ingestion():
                 else:
                     st.error("Set CLICKUP_API_KEY")
 
-    # Meta CSV
     with col_right:
         st.markdown('<h4 style="color:#fafafa;">Meta Ads CSV</h4>', unsafe_allow_html=True)
         if st.session_state.get("csv_ads") is not None:
             ads = st.session_state["csv_ads"]
             st.markdown(f'<p style="color:#4CAF50;">✅ {len(ads)} ads parsed — ${st.session_state.get("csv_total_spend", 0):,.0f} total spend</p>', unsafe_allow_html=True)
+            # Show diagnostics
+            diag = st.session_state.get("csv_diagnostics")
+            if diag:
+                with st.expander("📊 CSV Diagnostics (column mapping + data distribution)"):
+                    st.markdown('<p style="color:#6C63FF;font-weight:bold;">Column Mapping</p>', unsafe_allow_html=True)
+                    for our_field, csv_col in diag.column_mapping.items():
+                        status = f'<span style="color:#4CAF50;">→ "{csv_col}"</span>' if csv_col else '<span style="color:#F44336;">NOT FOUND</span>'
+                        st.markdown(f'<p style="color:#fafafa;font-size:12px;margin:1px 0;">{our_field}: {status}</p>', unsafe_allow_html=True)
+
+                    st.markdown(f'<p style="color:#aaa;font-size:11px;margin-top:8px;">All CSV columns: {", ".join(diag.column_names)}</p>', unsafe_allow_html=True)
+
+                    if diag.spend_stats:
+                        st.markdown('<p style="color:#6C63FF;font-weight:bold;margin-top:12px;">Spend Distribution</p>', unsafe_allow_html=True)
+                        st.markdown(f'<p style="color:#fafafa;font-size:12px;">Min: ${diag.spend_stats["min"]:,.2f} | Max: ${diag.spend_stats["max"]:,.2f} | Median: ${diag.spend_stats["median"]:,.2f} | Avg: ${diag.spend_stats["avg"]:,.2f}</p>', unsafe_allow_html=True)
+
+                    if diag.roas_stats:
+                        st.markdown('<p style="color:#6C63FF;font-weight:bold;margin-top:12px;">ROAS Distribution (non-zero only)</p>', unsafe_allow_html=True)
+                        st.markdown(f'<p style="color:#fafafa;font-size:12px;">Min: {diag.roas_stats["min"]:.2f}x | Max: {diag.roas_stats["max"]:.2f}x | Median: {diag.roas_stats["median"]:.2f}x | Avg: {diag.roas_stats["avg"]:.2f}x</p>', unsafe_allow_html=True)
+
+                    st.markdown('<p style="color:#6C63FF;font-weight:bold;margin-top:12px;">ROAS Breakdown</p>', unsafe_allow_html=True)
+                    for label, count in diag.roas_below_threshold.items():
+                        st.markdown(f'<p style="color:#fafafa;font-size:12px;margin:1px 0;">ROAS {label}: {count} ads</p>', unsafe_allow_html=True)
+
+                    st.markdown('<p style="color:#6C63FF;font-weight:bold;margin-top:12px;">Spend Breakdown</p>', unsafe_allow_html=True)
+                    for label, count in diag.spend_above_threshold.items():
+                        st.markdown(f'<p style="color:#fafafa;font-size:12px;margin:1px 0;">Spend {label}: {count} ads</p>', unsafe_allow_html=True)
+
+                    st.markdown('<p style="color:#6C63FF;font-weight:bold;margin-top:12px;">Combined Checks (potential winners/losers)</p>', unsafe_allow_html=True)
+                    for label, count in diag.combined_checks.items():
+                        st.markdown(f'<p style="color:#fafafa;font-size:12px;margin:1px 0;">{label}: {count} ads</p>', unsafe_allow_html=True)
         else:
             uploaded = st.file_uploader("Upload CSV", type=["csv"], key="csv_upload")
             if uploaded:
                 from analyzer.csv_matcher import parse_meta_csv
                 try:
                     content = uploaded.read()
-                    ads, total_spend = parse_meta_csv(content)
+                    ads, total_spend, diag = parse_meta_csv(content)
                     st.session_state["csv_ads"] = ads
                     st.session_state["csv_total_spend"] = total_spend
+                    st.session_state["csv_diagnostics"] = diag
                     st.rerun()
                 except Exception as e:
                     st.error(f"CSV parse failed: {e}")
 
 
-# ── Shared: Threshold Controls ────────────────────────────────────────────────
+# ── Shared display helpers ────────────────────────────────────────────────────
 
-def render_thresholds() -> dict:
-    """Render threshold controls, return current values."""
-    with st.expander("Classification Thresholds", expanded=not st.session_state.get("thresholds_set")):
-        c1, c2, c3, c4, c5 = st.columns(5)
-        with c1:
-            wr = st.number_input("Winner ROAS ≥", value=1.5, step=0.1, min_value=0.0, key="t_wr")
-        with c2:
-            ws = st.number_input("Winner min $", value=500.0, step=100.0, min_value=0.0, key="t_ws")
-        with c3:
-            lr = st.number_input("Loser ROAS ≤", value=0.8, step=0.1, min_value=0.0, key="t_lr")
-        with c4:
-            ls = st.number_input("Loser min $", value=500.0, step=100.0, min_value=0.0, key="t_ls")
-        with c5:
-            us = st.number_input("Untested max $", value=100.0, step=50.0, min_value=0.0, key="t_us")
-    return {"winner_roas": wr, "winner_min_spend": ws, "loser_roas": lr, "loser_min_spend": ls, "untested_max_spend": us}
-
-
-# ── Shared: Classification display ───────────────────────────────────────────
-
-def render_classification_summary(classification, prefix=""):
-    """Render classification metrics and ad list."""
+def render_classification_summary(classification):
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Winners", f"{len(classification.winners)} ({classification.pillar_winners}P, {classification.strong_winners}S)")
     c2.metric("Average", len(classification.average))
@@ -254,9 +242,37 @@ def render_classification_summary(classification, prefix=""):
                 <p style="color:#aaa;font-size:11px;margin:2px 0;">Spend: ${ad.match.total_spend:,.0f} ({ad.spend_share*100:.1f}%) | ROAS: {ad.match.weighted_roas:.2f}x | Value: ${ad.value_score:,.0f}</p>
             </div>""", unsafe_allow_html=True)
 
+    # Show classification log
+    if classification.classification_log:
+        with st.expander("📋 Classification Log (debug)"):
+            for line in classification.classification_log:
+                color = "#fafafa"
+                if line.startswith("WINNER"):
+                    color = "#4CAF50"
+                elif line.startswith("LOSER"):
+                    color = "#F44336"
+                elif line.startswith("AVERAGE"):
+                    color = "#FF9800"
+                elif line.startswith("UNTESTED"):
+                    color = "#888"
+                st.markdown(f'<p style="color:{color};font-size:11px;font-family:monospace;margin:1px 0;">{line}</p>', unsafe_allow_html=True)
+
+
+def render_match_log(match_summary):
+    if match_summary.match_log:
+        with st.expander("📋 Match Log (debug)"):
+            for line in match_summary.match_log:
+                color = "#fafafa"
+                if line.startswith("MATCH:"):
+                    color = "#4CAF50"
+                elif line.startswith("NO MATCH:"):
+                    color = "#F44336"
+                elif line.startswith("SKIP:"):
+                    color = "#888"
+                st.markdown(f'<p style="color:{color};font-size:11px;font-family:monospace;margin:1px 0;">{line}</p>', unsafe_allow_html=True)
+
 
 def render_pattern_analysis_display(pa):
-    """Render pattern analysis results."""
     st.markdown(pa.raw_analysis)
     if pa.cross_insights:
         st.markdown('<h4 style="color:#fafafa;">Key Cross-Pattern Insights</h4>', unsafe_allow_html=True)
@@ -265,7 +281,6 @@ def render_pattern_analysis_display(pa):
 
 
 def render_hypotheses_display(hr):
-    """Render learnings and hypotheses."""
     st.markdown('<h4 style="color:#fafafa;">Key Learnings</h4>', unsafe_allow_html=True)
     for i, learning in enumerate(hr.learnings, 1):
         conf_c = {"HIGH": "#4CAF50", "MEDIUM": "#FF9800", "LOW": "#F44336"}.get(learning.confidence.upper(), "#888")
@@ -300,22 +315,18 @@ def render_hypotheses_display(hr):
         </div>""", unsafe_allow_html=True)
 
 
-def render_scripts_display(scripts, prefix=""):
-    """Render script reading results."""
+def render_scripts_display(scripts):
     no_content = [s for s in scripts.values() if s.no_content_found]
     manual_review = [s for s in scripts.values() if s.manual_review_links]
-
     if no_content:
         with st.expander(f"⚠️ {len(no_content)} tasks — no brief/script found"):
             for s in no_content:
                 st.markdown(f'<p style="color:#fafafa;">⚠️ <strong>{s.task_name}</strong> — <a href="https://app.clickup.com/t/{s.task_id}" style="color:#6C63FF;">Check task</a></p>', unsafe_allow_html=True)
-
     if manual_review:
         with st.expander(f"📋 {len(manual_review)} tasks — manual doc review needed"):
             for s in manual_review:
                 for link in s.manual_review_links:
                     st.markdown(f'<p style="color:#fafafa;">📋 <strong>{s.task_name}</strong> — <a href="{link}" style="color:#6C63FF;">{link[:60]}...</a></p>', unsafe_allow_html=True)
-
     with_content = [s for s in scripts.values() if not s.no_content_found]
     if with_content:
         with st.expander(f"Preview scripts ({min(5, len(with_content))} of {len(with_content)})"):
@@ -332,8 +343,8 @@ def render_scripts_display(scripts, prefix=""):
 # ── Tab 1: Recent Creative ───────────────────────────────────────────────────
 
 def render_tab_recent():
-    st.markdown('<h2 style="color:#fafafa;">Recent Creative Analysis</h2>', unsafe_allow_html=True)
-    st.markdown('<p style="color:#aaa;">What\'s working in your recent launches?</p>', unsafe_allow_html=True)
+    st.markdown('<h2 style="color:#fafafa;">Section A — Recent Creative Analysis</h2>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#aaa;">What\'s working and what\'s failing in recent launches?</p>', unsafe_allow_html=True)
 
     tasks = st.session_state.get("tasks")
     csv_ads = st.session_state.get("csv_ads")
@@ -341,7 +352,20 @@ def render_tab_recent():
         st.warning("Upload ClickUp tasks and Meta CSV first (Data Ingestion above).")
         return
 
-    thresholds = render_thresholds()
+    # Thresholds for recent (with spend minimums)
+    st.markdown('<h4 style="color:#fafafa;">Classification Thresholds</h4>', unsafe_allow_html=True)
+    with st.expander("Set thresholds", expanded=not st.session_state.get("thresholds_set")):
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1:
+            wr = st.number_input("Winner ROAS ≥", value=1.5, step=0.1, min_value=0.0, key="r_wr")
+        with c2:
+            ws = st.number_input("Winner min $", value=500.0, step=100.0, min_value=0.0, key="r_ws")
+        with c3:
+            lr = st.number_input("Loser ROAS ≤", value=0.8, step=0.1, min_value=0.0, key="r_lr")
+        with c4:
+            ls = st.number_input("Loser min $", value=500.0, step=100.0, min_value=0.0, key="r_ls")
+        with c5:
+            us = st.number_input("Untested max $", value=100.0, step=50.0, min_value=0.0, key="r_us")
 
     # Step 1: Match & Classify
     st.markdown("---")
@@ -353,6 +377,7 @@ def render_tab_recent():
         c1.metric("Matched", ms.total_matched)
         c2.metric("Unmatched Tasks", ms.total_unmatched_tasks)
         c3.metric("Unmatched CSV", ms.total_unmatched_csv)
+        render_match_log(ms)
         render_classification_summary(st.session_state["classification"])
     else:
         if st.button("🔗 Match & Classify Recent Ads", use_container_width=True, key="recent_classify"):
@@ -362,7 +387,7 @@ def render_tab_recent():
             with st.spinner("Matching..."):
                 ms = match_tasks_to_csv(tasks, csv_ads, total_spend)
             st.session_state["match_summary"] = ms
-            t = Thresholds(**thresholds)
+            t = Thresholds(winner_roas=wr, winner_min_spend=ws, loser_roas=lr, loser_min_spend=ls, untested_max_spend=us)
             clf = classify_ads(ms, t)
             st.session_state["classification"] = clf
             st.session_state["thresholds_set"] = True
@@ -373,7 +398,6 @@ def render_tab_recent():
     st.markdown("---")
     st.markdown('<h3 style="color:#fafafa;">2. Read Scripts</h3>', unsafe_allow_html=True)
     classification = st.session_state["classification"]
-
     if st.session_state.get("scripts"):
         render_scripts_display(st.session_state["scripts"])
     else:
@@ -398,7 +422,6 @@ def render_tab_recent():
     # Step 3: Pattern Analysis
     st.markdown("---")
     st.markdown('<h3 style="color:#fafafa;">3. Pattern Analysis</h3>', unsafe_allow_html=True)
-
     if st.session_state.get("pattern_analysis"):
         render_pattern_analysis_display(st.session_state["pattern_analysis"])
     else:
@@ -413,7 +436,6 @@ def render_tab_recent():
     # Step 4: Hypotheses
     st.markdown("---")
     st.markdown('<h3 style="color:#fafafa;">4. Learnings & Hypotheses</h3>', unsafe_allow_html=True)
-
     if st.session_state.get("hypothesis_report"):
         render_hypotheses_display(st.session_state["hypothesis_report"])
     else:
@@ -428,16 +450,22 @@ def render_tab_recent():
 # ── Tab 2: Top 50 Account Ads ────────────────────────────────────────────────
 
 def render_tab_top50():
-    st.markdown('<h2 style="color:#fafafa;">Top 50 Account Ads — Deep Analysis</h2>', unsafe_allow_html=True)
-    st.markdown('<p style="color:#aaa;">What has historically worked best in this account? Top 50 ads by spend, all-time.</p>', unsafe_allow_html=True)
+    st.markdown('<h2 style="color:#fafafa;">Section B — Top 50 All-Time Spenders</h2>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#aaa;">Top 50 ads by spend across the entire CSV. No date filter, no spend minimum. ROAS-only classification.</p>', unsafe_allow_html=True)
 
     tasks = st.session_state.get("tasks")
     csv_ads = st.session_state.get("csv_ads")
     if not tasks or not csv_ads:
-        st.warning("Upload ClickUp tasks and Meta CSV first (Data Ingestion above).")
+        st.warning("Upload ClickUp tasks and Meta CSV first.")
         return
 
-    thresholds = render_thresholds()
+    # ROAS thresholds only (no spend min for top 50)
+    with st.expander("ROAS Thresholds (no spend minimum for top 50)", expanded=False):
+        c1, c2 = st.columns(2)
+        with c1:
+            t50_wr = st.number_input("Winner ROAS ≥", value=1.5, step=0.1, min_value=0.0, key="t50_wr")
+        with c2:
+            t50_lr = st.number_input("Loser ROAS ≤", value=0.8, step=0.1, min_value=0.0, key="t50_lr")
 
     # Step 1: Get Top 50 & Match & Classify
     st.markdown("---")
@@ -451,11 +479,12 @@ def render_tab_top50():
         c3.metric("Unmatched (no task)", ms.total_unmatched_csv)
         top50_spend = sum(a.spend for a in st.session_state.get("top50_ads", []))
         c4.metric("Top 50 Total Spend", f"${top50_spend:,.0f}")
+        render_match_log(ms)
         render_classification_summary(st.session_state["top50_classification"])
     else:
         if st.button("🔗 Get Top 50 & Classify", use_container_width=True, key="top50_classify"):
             from analyzer.csv_matcher import get_top_ads_by_spend, match_tasks_to_csv
-            from analyzer.classifier import Thresholds, classify_ads
+            from analyzer.classifier import classify_top50
 
             top50_ads = get_top_ads_by_spend(csv_ads, top_n=50)
             st.session_state["top50_ads"] = top50_ads
@@ -465,10 +494,9 @@ def render_tab_top50():
                 ms = match_tasks_to_csv(tasks, top50_ads, total_spend)
             st.session_state["top50_match_summary"] = ms
 
-            t = Thresholds(**thresholds)
-            clf = classify_ads(ms, t)
+            # ROAS-only classification — no spend minimum
+            clf = classify_top50(ms, winner_roas=t50_wr, loser_roas=t50_lr)
             st.session_state["top50_classification"] = clf
-            st.session_state["thresholds_set"] = True
             st.rerun()
         return
 
@@ -476,19 +504,16 @@ def render_tab_top50():
     st.markdown("---")
     st.markdown('<h3 style="color:#fafafa;">2. Read Scripts</h3>', unsafe_allow_html=True)
     classification = st.session_state["top50_classification"]
-
     if st.session_state.get("top50_scripts"):
         render_scripts_display(st.session_state["top50_scripts"])
     else:
         if "ANTHROPIC_API_KEY" in check_env_vars():
             st.error("Set ANTHROPIC_API_KEY"); return
-        matched_tasks = [ad.match.task for ad in classification.all_classified if ad.classification.value != "untested"]
-        # Deduplicate tasks already read in recent pipeline
+        matched_tasks = [ad.match.task for ad in classification.all_classified]
         existing_scripts = st.session_state.get("scripts", {}) or {}
         new_tasks = [t for t in matched_tasks if t.task_id not in existing_scripts]
         reused = len(matched_tasks) - len(new_tasks)
-        st.markdown(f'<p style="color:#fafafa;">{len(matched_tasks)} tasks total ({reused} already read, {len(new_tasks)} new)</p>', unsafe_allow_html=True)
-
+        st.markdown(f'<p style="color:#fafafa;">{len(matched_tasks)} tasks ({reused} reused, {len(new_tasks)} new)</p>', unsafe_allow_html=True)
         if st.button("📖 Read Scripts (Claude)", use_container_width=True, key="top50_scripts_btn"):
             from analyzer.script_reader import read_all_scripts
             progress = st.progress(0)
@@ -502,10 +527,8 @@ def render_tab_top50():
                 new_dict = {s.task_id: s for s in new_scripts}
             else:
                 new_dict = {}
-            # Merge with existing
             merged = dict(existing_scripts)
             merged.update(new_dict)
-            # Filter to only tasks in this classification
             top50_task_ids = {ad.match.task.task_id for ad in classification.all_classified}
             st.session_state["top50_scripts"] = {k: v for k, v in merged.items() if k in top50_task_ids}
             progress.empty(); status.empty()
@@ -515,7 +538,6 @@ def render_tab_top50():
     # Step 3: Pattern Analysis
     st.markdown("---")
     st.markdown('<h3 style="color:#fafafa;">3. Pattern Analysis</h3>', unsafe_allow_html=True)
-
     if st.session_state.get("top50_pattern_analysis"):
         render_pattern_analysis_display(st.session_state["top50_pattern_analysis"])
     else:
@@ -527,10 +549,9 @@ def render_tab_top50():
             st.rerun()
         return
 
-    # Step 4: Hypotheses (optional for top 50)
+    # Step 4: Hypotheses
     st.markdown("---")
     st.markdown('<h3 style="color:#fafafa;">4. Learnings & Hypotheses</h3>', unsafe_allow_html=True)
-
     if st.session_state.get("top50_hypothesis_report"):
         render_hypotheses_display(st.session_state["top50_hypothesis_report"])
     else:
@@ -545,12 +566,11 @@ def render_tab_top50():
 # ── Tab 3: Comparison ────────────────────────────────────────────────────────
 
 def render_tab_comparison():
-    st.markdown('<h2 style="color:#fafafa;">Recent vs All-Time Comparison</h2>', unsafe_allow_html=True)
+    st.markdown('<h2 style="color:#fafafa;">Section C — Recent vs All-Time Comparison</h2>', unsafe_allow_html=True)
     st.markdown('<p style="color:#aaa;">Is your creative team getting better or worse? Where are they drifting from proven patterns?</p>', unsafe_allow_html=True)
 
     recent_pa = st.session_state.get("pattern_analysis")
     alltime_pa = st.session_state.get("top50_pattern_analysis")
-
     if not recent_pa or not alltime_pa:
         st.warning("Complete pattern analysis in both 'Recent Creative' and 'Top 50 Account Ads' tabs first.")
         missing = []
@@ -564,41 +584,30 @@ def render_tab_comparison():
 
     if st.session_state.get("comparison_analysis"):
         comp = st.session_state["comparison_analysis"]
-
-        # Full analysis
         st.markdown(comp.raw_comparison)
-
-        # Drift alerts
         if comp.drift_alerts:
             st.markdown("---")
-            st.markdown('<h3 style="color:#F44336;">Pattern Drifts (Areas of Concern)</h3>', unsafe_allow_html=True)
+            st.markdown('<h3 style="color:#F44336;">Pattern Drifts</h3>', unsafe_allow_html=True)
             for d in comp.drift_alerts:
                 st.markdown(f'<div style="background:#1A1D24;border-left:4px solid #F44336;padding:10px 14px;margin-bottom:8px;border-radius:4px;"><p style="color:#fafafa;margin:0;">{d}</p></div>', unsafe_allow_html=True)
-
-        # Consistent patterns
         if comp.consistent_patterns:
-            with st.expander("✅ Consistent Patterns (Keep Going)", expanded=False):
+            with st.expander("✅ Consistent Patterns", expanded=False):
                 for c in comp.consistent_patterns:
                     st.markdown(f'<div style="background:#1A1D24;border-left:4px solid #4CAF50;padding:8px 12px;margin-bottom:6px;border-radius:4px;"><p style="color:#fafafa;margin:0;">{c}</p></div>', unsafe_allow_html=True)
-
-        # New patterns
         if comp.new_patterns:
-            with st.expander("🆕 New Patterns (Potential Discoveries)", expanded=False):
+            with st.expander("🆕 New Patterns", expanded=False):
                 for n in comp.new_patterns:
                     st.markdown(f'<div style="background:#1A1D24;border-left:4px solid #FF9800;padding:8px 12px;margin-bottom:6px;border-radius:4px;"><p style="color:#fafafa;margin:0;">{n}</p></div>', unsafe_allow_html=True)
-
-        # Recommendations
         if comp.recommendations:
             st.markdown("---")
             st.markdown('<h3 style="color:#6C63FF;">Recommendations</h3>', unsafe_allow_html=True)
             for r in comp.recommendations:
                 st.markdown(f'<div style="background:#1A1D24;border-left:4px solid #6C63FF;padding:10px 14px;margin-bottom:8px;border-radius:4px;"><p style="color:#fafafa;margin:0;">{r}</p></div>', unsafe_allow_html=True)
     else:
-        st.markdown('<p style="color:#fafafa;">Both pattern analyses are ready. Run the comparison to detect drift.</p>', unsafe_allow_html=True)
         date_range = st.session_state.get("date_range_str", "30 days")
         if st.button("🔍 Run Comparison Analysis (Claude)", use_container_width=True, key="run_comparison"):
             from analyzer.pattern_analyzer import compare_patterns
-            with st.spinner("Claude is comparing recent vs all-time patterns..."):
+            with st.spinner("Comparing patterns..."):
                 comp = compare_patterns(recent_pa, alltime_pa, date_range=date_range)
             st.session_state["comparison_analysis"] = comp
             st.rerun()
@@ -608,24 +617,19 @@ def render_tab_comparison():
 
 def render_tab_reports():
     st.markdown('<h2 style="color:#fafafa;">Reports</h2>', unsafe_allow_html=True)
-
-    # Export section
     classification = st.session_state.get("classification")
     pattern_analysis = st.session_state.get("pattern_analysis")
     hypothesis_report = st.session_state.get("hypothesis_report")
-
     has_recent = all([classification, pattern_analysis, hypothesis_report])
-    has_top50 = st.session_state.get("top50_pattern_analysis") is not None
-    has_comparison = st.session_state.get("comparison_analysis") is not None
 
     if has_recent:
         st.markdown('<h3 style="color:#fafafa;">Export Full Report</h3>', unsafe_allow_html=True)
-        sections = ["Section A: Recent Creative"]
-        if has_top50:
-            sections.append("Section B: Top 50 All-Time")
-        if has_comparison:
-            sections.append("Section C: Comparison")
-        st.markdown(f'<p style="color:#aaa;">Report will include: {" + ".join(sections)}</p>', unsafe_allow_html=True)
+        sections = ["A: Recent"]
+        if st.session_state.get("top50_pattern_analysis"):
+            sections.append("B: Top 50")
+        if st.session_state.get("comparison_analysis"):
+            sections.append("C: Comparison")
+        st.markdown(f'<p style="color:#aaa;">Includes: {" + ".join(sections)}</p>', unsafe_allow_html=True)
 
         col1, col2 = st.columns(2)
         with col1:
@@ -642,8 +646,7 @@ def render_tab_reports():
                 )
                 path = save_report(brand, html, format="html")
                 st.success(f"Saved: {path}")
-                st.download_button("⬇️ Download HTML", html, file_name=f"{brand}_report.html", mime="text/html", key="dl_html")
-
+                st.download_button("⬇️ Download", html, file_name=f"{brand}_report.html", mime="text/html", key="dl_html")
         with col2:
             if st.button("📑 Export PDF", use_container_width=True, key="export_pdf"):
                 from analyzer.report_generator import generate_html_report, save_report
@@ -659,23 +662,20 @@ def render_tab_reports():
                 path = save_report(brand, html, format="pdf")
                 if path.suffix == ".pdf":
                     st.success(f"PDF saved: {path}")
-                    st.download_button("⬇️ Download PDF", path.read_bytes(), file_name=f"{brand}_report.pdf", mime="application/pdf", key="dl_pdf")
+                    st.download_button("⬇️ Download", path.read_bytes(), file_name=f"{brand}_report.pdf", mime="application/pdf", key="dl_pdf")
                 else:
                     st.warning("PDF requires `weasyprint`. Saved as HTML.")
-                    st.download_button("⬇️ Download HTML", html, file_name=f"{brand}_report.html", mime="text/html", key="dl_pdf_fallback")
+                    st.download_button("⬇️ Download", html, file_name=f"{brand}_report.html", mime="text/html", key="dl_pdf_fb")
     else:
-        st.info("Complete the Recent Creative analysis pipeline to enable report export.")
+        st.info("Complete Recent Creative analysis to enable export.")
 
-    # Reports history
     st.markdown("---")
     st.markdown('<h3 style="color:#fafafa;">Reports History</h3>', unsafe_allow_html=True)
-
     from analyzer.report_generator import list_reports
     reports = list_reports()
     if not reports:
-        st.markdown('<p style="color:#aaa;">No reports generated yet.</p>', unsafe_allow_html=True)
+        st.markdown('<p style="color:#aaa;">No reports yet.</p>', unsafe_allow_html=True)
         return
-
     for r in reports:
         col1, col2, col3 = st.columns([4, 1, 1])
         with col1:
@@ -699,24 +699,12 @@ def main():
     init_state()
     if not check_login():
         return
-
     render_sidebar()
-
     st.markdown('<h1 style="color:#fafafa;">🔄 Creative Feedback Loop Analyzer</h1>', unsafe_allow_html=True)
     st.markdown('<p style="color:#aaa;">Pull creative briefs → Match performance → Find patterns → Detect drift</p>', unsafe_allow_html=True)
-
-    # Data ingestion (always visible)
     render_data_ingestion()
     st.markdown("---")
-
-    # Main tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Recent Creative",
-        "🏆 Top 50 Account Ads",
-        "🔄 Recent vs All-Time",
-        "📁 Reports",
-    ])
-
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Recent Creative", "🏆 Top 50 Account Ads", "🔄 Recent vs All-Time", "📁 Reports"])
     with tab1:
         render_tab_recent()
     with tab2:
