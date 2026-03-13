@@ -222,3 +222,147 @@ def _extract_cross_insights(raw_analysis: str) -> list[str]:
             break  # Next section
 
     return insights
+
+
+# ── Comparison: Recent vs All-Time ────────────────────────────────────────────
+
+@dataclass
+class ComparisonAnalysis:
+    """Result of comparing recent vs all-time patterns."""
+    raw_comparison: str = ""
+    drift_alerts: list[str] = field(default_factory=list)
+    consistent_patterns: list[str] = field(default_factory=list)
+    new_patterns: list[str] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)
+
+
+COMPARISON_PROMPT = """You are comparing two sets of ad creative pattern analyses to detect pattern drift.
+
+SECTION A — RECENT CREATIVE ANALYSIS (last {date_range} of launches):
+{recent_analysis}
+
+SECTION B — TOP 50 ALL-TIME ACCOUNT ADS (by spend, regardless of launch date):
+{alltime_analysis}
+
+Your job: Compare these two analyses and find where the creative team is ALIGNED with proven patterns vs DRIFTING away from what works.
+
+Provide your response in EXACTLY this structure:
+
+## PATTERN DRIFT DETECTION
+
+For each category below, classify as one of:
+- ⚠️ DRIFT: Recent creative has shifted away from proven all-time patterns
+- ✅ CONSISTENT: Recent creative matches all-time winning patterns
+- 🆕 NEW PATTERN: Recent creative shows something not seen in all-time data
+
+### Pain Points
+[Are recent ads targeting the same pain points as all-time winners? Or has the team drifted?]
+
+### Root Cause Depth
+[Are recent ads using the same depth (surface/cellular/molecular) as all-time winners?]
+
+### Mechanisms (UMP/UMS)
+[Are recent ads using proven mechanisms or experimenting with new ones?]
+
+### Avatars
+[Are recent ads targeting the same avatar profiles as all-time winners?]
+
+### Hooks
+[Are recent hooks following all-time winning patterns or diverging?]
+
+### Ad Formats
+[Are recent ads doubling down on formats that work historically?]
+
+### Language Patterns
+[Are recent ads keeping winning phrases or losing them?]
+
+### Awareness Levels
+[Are recent ads targeting the same awareness stage as all-time winners?]
+
+### Emotional Triggers
+[Are recent emotional triggers aligned with historical winners?]
+
+### Lead Types
+[Are recent lead types consistent with what worked historically?]
+
+## DRIFT SUMMARY
+
+### Drifts (areas where recent creative has moved AWAY from proven patterns):
+[List each drift with specific details. Format:]
+- ⚠️ DRIFT: [Category] — All-time winners heavily use [pattern] but recent creative shifted to [different pattern]. [Spend/ROAS data if available.]
+
+### Consistent Patterns (areas where recent creative MATCHES proven patterns):
+[List each consistent pattern. Format:]
+- ✅ CONSISTENT: [Category] — Both all-time and recent winners use [pattern]. Keep going.
+
+### New Patterns (potentially new discoveries):
+[List each new pattern. Format:]
+- 🆕 NEW PATTERN: [Category] — Recent creative shows [pattern] not seen in all-time data. Could be a breakthrough or a fluke — test further.
+
+## RECOMMENDATIONS
+
+[Provide 4-6 specific, actionable recommendations based on the comparison. Format:]
+
+1. **[Short title]**: [Detailed recommendation explaining what to do and why, referencing specific patterns and data from both analyses.]
+
+Focus on the most impactful drift areas first. If recent creative is performing WORSE than historical, the drifts are the likely cause. If recent creative is performing BETTER, the new patterns might be worth scaling."""
+
+
+def compare_patterns(
+    recent_analysis: PatternAnalysis,
+    alltime_analysis: PatternAnalysis,
+    date_range: str = "30 days",
+) -> ComparisonAnalysis:
+    """Compare recent creative patterns against all-time top 50 patterns.
+
+    Args:
+        recent_analysis: Pattern analysis from recent creative
+        alltime_analysis: Pattern analysis from top 50 all-time ads
+        date_range: Human-readable date range for context
+    """
+    prompt = COMPARISON_PROMPT.format(
+        date_range=date_range,
+        recent_analysis=recent_analysis.raw_analysis,
+        alltime_analysis=alltime_analysis.raw_analysis,
+    )
+
+    client = anthropic.Anthropic()
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    raw = message.content[0].text
+    result = ComparisonAnalysis(raw_comparison=raw)
+
+    # Parse drift/consistent/new from DRIFT SUMMARY section
+    in_section = None
+    for line in raw.split("\n"):
+        line = line.strip()
+        if "Drifts (" in line or "Drifts(" in line:
+            in_section = "drift"
+            continue
+        elif "Consistent Patterns" in line:
+            in_section = "consistent"
+            continue
+        elif "New Patterns" in line:
+            in_section = "new"
+            continue
+        elif line.startswith("## RECOMMENDATIONS"):
+            in_section = "recs"
+            continue
+        elif line.startswith("## ") and in_section:
+            in_section = None
+            continue
+
+        if in_section == "drift" and line.startswith("- "):
+            result.drift_alerts.append(line[2:].strip())
+        elif in_section == "consistent" and line.startswith("- "):
+            result.consistent_patterns.append(line[2:].strip())
+        elif in_section == "new" and line.startswith("- "):
+            result.new_patterns.append(line[2:].strip())
+        elif in_section == "recs" and line and line[0].isdigit() and "." in line[:3]:
+            result.recommendations.append(line.split(".", 1)[1].strip() if "." in line else line)
+
+    return result

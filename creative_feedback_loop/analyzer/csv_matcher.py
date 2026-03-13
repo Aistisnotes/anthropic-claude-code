@@ -273,3 +273,9 @@ def match_tasks_to_csv(
         total_unmatched_tasks=len(unmatched_tasks),
         total_unmatched_csv=len(unmatched_csv),
     )
+
+
+def get_top_ads_by_spend(ads: list[AdMetrics], top_n: int = 50) -> list[AdMetrics]:
+    """Return the top N ads by spend from the full CSV."""
+    sorted_ads = sorted(ads, key=lambda a: a.spend, reverse=True)
+    return sorted_ads[:top_n]
