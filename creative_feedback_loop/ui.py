@@ -401,3 +401,10 @@ def _profitability_label(status: str) -> str:
         "unprofitable": "Unprofitable (ROAS < 1.0)",
         "no_conversions": "No Conversions (ROAS = 0)",
     }.get(status, status)
+
+if __name__ == "__main__":
+    pass
+
+
+# Entry point
+render_creative_feedback_loop()
