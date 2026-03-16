@@ -1,2 +1,339 @@
-<!-- Report template placeholder — actual HTML is generated in report_generator.py -->
-<!-- This file is kept for future Jinja2 template migration if needed -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ brand_name }} — Creative Feedback Loop Report</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 13px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #fafafa;
+    background: #0e1117;
+    line-height: 1.6;
+  }
+
+  @page { size: A4; margin: 18mm 16mm; }
+  @page :first { margin: 0; }
+
+  /* ── Cover ─────────────────────────── */
+  .cover {
+    page-break-after: always;
+    height: 297mm;
+    background: linear-gradient(135deg, #0e1117 0%, #1a1a2e 100%);
+    display: flex;
+    flex-direction: column;
+    padding: 48px 44px;
+    position: relative;
+  }
+  .cover-bar {
+    width: 100%; height: 5px;
+    background: linear-gradient(90deg, #e91e8c, #f06292);
+    border-radius: 3px;
+    margin-bottom: 40px;
+  }
+  .cover-title {
+    font-size: 36px; font-weight: 800; color: #fafafa;
+    line-height: 1.15; margin-bottom: 12px;
+  }
+  .cover-title span { color: #e91e8c; }
+  .cover-subtitle { font-size: 15px; color: #999; margin-bottom: 6px; }
+  .cover-meta { margin-top: 32px; display: flex; flex-direction: column; gap: 8px; }
+  .cover-meta-row { display: flex; gap: 8px; font-size: 13px; }
+  .cover-meta-label { font-weight: 700; color: #999; min-width: 140px; }
+  .cover-meta-value { color: #fafafa; }
+
+  /* ── Section ───────────────────────── */
+  .section {
+    page-break-before: always;
+    padding: 24px 0;
+  }
+  .section:first-of-type { page-break-before: auto; }
+  h2 {
+    font-size: 22px; font-weight: 700; color: #e91e8c;
+    border-bottom: 2px solid #333; padding-bottom: 8px;
+    margin-bottom: 16px;
+  }
+  h3 { font-size: 16px; font-weight: 700; color: #fafafa; margin: 16px 0 8px; }
+
+  /* ── Cards ─────────────────────────── */
+  .card {
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .card-title { font-weight: 700; color: #e91e8c; margin-bottom: 6px; }
+  .card p { color: #ccc; font-size: 13px; }
+
+  /* ── Metric row ────────────────────── */
+  .metrics {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .metric-box {
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 14px 20px;
+    min-width: 140px;
+    text-align: center;
+  }
+  .metric-value { font-size: 28px; font-weight: 800; color: #e91e8c; }
+  .metric-label { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* ── Tables ────────────────────────── */
+  table {
+    width: 100%; border-collapse: collapse;
+    margin-bottom: 16px; font-size: 12px;
+  }
+  thead tr { border-bottom: 2px solid #444; }
+  th {
+    text-align: left; padding: 8px; color: #999;
+    font-weight: 600; font-size: 11px; text-transform: uppercase;
+  }
+  th:not(:first-child) { text-align: right; }
+  td { padding: 6px 8px; border-bottom: 1px solid #222; color: #ccc; }
+  td:not(:first-child) { text-align: right; }
+  td:first-child { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .delta-green { color: #4caf50; font-weight: 700; }
+  .delta-red { color: #ef5350; font-weight: 700; }
+  .delta-neutral { color: #999; }
+
+  /* ── Insights ──────────────────────── */
+  .insight {
+    background: #1a1a2e;
+    border-left: 3px solid #e91e8c;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    border-radius: 0 6px 6px 0;
+  }
+  .insight-title { font-weight: 700; color: #fafafa; margin-bottom: 4px; }
+  .insight-detail { color: #ccc; font-size: 13px; line-height: 1.5; }
+  .insight-meta { color: #888; font-size: 11px; margin-top: 4px; }
+
+  .baseline-badge {
+    display: inline-block;
+    background: #333;
+    color: #999;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+
+  /* ── Comparison ────────────────────── */
+  .comparison-item {
+    padding: 4px 0;
+    font-size: 13px;
+  }
+  .comparison-new {
+    color: #2196f3;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+
+<!-- Cover Page -->
+<div class="cover">
+  <div class="cover-bar"></div>
+  <div class="cover-title">Creative Feedback Loop<br><span>{{ brand_name }}</span></div>
+  <div class="cover-subtitle">Performance Analysis Report</div>
+  <div class="cover-meta">
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Date Range</span>
+      <span class="cover-meta-value">{{ csv_start }} — {{ csv_end }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Run Date</span>
+      <span class="cover-meta-value">{{ run_date }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Total Ads Analyzed</span>
+      <span class="cover-meta-value">{{ total_ads }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Priority</span>
+      <span class="cover-meta-value">{{ priority }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- Executive Summary -->
+<div class="section">
+  <h2>Executive Summary</h2>
+  <div class="metrics">
+    <div class="metric-box">
+      <div class="metric-value">{{ counts.winners }}</div>
+      <div class="metric-label">Winners</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-value">{{ counts.losers }}</div>
+      <div class="metric-label">Losers</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-value">{{ counts.untested }}</div>
+      <div class="metric-label">Untested</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-value">${{ total_spend }}</div>
+      <div class="metric-label">Total Spend</div>
+    </div>
+  </div>
+  {% if executive_summary %}
+  <div class="card">
+    <p>{{ executive_summary }}</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Structured Dashboard -->
+<div class="section">
+  <h2>Structured Dashboard — All Classified Ads</h2>
+  {% for dim_key, dim_label, rows in dashboard_tables %}
+  {% if rows %}
+  <h3>{{ dim_label }}</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Value</th>
+        <th>% All</th>
+        <th>% Winners</th>
+        <th>% Losers</th>
+        <th>Delta (W-L)</th>
+        <th>Avg ROAS</th>
+        <th>Total Spend</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td>{{ row.value }}</td>
+        <td>{{ row.pct_all }}%</td>
+        <td style="color:#4caf50;">{{ row.pct_winners }}%</td>
+        <td style="color:#ef5350;">{{ row.pct_losers }}%</td>
+        <td class="{% if row.delta > 15 %}delta-green{% elif row.delta < -15 %}delta-red{% else %}delta-neutral{% endif %}">
+          {% if row.delta > 0 %}+{% endif %}{{ row.delta }}%
+        </td>
+        <td>{{ row.avg_roas }}x</td>
+        <td>${{ "{:,.0f}".format(row.total_spend) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<!-- Top 50 Dashboard -->
+<div class="section">
+  <h2>Top 50 by Spend — Dashboard</h2>
+  {% for dim_key, dim_label, rows in top50_tables %}
+  {% if rows %}
+  <h3>{{ dim_label }}</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Value</th>
+        <th>% All</th>
+        <th>% Winners</th>
+        <th>% Losers</th>
+        <th>Delta (W-L)</th>
+        <th>Avg ROAS</th>
+        <th>Total Spend</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td>{{ row.value }}</td>
+        <td>{{ row.pct_all }}%</td>
+        <td style="color:#4caf50;">{{ row.pct_winners }}%</td>
+        <td style="color:#ef5350;">{{ row.pct_losers }}%</td>
+        <td class="{% if row.delta > 15 %}delta-green{% elif row.delta < -15 %}delta-red{% else %}delta-neutral{% endif %}">
+          {% if row.delta > 0 %}+{% endif %}{{ row.delta }}%
+        </td>
+        <td>{{ row.avg_roas }}x</td>
+        <td>${{ "{:,.0f}".format(row.total_spend) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<!-- Comparison with Previous Run -->
+{% if comparison_data %}
+<div class="section">
+  <h2>Comparison with Previous Run ({{ previous_run_date }})</h2>
+  {% for change in comparison_data %}
+  <div class="comparison-item">
+    {% if change.is_new %}
+      <span class="comparison-new">NEW</span>
+      {{ change.value }}: {{ change.curr_pct }}% of winners (was 0% last run)
+    {% else %}
+      {{ change.value }}: {{ change.prev_pct }}% → {{ change.curr_pct }}%
+      <span class="{% if change.change > 0 %}delta-green{% else %}delta-red{% endif %}">
+        ({% if change.change > 0 %}+{% endif %}{{ change.change }}%)
+      </span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Pattern Insights -->
+{% if insights %}
+<div class="section">
+  <h2>Pattern Insights</h2>
+  {% for insight in insights %}
+  <div class="insight">
+    <div class="insight-title">
+      {{ insight.title }}
+      {% if insight.is_baseline %}
+      <span class="baseline-badge">BASELINE</span>
+      {% endif %}
+    </div>
+    <div class="insight-detail">{{ insight.detail }}</div>
+    <div class="insight-meta">
+      Winners: {{ insight.winner_count }} | Losers: {{ insight.loser_count }} |
+      Avg ROAS: {{ insight.avg_roas }}x | Avg Spend: ${{ "{:,.0f}".format(insight.avg_spend or 0) }} |
+      Confidence: {{ insight.confidence }}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Learnings -->
+{% if learnings %}
+<div class="section">
+  <h2>Learnings</h2>
+  {% for learning in learnings %}
+  <div class="card">
+    <p>{{ learning }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Hypotheses -->
+{% if hypotheses %}
+<div class="section">
+  <h2>Hypotheses</h2>
+  {% for hypothesis in hypotheses %}
+  <div class="card">
+    <p>{{ hypothesis }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+</body>
+</html>

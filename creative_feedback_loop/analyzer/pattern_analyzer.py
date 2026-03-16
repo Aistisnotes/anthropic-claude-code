@@ -1,224 +1,218 @@
-"""Pattern Analyzer — Claude-powered weighted pattern analysis across winners vs losers.
+"""Pattern analyzer for creative feedback loop.
 
-Sends all classified scripts to Claude with their weight tiers.
-Pillar ad patterns count 3x more than minor ad patterns.
+Uses Claude to generate insights from extracted ad components.
+Enforces insight quality rules: specific numbers, named ads, A vs B comparisons.
+Respects operator priority settings.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
-from dataclasses import dataclass, field
-from typing import Any
+import logging
+import os
+from typing import Any, Optional
 
 import anthropic
 
-from .classifier import ClassificationResult, ClassifiedAd, WeightTier
-from .script_reader import ScriptContent
+logger = logging.getLogger(__name__)
+
+PATTERN_ANALYSIS_PROMPT = """You are a senior media buyer analyzing ad performance data. You speak like a practitioner talking to your team — direct, specific, data-driven. NOT like an academic.
+
+ANALYSIS DATA:
+{analysis_data}
+
+{priority_injection}
+
+{previous_notes_injection}
+
+RULES — FOLLOW EXACTLY:
+1. Every insight MUST include specific numbers: how many winners, how many losers, what ROAS, what spend.
+2. Every insight MUST name specific ads as examples (use ad names from the data).
+3. Every insight MUST use clear A vs B comparison language: "Winners do X while losers do Y."
+4. Write like a media buyer talking to their team, NOT like an academic paper.
+5. If a pattern appears in > 85% of ALL ads (winners AND losers), label it "BASELINE — already standard, not a differentiator" and do NOT present it as an insight.
+6. Focus on the DELTA — patterns where winners and losers diverge significantly.
+
+GOOD insight format:
+"First-person organ personification hooks appear in 4 of 5 top winners (avg ROAS 1.52, avg spend $45k) but 0 of 8 losers. Scripts like B310_V1 used 'Your kidneys are drowning in sludge' while losing scripts used authority claims like 'Doctors recommend...'"
+
+BAD insight format (DO NOT generate):
+"General(LCC) avatar targeting with symptom specificity creates broad reach while maintaining relevance"
+
+Return ONLY valid JSON with this structure:
+{{
+  "insights": [
+    {{
+      "title": "Short pattern name",
+      "detail": "Full insight with numbers, ad names, and A vs B comparison",
+      "winner_count": 4,
+      "loser_count": 0,
+      "avg_roas": 1.52,
+      "avg_spend": 45000,
+      "is_baseline": false,
+      "confidence": "high | medium | low"
+    }}
+  ],
+  "learnings": [
+    "Key learning 1 — actionable takeaway with data",
+    "Key learning 2"
+  ],
+  "hypotheses": [
+    "Hypothesis 1 — what to test next and why, based on data patterns",
+    "Hypothesis 2"
+  ],
+  "executive_summary": "2-3 sentence summary of the most important findings"
+}}"""
 
 
-@dataclass
-class PatternInsight:
-    """A single pattern insight from analysis."""
-    category: str  # e.g., "pain_points", "hooks", "root_cause_depth"
-    pattern: str
-    frequency: int  # how many ads exhibit this
-    weighted_frequency: float  # frequency adjusted by weight
-    supporting_ads: list[str] = field(default_factory=list)
-    avg_roas: float = 0.0
-    total_spend: float = 0.0
-
-
-@dataclass
-class PatternAnalysis:
-    """Complete pattern analysis results."""
-    winner_patterns: dict[str, list[PatternInsight]] = field(default_factory=dict)
-    loser_patterns: dict[str, list[PatternInsight]] = field(default_factory=dict)
-    cross_insights: list[str] = field(default_factory=list)
-    raw_analysis: str = ""  # Full Claude response
-
-
-def _build_ad_summary(
-    classified: ClassifiedAd,
-    script: ScriptContent | None,
+async def analyze_patterns(
+    ads_with_extractions: list[dict[str, Any]],
+    dashboard_data: dict[str, list[dict]],
+    priority_prompt: str = "",
+    previous_notes: str = "",
+    api_key: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Build a summary dict for one ad to send to Claude."""
-    summary: dict[str, Any] = {
-        "task_name": classified.match.task.name,
-        "classification": classified.classification.value,
-        "weight_tier": classified.weight_tier.value,
-        "weight_multiplier": classified.weight_multiplier,
-        "spend": round(classified.match.total_spend, 2),
-        "spend_share": f"{classified.spend_share * 100:.1f}%",
-        "roas": round(classified.match.weighted_roas, 2),
-        "value_score": round(classified.value_score, 2),
-    }
-    if script and not script.no_content_found:
-        summary.update({
-            "hooks": script.hooks,
-            "body_copy": script.body_copy[:500] if script.body_copy else "",
-            "pain_point": script.pain_point,
-            "symptoms": script.symptoms,
-            "root_cause": script.root_cause,
-            "root_cause_depth": script.root_cause_depth,
-            "mechanism_ump": script.mechanism_ump,
-            "mechanism_ums": script.mechanism_ums,
-            "avatar": script.avatar,
-            "ad_format": script.ad_format,
-            "awareness_level": script.awareness_level,
-            "emotional_triggers": script.emotional_triggers,
-            "language_patterns": script.language_patterns,
-            "cta_type": script.cta_type,
-            "lead_type": script.lead_type,
-        })
-    return summary
-
-
-PATTERN_ANALYSIS_PROMPT = """You are analyzing ad creative performance data to find patterns in winners vs losers.
-
-IMPORTANT: Weight tiers determine how much each ad's patterns should influence your analysis:
-- Pillar (3x weight): These ads take >10% of total account spend. Their patterns are the MOST important.
-- Strong (2x weight): 5-10% of spend. Very significant.
-- Normal (1x weight): 1-5% of spend. Standard significance.
-- Minor (0.5x weight): <1% of spend. Low significance — could be noise.
-
-WINNER ADS (sorted by value score):
-{winners_json}
-
-LOSER ADS (sorted by spend — high-spend losers = expensive mistakes):
-{losers_json}
-
-AVERAGE ADS:
-{average_json}
-
-Analyze the data and provide your response in EXACTLY this structure:
-
-## WINNER PATTERNS (weighted by spend significance)
-
-### Pain Points
-[Which pain points appear in highest-weighted winners? Be specific.]
-
-### Root Cause Depth
-[Which root cause depth works? surface vs cellular vs molecular — with spend data]
-
-### Mechanisms (UMP/UMS)
-[Which mechanism patterns resonate? What UMP/UMS combinations drive results?]
-
-### Avatars
-[Which avatar types convert? Specific habits, life patterns mentioned]
-
-### Awareness Levels
-[Which awareness levels perform? With ROAS and spend data]
-
-### Hooks
-[Specific hook patterns from top-weighted winners. Quote actual hooks when possible.]
-
-### Ad Formats
-[Which formats work? UGC, AI, VSL, etc. with performance data]
-
-### Concept Levels
-[Which concept levels (L1-L5) perform?]
-
-### Emotional Triggers
-[Which emotional triggers appear in weighted winners?]
-
-### Language Patterns
-[Specific phrases/patterns that appear in winners but NOT losers]
-
-### Lead Types
-[Which lead types convert? story, problem-solution, testimonial, etc.]
-
-### Symptoms
-[Which symptoms resonate vs which don't?]
-
-## LOSER PATTERNS (weighted — focus on expensive mistakes)
-
-### High-Spend Losers
-[What do the HIGHEST-spend losers share? These are the most expensive mistakes.]
-
-### Common Mistakes
-[Wrong depth, wrong avatar, wrong awareness level patterns]
-
-### What to STOP Immediately
-[Clear recommendations on what to stop doing, based on loser patterns]
-
-## CROSS-PATTERN INSIGHTS
-
-[Provide 5-8 specific, data-backed cross-pattern insights. Format each as:]
-- "[Pattern description]" — [Supporting data: which ads, ROAS, spend figures]
-
-Examples of good insights:
-- "Molecular root cause ads averaged 2.3x ROAS at $45k combined spend vs surface-level at 0.8x ROAS at $12k spend"
-- "Top 3 pillar ads all use [specific pattern]"
-- "[Language pattern] appeared in 4/5 pillar winners, 0/8 losers"
-- "UGC format drives 40% of revenue from 25% of spend"
-
-Be specific. Use actual numbers from the data. Reference specific ads by name when relevant."""
-
-
-def analyze_patterns(
-    classification: ClassificationResult,
-    scripts: dict[str, ScriptContent],  # task_id → ScriptContent
-) -> PatternAnalysis:
-    """Run Claude-powered pattern analysis across all classified ads.
+    """Run Claude pattern analysis on extracted ad data.
 
     Args:
-        classification: Output from classifier.classify_ads
-        scripts: Dict mapping task_id → ScriptContent
+        ads_with_extractions: List of ad dicts with extraction data.
+        dashboard_data: Pre-computed dimension tables from structured_splits.
+        priority_prompt: Operator priority injection string.
+        previous_notes: Previous operator notes for context.
+        api_key: Anthropic API key.
+
+    Returns:
+        Pattern analysis results dict.
     """
-    # Build summaries for each category
-    winner_summaries = []
-    for ad in classification.winners:
-        script = scripts.get(ad.match.task.task_id)
-        winner_summaries.append(_build_ad_summary(ad, script))
+    client = anthropic.AsyncAnthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
 
-    loser_summaries = []
-    for ad in classification.losers:
-        script = scripts.get(ad.match.task.task_id)
-        loser_summaries.append(_build_ad_summary(ad, script))
+    # Build analysis data summary
+    analysis_summary = _build_analysis_summary(ads_with_extractions, dashboard_data)
 
-    average_summaries = []
-    for ad in classification.average:
-        script = scripts.get(ad.match.task.task_id)
-        average_summaries.append(_build_ad_summary(ad, script))
+    # Build priority injection
+    priority_injection = priority_prompt if priority_prompt else ""
 
-    # Build prompt
+    # Build previous notes injection
+    notes_injection = ""
+    if previous_notes:
+        notes_injection = f"The operator previously noted: {previous_notes}\nConsider this when analyzing new data."
+
     prompt = PATTERN_ANALYSIS_PROMPT.format(
-        winners_json=json.dumps(winner_summaries, indent=2, default=str),
-        losers_json=json.dumps(loser_summaries, indent=2, default=str),
-        average_json=json.dumps(average_summaries, indent=2, default=str),
+        analysis_data=analysis_summary,
+        priority_injection=priority_injection,
+        previous_notes_injection=notes_injection,
     )
 
-    # Call Claude
-    client = anthropic.Anthropic()
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        response = await client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4000,
+            temperature=0.2,
+            messages=[{"role": "user", "content": prompt}],
+        )
 
-    raw_analysis = message.content[0].text
+        text = response.content[0].text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+        if text.startswith("json"):
+            text = text[4:].strip()
 
-    return PatternAnalysis(
-        raw_analysis=raw_analysis,
-        winner_patterns={},  # Raw text is the primary output
-        loser_patterns={},
-        cross_insights=_extract_cross_insights(raw_analysis),
-    )
+        return json.loads(text)
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse pattern analysis response: {e}")
+        return {"insights": [], "learnings": [], "hypotheses": [], "executive_summary": "Analysis failed to parse."}
+    except Exception as e:
+        logger.error(f"Pattern analysis failed: {e}")
+        return {"insights": [], "learnings": [], "hypotheses": [], "executive_summary": f"Analysis error: {str(e)}"}
 
 
-def _extract_cross_insights(raw_analysis: str) -> list[str]:
-    """Extract cross-pattern insights from the raw analysis text."""
-    insights: list[str] = []
-    in_cross_section = False
+def _build_analysis_summary(
+    ads: list[dict[str, Any]],
+    dashboard_data: dict[str, list[dict]],
+) -> str:
+    """Build a structured text summary of ad data for Claude analysis."""
+    lines = []
 
-    for line in raw_analysis.split("\n"):
-        line = line.strip()
-        if "CROSS-PATTERN INSIGHTS" in line.upper():
-            in_cross_section = True
-            continue
-        if in_cross_section and line.startswith("- "):
-            insights.append(line[2:].strip())
-        elif in_cross_section and line.startswith("#"):
-            break  # Next section
+    # Overall stats
+    total = len(ads)
+    winners = [a for a in ads if a.get("status") == "winner"]
+    losers = [a for a in ads if a.get("status") == "loser"]
 
-    return insights
+    lines.append(f"DATASET: {total} ads total — {len(winners)} winners, {len(losers)} losers")
+    lines.append("")
+
+    # Top winners summary
+    lines.append("TOP WINNERS:")
+    for ad in sorted(winners, key=lambda a: a.get("spend", 0), reverse=True)[:10]:
+        name = ad.get("ad_name", "unknown")
+        spend = ad.get("spend", 0)
+        roas = ad.get("roas", 0)
+        ext = ad.get("extraction", {})
+        pain = ext.get("pain_point", "")
+        hook_type = ext.get("hook_type", "")
+        lines.append(f"  - {name}: ${spend:,.0f} spend, {roas:.2f}x ROAS | Pain: {pain} | Hook: {hook_type}")
+    lines.append("")
+
+    # Top losers summary
+    lines.append("TOP LOSERS:")
+    for ad in sorted(losers, key=lambda a: a.get("spend", 0), reverse=True)[:10]:
+        name = ad.get("ad_name", "unknown")
+        spend = ad.get("spend", 0)
+        roas = ad.get("roas", 0)
+        ext = ad.get("extraction", {})
+        pain = ext.get("pain_point", "")
+        hook_type = ext.get("hook_type", "")
+        lines.append(f"  - {name}: ${spend:,.0f} spend, {roas:.2f}x ROAS | Pain: {pain} | Hook: {hook_type}")
+    lines.append("")
+
+    # Dashboard dimension summaries (top delta patterns)
+    lines.append("DIMENSION ANALYSIS (sorted by winner-loser delta):")
+    dim_labels = {
+        "pain_point": "Pain Points", "symptoms": "Symptoms",
+        "root_cause_depth": "Root Cause Depth", "root_cause_chain": "Root Cause Chain",
+        "mechanism_ump": "Mechanisms UMP", "mechanism_ums": "Mechanisms UMS",
+        "ad_format": "Ad Formats", "avatar": "Avatars",
+        "awareness_level": "Awareness Levels", "lead_type": "Lead Types",
+        "hook_type": "Hook Patterns", "emotional_triggers": "Emotional Triggers",
+        "language_patterns": "Language Patterns",
+    }
+    for dim_key, rows in dashboard_data.items():
+        label = dim_labels.get(dim_key, dim_key)
+        lines.append(f"\n  {label}:")
+        for row in rows[:5]:  # Top 5 by delta
+            prefix = "+" if row["delta"] > 0 else ""
+            lines.append(
+                f"    {row['value']}: {row['pct_all']:.0f}% all, "
+                f"{row['pct_winners']:.0f}% winners, {row['pct_losers']:.0f}% losers, "
+                f"delta {prefix}{row['delta']:.0f}%, avg ROAS {row['avg_roas']:.2f}x, "
+                f"spend ${row['total_spend']:,.0f}"
+            )
+
+    # Individual ad extractions for detail
+    lines.append("\n\nINDIVIDUAL AD EXTRACTIONS:")
+    for ad in ads[:30]:  # Limit to avoid token overflow
+        name = ad.get("ad_name", "unknown")
+        status = ad.get("status", "unknown")
+        spend = ad.get("spend", 0)
+        roas = ad.get("roas", 0)
+        ext = ad.get("extraction", {})
+
+        lines.append(f"\n  [{status.upper()}] {name} — ${spend:,.0f} spend, {roas:.2f}x ROAS")
+        if ext.get("hooks"):
+            lines.append(f"    Hooks: {'; '.join(ext['hooks'][:2])}")
+        if ext.get("pain_point"):
+            lines.append(f"    Pain Point: {ext['pain_point']}")
+        if ext.get("root_cause", {}).get("chain"):
+            lines.append(f"    Root Cause Chain: {ext['root_cause']['chain']}")
+        if ext.get("mechanism", {}).get("ump"):
+            lines.append(f"    UMP: {ext['mechanism']['ump']}")
+        if ext.get("avatar", {}).get("behavior"):
+            avatar = ext["avatar"]
+            lines.append(f"    Avatar: {avatar['behavior']} → {avatar.get('impact', '')}")
+
+    return "\n".join(lines)
