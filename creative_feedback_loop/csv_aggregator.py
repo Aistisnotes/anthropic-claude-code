@@ -29,6 +29,7 @@ SPEND_COLUMNS = [
 ROAS_COLUMNS = [
     "Purchase ROAS", "purchase_roas", "ROAS", "roas",
     "Website Purchase ROAS", "Purchase ROAS (Total)",
+    "Purchase ROAS (return on ad spend)",
 ]
 REVENUE_COLUMNS = [
     "Purchase Conversion Value", "Revenue", "revenue",
