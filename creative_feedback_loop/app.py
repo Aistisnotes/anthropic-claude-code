@@ -265,14 +265,20 @@ def main():
         return
 
     # ── Process CSV ───────────────────────────────────────────────────────
+    import tempfile
+    import os as _os
     try:
-        df = pd.read_csv(uploaded_file)
+        raw_bytes = uploaded_file.getvalue()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as _tmp:
+            _tmp.write(raw_bytes)
+            _tmp_path = _tmp.name
+        raw_df = pd.read_csv(_tmp_path)
     except Exception as e:
         st.error(f"Failed to read CSV: {e}")
         return
 
     # Auto-detect date range (Part 6)
-    csv_start, csv_end = detect_date_range(df)
+    csv_start, csv_end = detect_date_range(raw_df)
     st.markdown(
         f'<div style="background:#1a1a2e; padding:12px 16px; border-radius:8px; margin-bottom:16px;">'
         f'<span style="color:#fafafa;">CSV covers: <b>{csv_start} — {csv_end}</b></span></div>',
@@ -283,15 +289,62 @@ def main():
     from creative_feedback_loop.context.operator_notes import render_previous_notes, render_notes_input, save_notes_to_run
     previous_notes_text = render_previous_notes(_slugify(brand_name)) or ""
 
-    # Classify ads
-    df = classify_ads(df, roas_threshold, spend_threshold)
+    # ── Aggregate rows by ad name before classifying (FIX 1 — critical) ──
+    # Meta CSVs have one row per ad per ad set. Without aggregation, the same
+    # ad appears 20+ times with tiny per-row spend → all classified "untested".
+    from creative_feedback_loop.csv_aggregator import load_and_aggregate_csv
+    try:
+        aggregated_ads, agg_stats = load_and_aggregate_csv(_tmp_path)
+    except Exception as e:
+        st.error(f"CSV aggregation failed: {e}")
+        _os.unlink(_tmp_path)
+        return
+    _os.unlink(_tmp_path)
 
-    # Find columns
-    script_col = find_script_column(df)
-    name_col = find_ad_name_column(df)
-    format_col = find_ad_format_column(df)
+    # Find script/format columns in raw CSV and build per-ad-name lookups
+    _script_col_raw = find_script_column(raw_df)
+    _name_col_raw = find_ad_name_column(raw_df)
+    _format_col_raw = find_ad_format_column(raw_df)
 
-    if not script_col:
+    script_lookup: dict = {}
+    format_lookup: dict = {}
+    if _name_col_raw:
+        for _, _row in raw_df.iterrows():
+            _key = str(_row[_name_col_raw]).strip()
+            if not _key or _key.lower() == "nan":
+                continue
+            if _script_col_raw and _key not in script_lookup:
+                _val = _row.get(_script_col_raw)
+                if pd.notna(_val):
+                    script_lookup[_key] = str(_val)
+            if _format_col_raw and _key not in format_lookup:
+                _val = _row.get(_format_col_raw)
+                if pd.notna(_val):
+                    format_lookup[_key] = str(_val)
+
+    # Classify aggregated ads using blended ROAS and total spend
+    def _classify_agg(spend: float, roas: float) -> str:
+        if spend < spend_threshold:
+            return "untested"
+        return "winner" if roas >= roas_threshold else "loser"
+
+    # Build DataFrame of unique ads with aggregated metrics
+    _agg_rows = []
+    for _ad in aggregated_ads:
+        _agg_rows.append({
+            "_agg_name": _ad.ad_name,
+            "_spend": _ad.total_spend,
+            "_roas": _ad.blended_roas,
+            "_status": _classify_agg(_ad.total_spend, _ad.blended_roas),
+            "_script": script_lookup.get(_ad.ad_name, ""),
+            "_format": format_lookup.get(_ad.ad_name, ""),
+        })
+    df = pd.DataFrame(_agg_rows)
+    name_col = "_agg_name"
+    script_col = "_script"
+    format_col = "_format"
+
+    if not _script_col_raw:
         st.warning("No script/copy column found in CSV. Extraction will be limited.")
 
     # Classification counts
@@ -316,14 +369,13 @@ def main():
     ads_for_extraction = []
     for _, row in classified_df.iterrows():
         ad = {
-            "ad_name": str(row[name_col]) if name_col else f"Ad_{_}",
-            "script_text": str(row[script_col]) if script_col and pd.notna(row[script_col]) else "",
+            "ad_name": str(row[name_col]),
+            "script_text": str(row[script_col]) if row[script_col] else "",
             "status": row["_status"],
-            "spend": float(row["_spend"]) if "_spend" in row.index else 0,
-            "roas": float(row["_roas"]) if "_roas" in row.index else 0,
+            "spend": float(row["_spend"]),
+            "roas": float(row["_roas"]),
         }
-        # Override format from CSV if available
-        if format_col and pd.notna(row[format_col]):
+        if row[format_col]:
             ad["format_override"] = str(row[format_col])
         ads_for_extraction.append(ad)
 
@@ -332,13 +384,13 @@ def main():
     top50_ads = []
     for _, row in top50_df.iterrows():
         ad = {
-            "ad_name": str(row[name_col]) if name_col else f"Ad_{_}",
-            "script_text": str(row[script_col]) if script_col and pd.notna(row[script_col]) else "",
-            "status": row["_status"] if "_status" in row.index else "untested",
-            "spend": float(row["_spend"]) if "_spend" in row.index else 0,
-            "roas": float(row["_roas"]) if "_roas" in row.index else 0,
+            "ad_name": str(row[name_col]),
+            "script_text": str(row[script_col]) if row[script_col] else "",
+            "status": row["_status"],
+            "spend": float(row["_spend"]),
+            "roas": float(row["_roas"]),
         }
-        if format_col and pd.notna(row[format_col]):
+        if row[format_col]:
             ad["format_override"] = str(row[format_col])
         top50_ads.append(ad)
 
