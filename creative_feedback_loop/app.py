@@ -317,13 +317,13 @@ def main():
     for _, row in classified_df.iterrows():
         ad = {
             "ad_name": str(row[name_col]) if name_col else f"Ad_{_}",
-            "script_text": str(row[script_col]) if script_col and pd.notna(row.get(script_col)) else "",
+            "script_text": str(row[script_col]) if script_col and pd.notna(row[script_col]) else "",
             "status": row["_status"],
-            "spend": row.get("_spend", 0),
-            "roas": row.get("_roas", 0),
+            "spend": float(row["_spend"]) if "_spend" in row.index else 0,
+            "roas": float(row["_roas"]) if "_roas" in row.index else 0,
         }
         # Override format from CSV if available
-        if format_col and pd.notna(row.get(format_col)):
+        if format_col and pd.notna(row[format_col]):
             ad["format_override"] = str(row[format_col])
         ads_for_extraction.append(ad)
 
@@ -333,17 +333,20 @@ def main():
     for _, row in top50_df.iterrows():
         ad = {
             "ad_name": str(row[name_col]) if name_col else f"Ad_{_}",
-            "script_text": str(row[script_col]) if script_col and pd.notna(row.get(script_col)) else "",
-            "status": row.get("_status", "untested"),
-            "spend": row.get("_spend", 0),
-            "roas": row.get("_roas", 0),
+            "script_text": str(row[script_col]) if script_col and pd.notna(row[script_col]) else "",
+            "status": row["_status"] if "_status" in row.index else "untested",
+            "spend": float(row["_spend"]) if "_spend" in row.index else 0,
+            "roas": float(row["_roas"]) if "_roas" in row.index else 0,
         }
-        if format_col and pd.notna(row.get(format_col)):
+        if format_col and pd.notna(row[format_col]):
             ad["format_override"] = str(row[format_col])
         top50_ads.append(ad)
 
     # ── Deep Extraction (Part 2) ──────────────────────────────────────────
     has_scripts = any(ad["script_text"].strip() for ad in ads_for_extraction)
+
+    # Create a shared event loop for all async operations
+    loop = asyncio.new_event_loop()
 
     if has_scripts and os.environ.get("ANTHROPIC_API_KEY"):
         st.markdown('<h3 style="color:#fafafa;">Extracting ad components...</h3>', unsafe_allow_html=True)
@@ -361,7 +364,6 @@ def main():
             )
 
         # Extract classified ads
-        loop = asyncio.new_event_loop()
         extractions = loop.run_until_complete(
             extract_batch(ads_for_extraction, progress_callback=update_progress)
         )
