@@ -257,6 +257,7 @@ def sidebar():
             "🏠 New Run": "home",
             "📊 Results": "results",
             "📁 History": "history",
+            "🔄 Creative Feedback": "creative_feedback",
         }
         for label, key in pages.items():
             if st.button(label, key=f"nav_{key}", use_container_width=True):
@@ -1110,6 +1111,362 @@ def page_history():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  PAGE: CREATIVE FEEDBACK LOOP
+# ══════════════════════════════════════════════════════════════════════════════
+def page_creative_feedback():
+    """Creative Feedback Loop Analyzer.
+
+    Integrates all 7 fixes:
+    FIX 1: CSV aggregation by ad name before matching
+    FIX 2: Separate winner/loser thresholds (defaults: ROAS 1.0, spend $50)
+    FIX 3: ROAS=0 with spend = LOSER
+    FIX 4: Date range filters CSV, not ClickUp
+    FIX 5: Top 50 as separate unfiltered section
+    FIX 6: Novelty filter for pattern analysis
+    FIX 7: Aggregation stats in pipeline log
+    """
+    import io
+    import logging
+    import tempfile
+    import pandas as pd
+
+    from creative_feedback_loop.csv_aggregator import load_and_aggregate_csv
+    from creative_feedback_loop.classifier import ThresholdConfig, classify_ads
+    from creative_feedback_loop.clickup_matcher import ClickUpTask, match_ads_to_clickup
+    from creative_feedback_loop.top50 import build_top50
+    from creative_feedback_loop.novelty_filter import compute_novelty
+    from creative_feedback_loop.pipeline import run_pipeline, _extract_name_patterns
+
+    st.markdown(
+        '<div class="section-header">🔄 Creative Feedback Loop</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Upload a Meta Ads Manager CSV export. Ads are aggregated by name across ad sets, "
+        "classified as winners/losers, matched to ClickUp tasks, and analyzed for patterns."
+    )
+
+    # ── Sidebar config ────────────────────────────────────────────────────────
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("### Creative Feedback Config")
+
+        # CSV Upload
+        uploaded_csv = st.file_uploader(
+            "Meta Ads Manager CSV",
+            type=["csv"],
+            help="Export from Ads Manager — one row per ad per ad set is fine, we aggregate automatically.",
+            key="cfl_csv",
+        )
+
+        st.markdown("---")
+
+        # FIX 4: Optional date range (filters CSV, NOT ClickUp)
+        st.markdown("**Date Range (Optional)**")
+        st.caption(
+            "Filter rows within the CSV by date. Leave blank to use all data. "
+            "Only works if CSV has a date column."
+        )
+        cfl_c1, cfl_c2 = st.columns(2)
+        with cfl_c1:
+            cfl_date_start = st.date_input("Start", value=None, key="cfl_ds")
+        with cfl_c2:
+            cfl_date_end = st.date_input("End", value=None, key="cfl_de")
+
+        st.markdown("---")
+
+        # FIX 2: Separate winner and loser thresholds
+        st.markdown("**Winner Criteria**")
+        st.caption("Ads meeting BOTH conditions = winner.")
+        cfl_w_roas = st.number_input(
+            "ROAS above", min_value=0.0, value=1.0, step=0.1, key="cfl_wr",
+            help="Minimum ROAS to be a winner (default: 1.0 = breakeven)",
+        )
+        cfl_w_spend = st.number_input(
+            "AND spend above ($)", min_value=0.0, value=50.0, step=10.0, key="cfl_ws",
+        )
+
+        st.markdown("---")
+
+        st.markdown("**Loser Criteria**")
+        st.caption("Ads meeting BOTH conditions = loser. ROAS=0 with spend = LOSER.")
+        cfl_l_roas = st.number_input(
+            "ROAS below", min_value=0.0, value=1.0, step=0.1, key="cfl_lr",
+        )
+        cfl_l_spend = st.number_input(
+            "AND spend above ($)", min_value=0.0, value=50.0, step=10.0, key="cfl_ls",
+        )
+
+        st.markdown("---")
+
+        # ClickUp tasks (optional JSON upload)
+        clickup_file = st.file_uploader(
+            "ClickUp Tasks JSON (optional)",
+            type=["json"],
+            help="Each task needs 'id', 'name', and optionally 'status', 'script'.",
+            key="cfl_clickup",
+        )
+
+        cfl_run = st.button("Run Analysis", type="primary", use_container_width=True, key="cfl_run")
+
+    # ── Main content area ─────────────────────────────────────────────────────
+    if not uploaded_csv:
+        st.info("Upload a Meta Ads Manager CSV in the sidebar to begin.")
+        return
+
+    if not cfl_run and "cfl_result" not in st.session_state:
+        st.info("Configure thresholds in the sidebar, then click **Run Analysis**.")
+        return
+
+    # ── Run pipeline ──────────────────────────────────────────────────────────
+    if cfl_run:
+        thresholds = ThresholdConfig(
+            winner_roas_min=cfl_w_roas,
+            winner_spend_min=cfl_w_spend,
+            loser_roas_max=cfl_l_roas,
+            loser_spend_min=cfl_l_spend,
+        )
+
+        # Parse ClickUp tasks
+        clickup_tasks = None
+        if clickup_file:
+            try:
+                data = json.loads(clickup_file.getvalue())
+                tasks_data = data if isinstance(data, list) else data.get("tasks", data.get("data", []))
+                clickup_tasks = [
+                    ClickUpTask(
+                        task_id=t.get("id", ""),
+                        name=t.get("name", ""),
+                        status=(
+                            t.get("status", {}).get("status", "")
+                            if isinstance(t.get("status"), dict)
+                            else str(t.get("status", ""))
+                        ),
+                        script=t.get("script", t.get("description", "")),
+                        url=t.get("url", ""),
+                    )
+                    for t in tasks_data
+                ]
+            except (json.JSONDecodeError, KeyError) as e:
+                st.error(f"Failed to parse ClickUp JSON: {e}")
+                return
+
+        # Save CSV to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+            tmp.write(uploaded_csv.getvalue())
+            csv_path = tmp.name
+
+        # Set up logging capture (FIX 7)
+        log_stream = io.StringIO()
+        handler = logging.StreamHandler(log_stream)
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        cfl_logger = logging.getLogger("creative_feedback_loop")
+        cfl_logger.setLevel(logging.INFO)
+        cfl_logger.addHandler(handler)
+
+        try:
+            with st.spinner("Aggregating CSV rows and running analysis..."):
+                result = run_pipeline(
+                    csv_path=csv_path,
+                    clickup_tasks=clickup_tasks,
+                    thresholds=thresholds,
+                    date_start=str(cfl_date_start) if cfl_date_start else None,
+                    date_end=str(cfl_date_end) if cfl_date_end else None,
+                )
+                st.session_state["cfl_result"] = result
+                st.session_state["cfl_log"] = log_stream.getvalue()
+        finally:
+            cfl_logger.removeHandler(handler)
+            os.unlink(csv_path)
+
+    if "cfl_result" not in st.session_state:
+        return
+
+    result = st.session_state["cfl_result"]
+
+    # ── Pipeline Log (FIX 7) ──────────────────────────────────────────────────
+    if st.session_state.get("cfl_log"):
+        with st.expander("Pipeline Log", expanded=False):
+            st.code(st.session_state["cfl_log"])
+
+    # ── Aggregation Summary ───────────────────────────────────────────────────
+    st.markdown("### Aggregation Summary")
+    agg_cols = st.columns(4)
+    with agg_cols[0]:
+        st.metric("CSV Rows", f"{result.raw_rows:,}")
+    with agg_cols[1]:
+        st.metric("Unique Ads", f"{result.unique_ads:,}")
+    with agg_cols[2]:
+        st.metric("Total Spend", f"${result.total_csv_spend:,.2f}")
+    with agg_cols[3]:
+        ratio = result.raw_rows / result.unique_ads if result.unique_ads > 0 else 0
+        st.metric("Avg Rows/Ad", f"{ratio:.1f}")
+
+    st.caption(
+        f"Aggregated **{result.raw_rows:,}** CSV rows into **{result.unique_ads:,}** unique ads"
+    )
+
+    # ── Classification Summary ────────────────────────────────────────────────
+    st.markdown("### Classification")
+    cls_cols = st.columns(4)
+    with cls_cols[0]:
+        st.metric("Winners", result.winner_count)
+    with cls_cols[1]:
+        st.metric("Losers", result.loser_count)
+    with cls_cols[2]:
+        st.metric("Untested", result.untested_count)
+    with cls_cols[3]:
+        st.metric("Above Spend Min", result.above_spend_threshold)
+
+    t = result.thresholds
+    st.caption(
+        f"Winner: ROAS >= {t.winner_roas_min} AND spend >= ${t.winner_spend_min} | "
+        f"Loser: ROAS < {t.loser_roas_max} AND spend >= ${t.loser_spend_min}"
+    )
+
+    # ── Section A: Winners & Losers ───────────────────────────────────────────
+    st.markdown("### Section A: Winners & Losers")
+    tab_w, tab_l, tab_u = st.tabs(["Winners", "Losers", "Untested"])
+
+    with tab_w:
+        _cfl_render_ad_table(
+            [m for m in result.matched_ads if m.classified_ad.classification == "winner"],
+            "winner",
+        )
+    with tab_l:
+        _cfl_render_ad_table(
+            [m for m in result.matched_ads if m.classified_ad.classification == "loser"],
+            "loser",
+        )
+    with tab_u:
+        _cfl_render_ad_table(
+            [m for m in result.matched_ads if m.classified_ad.classification == "untested"],
+            "untested",
+        )
+
+    # ── Section B: Top 50 by Spend (FIX 5) ────────────────────────────────────
+    st.markdown("### Section B: Top 50 by Spend")
+    st.caption(
+        "Top 50 ads ranked by total aggregated spend. No winner/loser thresholds — "
+        "just profitability classification."
+    )
+
+    if result.top50:
+        top50_data = []
+        for t50 in result.top50:
+            row = {
+                "Rank": t50.rank,
+                "Ad Name": t50.ad.ad_name,
+                "Total Spend": f"${t50.ad.total_spend:,.2f}",
+                "ROAS": f"{t50.ad.blended_roas:.2f}",
+                "Revenue": f"${t50.ad.total_revenue:,.2f}",
+                "Impressions": f"{t50.ad.total_impressions:,}",
+                "Conversions": t50.ad.total_conversions,
+                "Status": _cfl_profitability_label(t50.profitability),
+                "ClickUp": t50.clickup_task.name if t50.clickup_task else "—",
+            }
+            top50_data.append(row)
+        st.dataframe(pd.DataFrame(top50_data), use_container_width=True, hide_index=True)
+    else:
+        st.info("No ads to display.")
+
+    # ── Section C: Pattern Insights with Novelty Filter (FIX 6) ───────────────
+    st.markdown("### Section C: Pattern Insights")
+
+    if result.novelty:
+        novelty = result.novelty
+
+        if novelty.winner_signals:
+            st.markdown("#### Winner Patterns (appear more in winners)")
+            for sig in novelty.winner_signals:
+                diff_pct = sig.differentiation * 100
+                w_pct = sig.winner_rate * 100
+                l_pct = sig.loser_rate * 100
+                strength_md = {"HIGH": "***", "MEDIUM": "**", "LOW": "*"}.get(sig.signal_strength, "")
+                st.markdown(
+                    f"- {strength_md}`{sig.pattern}`{strength_md}: "
+                    f"{w_pct:.0f}% of winners vs {l_pct:.0f}% of losers "
+                    f"(+{diff_pct:.0f}% differentiation — {sig.signal_strength} signal)"
+                )
+
+        if novelty.loser_signals:
+            st.markdown("#### Loser Patterns (appear more in losers)")
+            for sig in novelty.loser_signals:
+                diff_pct = abs(sig.differentiation) * 100
+                l_pct = sig.loser_rate * 100
+                w_pct = sig.winner_rate * 100
+                st.markdown(
+                    f"- `{sig.pattern}`: "
+                    f"{l_pct:.0f}% of losers vs {w_pct:.0f}% of winners "
+                    f"(+{diff_pct:.0f}% loser skew — {sig.signal_strength} signal)"
+                )
+
+        if novelty.baseline_patterns:
+            st.markdown("#### Baseline Patterns (already standard practice)")
+            st.caption(
+                "These patterns appear in > 85% of ALL analyzed ads. "
+                "They don't differentiate winners from losers — they're table stakes."
+            )
+            for sig in novelty.baseline_patterns:
+                st.markdown(
+                    f"- `{sig.pattern}` — {sig.total_rate * 100:.0f}% of all ads"
+                )
+    else:
+        st.info(
+            "Not enough winners and losers to compute pattern differentiation. "
+            "Try lowering thresholds or using a larger CSV export."
+        )
+
+
+def _cfl_render_ad_table(matched_ads: list, classification: str):
+    """Render a table of matched ads for the Creative Feedback Loop page."""
+    import pandas as pd
+
+    if not matched_ads:
+        st.info(f"No {classification} ads found.")
+        return
+
+    data = []
+    for m in matched_ads:
+        ad = m.classified_ad.ad
+        row = {
+            "Ad Name": ad.ad_name,
+            "Total Spend": f"${ad.total_spend:,.2f}",
+            "ROAS": f"{ad.blended_roas:.2f}",
+            "Revenue": f"${ad.total_revenue:,.2f}",
+            "Impressions": f"{ad.total_impressions:,}",
+            "Conversions": ad.total_conversions,
+            "CSV Rows": ad.row_count,
+            "Reason": m.classified_ad.reason,
+        }
+        if m.clickup_task:
+            row["ClickUp Task"] = m.clickup_task.name
+            row["Match Score"] = f"{m.match_score:.0%}"
+            script = m.clickup_task.script
+            row["Script"] = (script[:100] + "...") if len(script) > 100 else script
+        else:
+            row["ClickUp Task"] = "—"
+            row["Match Score"] = "—"
+            row["Script"] = "—"
+        data.append(row)
+
+    data.sort(
+        key=lambda r: float(r["Total Spend"].replace("$", "").replace(",", "")),
+        reverse=True,
+    )
+    st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+
+
+def _cfl_profitability_label(status: str) -> str:
+    return {
+        "profitable": "Profitable (ROAS >= 1.0)",
+        "unprofitable": "Unprofitable (ROAS < 1.0)",
+        "no_conversions": "No Conversions (ROAS = 0)",
+    }.get(status, status)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
 def main():
@@ -1123,6 +1480,8 @@ def main():
         page_results()
     elif page == "history":
         page_history()
+    elif page == "creative_feedback":
+        page_creative_feedback()
 
 
 if __name__ == "__main__":

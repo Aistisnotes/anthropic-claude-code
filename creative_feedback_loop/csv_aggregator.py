@@ -27,8 +27,13 @@ SPEND_COLUMNS = [
     "Cost", "cost", "Amount Spent (USD)",
 ]
 ROAS_COLUMNS = [
-    "Purchase ROAS", "purchase_roas", "ROAS", "roas",
-    "Website Purchase ROAS", "Purchase ROAS (Total)",
+    "Purchase ROAS (return on ad spend)",
+    "Purchase ROAS",
+    "ROAS",
+    "purchase roas",
+    "purchase_roas",
+    "Website Purchase ROAS",
+    "Purchase ROAS (Total)",
 ]
 REVENUE_COLUMNS = [
     "Purchase Conversion Value", "Revenue", "revenue",
@@ -61,16 +66,32 @@ class AggregatedAd:
     row_count: int = 0
 
 
-def _find_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
-    """Find the first matching column name from a list of candidates."""
+def _find_column(df: pd.DataFrame, candidates: list[str], fuzzy_terms: list[str] | None = None) -> str | None:
+    """Find the first matching column name from a list of candidates.
+
+    Args:
+        df: DataFrame to search.
+        candidates: Exact column name candidates (tried first).
+        fuzzy_terms: If set, also match any column containing ALL of these terms
+                     (case-insensitive). Used for ROAS columns where Meta adds
+                     parenthetical suffixes.
+    """
+    # Exact match
     for c in candidates:
         if c in df.columns:
             return c
-    # Try case-insensitive
+    # Case-insensitive exact match
     lower_map = {col.lower().strip(): col for col in df.columns}
     for c in candidates:
         if c.lower().strip() in lower_map:
             return lower_map[c.lower().strip()]
+    # Fuzzy match: column must contain ALL fuzzy_terms (case-insensitive)
+    if fuzzy_terms:
+        terms_lower = [t.lower() for t in fuzzy_terms]
+        for col in df.columns:
+            col_lower = col.lower()
+            if all(t in col_lower for t in terms_lower):
+                return col
     return None
 
 
@@ -115,7 +136,7 @@ def load_and_aggregate_csv(
     # Resolve column names
     ad_name_col = _find_column(df, AD_NAME_COLUMNS)
     spend_col = _find_column(df, SPEND_COLUMNS)
-    roas_col = _find_column(df, ROAS_COLUMNS)
+    roas_col = _find_column(df, ROAS_COLUMNS, fuzzy_terms=["roas", "purchase"])
     revenue_col = _find_column(df, REVENUE_COLUMNS)
     impressions_col = _find_column(df, IMPRESSIONS_COLUMNS)
     conversions_col = _find_column(df, CONVERSIONS_COLUMNS)
