@@ -276,6 +276,20 @@ def run_full_pipeline(
             loser_spend_min=loser_spend,
         )
         all_classified, all_counts = classify_all_ads(aggregated_ads, threshold_config)
+        # DEBUG: diagnose classification counts
+        print(f"DEBUG THRESHOLDS: winner_roas_min={threshold_config.winner_roas_min}, winner_spend_min={threshold_config.winner_spend_min}, loser_roas_max={threshold_config.loser_roas_max}, loser_spend_min={threshold_config.loser_spend_min}")
+        print(f"DEBUG TOTAL ADS PASSED TO CLASSIFIER: {len(aggregated_ads)}")
+        _spend_ge_winner = sum(1 for a in aggregated_ads if a.total_spend >= threshold_config.winner_spend_min)
+        _spend_ge_loser = sum(1 for a in aggregated_ads if a.total_spend >= threshold_config.loser_spend_min)
+        print(f"DEBUG SPEND >= winner_spend_min ({threshold_config.winner_spend_min}): {_spend_ge_winner}")
+        print(f"DEBUG SPEND >= loser_spend_min ({threshold_config.loser_spend_min}): {_spend_ge_loser}")
+        _manual_winners = sum(1 for a in aggregated_ads if a.blended_roas >= threshold_config.winner_roas_min and a.total_spend >= threshold_config.winner_spend_min)
+        _manual_losers = sum(1 for a in aggregated_ads if a.blended_roas < threshold_config.loser_roas_max and a.total_spend >= threshold_config.loser_spend_min)
+        print(f"DEBUG MANUAL COUNT winners (roas>={threshold_config.winner_roas_min} AND spend>={threshold_config.winner_spend_min}): {_manual_winners}")
+        print(f"DEBUG MANUAL COUNT losers (roas<{threshold_config.loser_roas_max} AND spend>={threshold_config.loser_spend_min}): {_manual_losers}")
+        print(f"DEBUG ACTUAL COUNTS from classify_all_ads: {all_counts}")
+        _untested_5 = [(ca.ad.ad_name, ca.ad.total_spend, ca.ad.blended_roas, ca.reason) for ca in all_classified if ca.classification == "untested"][:5]
+        print(f"DEBUG FIRST 5 UNTESTED ADS: {_untested_5}")
         add_log(
             "success",
             f"Classified ALL {len(aggregated_ads):,} ads: "
