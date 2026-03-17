@@ -245,49 +245,63 @@ def main():
 
     st.markdown('<h1 style="color:#fafafa;">Creative Feedback Loop</h1>', unsafe_allow_html=True)
 
-    # ── Input Form ────────────────────────────────────────────────────────
+    # ── Input Form — Numbered Steps ────────────────────────────────────────
     with st.form("analysis_form"):
-        st.markdown('<p style="color:#fafafa; font-weight:600;">Upload Performance CSV</p>', unsafe_allow_html=True)
-
+        # Step 1: Upload CSV
+        st.markdown(
+            '<div style="background:#1e1e2e; padding:12px 16px; border-radius:8px; margin-bottom:12px;">'
+            '<span style="background:#e91e8c; color:white; padding:2px 8px; border-radius:4px; font-size:12px; margin-right:8px;">Step 1</span>'
+            '<span style="color:#fafafa; font-weight:600;">Upload Meta CSV File</span>'
+            '</div>', unsafe_allow_html=True)
         uploaded_file = st.file_uploader(
-            "CSV File",
-            type=["csv"],
-            label_visibility="collapsed",
+            "CSV File", type=["csv"], label_visibility="collapsed",
         )
 
-        col1, col2 = st.columns(2)
-        with col1:
-            brand_name = st.text_input("Brand Name", placeholder="e.g., Sculptique")
-        with col2:
-            st.markdown("")  # spacer
+        # Step 2: Brand Name
+        st.markdown(
+            '<div style="background:#1e1e2e; padding:12px 16px; border-radius:8px; margin-bottom:12px;">'
+            '<span style="background:#e91e8c; color:white; padding:2px 8px; border-radius:4px; font-size:12px; margin-right:8px;">Step 2</span>'
+            '<span style="color:#fafafa; font-weight:600;">Brand Name on ClickUp</span>'
+            '<span style="color:#888; font-size:12px; margin-left:8px;">(Optional — enables script reading)</span>'
+            '</div>', unsafe_allow_html=True)
+        brand_name = st.text_input("Brand Name", placeholder="e.g., Sculptique", label_visibility="collapsed")
 
-        st.markdown("---")
-
-        # Winner Thresholds
-        st.markdown('<p style="color:#fafafa; font-weight:600;">Winner Criteria</p>', unsafe_allow_html=True)
+        # Step 3: Winner Criteria
+        st.markdown(
+            '<div style="background:#1e1e2e; padding:12px 16px; border-radius:8px; margin-bottom:12px;">'
+            '<span style="background:#e91e8c; color:white; padding:2px 8px; border-radius:4px; font-size:12px; margin-right:8px;">Step 3</span>'
+            '<span style="color:#fafafa; font-weight:600;">Winning Ad Criteria</span>'
+            '</div>', unsafe_allow_html=True)
         wc1, wc2 = st.columns(2)
         with wc1:
             winner_roas = st.number_input("Winner ROAS (>=)", value=1.0, step=0.1, min_value=0.0, key="winner_roas")
         with wc2:
-            winner_min_spend = st.number_input("Winner Min Spend ($)", value=50.0, step=25.0, min_value=0.0, key="winner_spend")
+            winner_min_spend = st.number_input("Winner Min Spend ($)", value=5000.0, step=500.0, min_value=0.0, key="winner_spend")
 
-        # Loser Thresholds
-        st.markdown('<p style="color:#fafafa; font-weight:600;">Loser Criteria</p>', unsafe_allow_html=True)
+        # Step 4: Loser Criteria
+        st.markdown(
+            '<div style="background:#1e1e2e; padding:12px 16px; border-radius:8px; margin-bottom:12px;">'
+            '<span style="background:#e91e8c; color:white; padding:2px 8px; border-radius:4px; font-size:12px; margin-right:8px;">Step 4</span>'
+            '<span style="color:#fafafa; font-weight:600;">Loser Ad Criteria</span>'
+            '</div>', unsafe_allow_html=True)
         lc1, lc2 = st.columns(2)
         with lc1:
             loser_roas = st.number_input("Loser ROAS (<)", value=1.0, step=0.1, min_value=0.0, key="loser_roas")
         with lc2:
-            loser_min_spend = st.number_input("Loser Min Spend ($)", value=50.0, step=25.0, min_value=0.0, key="loser_spend")
+            loser_min_spend = st.number_input("Loser Min Spend ($)", value=100.0, step=50.0, min_value=0.0, key="loser_spend")
 
-        st.markdown("---")
-
-        # Operator priority (Part 3)
+        # Step 5: Analysis Priority
+        st.markdown(
+            '<div style="background:#1e1e2e; padding:12px 16px; border-radius:8px; margin-bottom:12px;">'
+            '<span style="background:#e91e8c; color:white; padding:2px 8px; border-radius:4px; font-size:12px; margin-right:8px;">Step 5</span>'
+            '<span style="color:#fafafa; font-weight:600;">Analysis Priority</span>'
+            '<span style="color:#888; font-size:12px; margin-left:8px;">(Optional)</span>'
+            '</div>', unsafe_allow_html=True)
         from creative_feedback_loop.context.operator_priorities import render_priority_input, build_priority_prompt
         priority, custom_context = render_priority_input()
 
-        st.markdown("---")
-
-        run_analysis = st.form_submit_button("Run Analysis", use_container_width=True)
+        st.markdown('<div style="margin-top:16px;"></div>', unsafe_allow_html=True)
+        run_analysis = st.form_submit_button("\U0001f680 Run Analysis", use_container_width=True)
 
     if not run_analysis:
         # Show previous notes if brand is set
@@ -300,9 +314,9 @@ def main():
         st.error("Please upload a CSV file.")
         return
 
+    # Brand name is optional — enables ClickUp script reading
     if not brand_name:
-        st.error("Please enter a brand name.")
-        return
+        brand_name = ""  # Proceed without ClickUp integration
 
     # ── Process CSV ───────────────────────────────────────────────────────
     import tempfile
