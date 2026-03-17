@@ -419,3 +419,94 @@ def _parse_json_response(text: str) -> dict:
         return json.loads(json_str)
     except json.JSONDecodeError:
         return {"opportunities": [], "expensive_mistakes": [], "drift_alerts": []}
+
+
+async def analyze_patterns(
+    ads_data: list,
+    dashboard_data: dict,
+    priority_prompt: str = "",
+    previous_notes: str = "",
+    model: str = "claude-sonnet-4-20250514",
+) -> dict:
+    """Backward-compatible wrapper for app.py.
+
+    Converts list of ad dicts to DataFrame, calls generate_strategic_opportunities,
+    and returns result in the format app.py expects:
+    {executive_summary, insights, learnings, hypotheses}
+    """
+    if not ads_data:
+        return {"executive_summary": "", "insights": [], "learnings": [], "hypotheses": []}
+
+    # Build DataFrame from ad dicts
+    rows = []
+    for ad in ads_data:
+        ext = ad.get("extraction") or ad.get("naming_extraction") or {}
+        root_cause = ext.get("root_cause", "")
+        if isinstance(root_cause, dict):
+            root_cause = root_cause.get("depth", "")
+        mechanism = ext.get("mechanism", "")
+        if isinstance(mechanism, dict):
+            mechanism = mechanism.get("ump", "")
+        rows.append({
+            "ad_name": ad.get("ad_name", ""),
+            "status": ad.get("status", "untested"),
+            "spend": float(ad.get("spend", 0)),
+            "roas": float(ad.get("roas", 0)),
+            "pain_point_category": ext.get("pain_point", "") or ext.get("pain_point_category", ""),
+            "root_cause_depth": root_cause,
+            "mechanism_depth": mechanism,
+            "ad_format": ext.get("ad_format", ""),
+            "avatar_category": ext.get("avatar", {}).get("behavior", "") if isinstance(ext.get("avatar"), dict) else ext.get("avatar", ""),
+            "awareness_level": ext.get("awareness_level", ""),
+            "hook_type": ext.get("hook_type", ""),
+        })
+    df = pd.DataFrame(rows)
+
+    winner_mask = df["status"] == "winner"
+    loser_mask = df["status"] == "loser"
+
+    # Infer priority from priority_prompt
+    priority = "General"
+    if "spend" in priority_prompt.lower():
+        priority = "Spend Volume"
+    elif "efficiency" in priority_prompt.lower():
+        priority = "Efficiency"
+    elif "angle" in priority_prompt.lower() or "new" in priority_prompt.lower():
+        priority = "New Angles"
+
+    opportunities = await generate_strategic_opportunities(
+        df, winner_mask, loser_mask, priority=priority, model=model
+    )
+
+    # Convert opportunities to analyze_patterns return format
+    real_opps = [o for o in opportunities if o.get("type") != "expensive_mistake"]
+    mistakes = [o for o in opportunities if o.get("type") == "expensive_mistake"]
+
+    insights = []
+    for opp in real_opps[:7]:
+        insights.append({
+            "title": opp.get("title", ""),
+            "detail": opp.get("evidence", "") + " " + opp.get("why_it_works", ""),
+            "winner_count": 0,
+            "loser_count": 0,
+            "avg_roas": 0,
+            "confidence": f"Score: {opp.get('score', 0)}/100",
+            "is_baseline": False,
+        })
+
+    learnings = [m.get("title", "") for m in mistakes[:3]]
+    hypotheses = [
+        opp.get("how_to_execute", "") if isinstance(opp.get("how_to_execute"), str)
+        else str(opp.get("how_to_execute", ""))
+        for opp in real_opps[:5]
+        if opp.get("how_to_execute")
+    ]
+
+    executive_summary = real_opps[0].get("evidence", "") if real_opps else ""
+
+    return {
+        "executive_summary": executive_summary,
+        "insights": insights,
+        "learnings": learnings,
+        "hypotheses": hypotheses,
+    }

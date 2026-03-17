@@ -526,3 +526,66 @@ def compute_detailed_breakdown(
         })
 
     return results
+
+
+def render_dashboard(ads_data: list, title: str = "Dashboard") -> dict:
+    """Backward-compatible wrapper called from app.py with a list of ad dicts.
+
+    Each ad dict has: ad_name, status, spend, roas, extraction (optional).
+    Builds a DataFrame, computes dimension summaries, and renders them.
+    """
+    import pandas as pd
+    import streamlit as st
+
+    if not ads_data:
+        st.info(f"No ads to display for {title}.")
+        return {}
+
+    # Build flat DataFrame from list of ad dicts
+    rows = []
+    for ad in ads_data:
+        ext = ad.get("extraction") or ad.get("naming_extraction") or {}
+        rows.append({
+            "ad_name": ad.get("ad_name", ""),
+            "status": ad.get("status", "untested"),
+            "spend": float(ad.get("spend", 0)),
+            "roas": float(ad.get("roas", 0)),
+            "pain_point": ext.get("pain_point", "") or ext.get("pain_point_category", ""),
+            "root_cause": ext.get("root_cause", "") if isinstance(ext.get("root_cause"), str) else ext.get("root_cause", {}).get("depth", ""),
+            "mechanism": ext.get("mechanism", "") if isinstance(ext.get("mechanism"), str) else ext.get("mechanism", {}).get("ump", ""),
+            "ad_format": ext.get("ad_format", ""),
+            "awareness_level": ext.get("awareness_level", ""),
+            "hook_type": ext.get("hook_type", ""),
+        })
+    df = pd.DataFrame(rows)
+
+    winner_mask = df["status"] == "winner"
+    loser_mask = df["status"] == "loser"
+
+    dimension_cols = [
+        ("pain_point", "Pain Point"),
+        ("root_cause", "Root Cause"),
+        ("mechanism", "Mechanism"),
+        ("ad_format", "Ad Format"),
+        ("awareness_level", "Awareness Level"),
+        ("hook_type", "Hook Type"),
+    ]
+
+    st.markdown(f'<div style="color:#fafafa; font-size:18px; font-weight:700; margin:16px 0 8px 0;">{title}</div>', unsafe_allow_html=True)
+
+    dimension_data = []
+    detailed_data = {}
+    for col, label in dimension_cols:
+        if col in df.columns and df[col].astype(str).str.strip().replace("", float("nan")).dropna().shape[0] > 0:
+            summary = compute_dimension_summary(df, col, label, winner_mask, loser_mask)
+            dimension_data.append(summary)
+            breakdown = compute_detailed_breakdown(df, col, winner_mask, loser_mask)
+            if breakdown:
+                detailed_data[label] = breakdown
+
+    if dimension_data:
+        render_compact_summary(dimension_data, title)
+    if detailed_data:
+        render_detailed_breakdown(detailed_data, title)
+
+    return {"dimensions": dimension_data, "title": title, "detailed": detailed_data}
