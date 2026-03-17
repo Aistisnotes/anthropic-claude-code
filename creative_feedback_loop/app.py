@@ -684,10 +684,14 @@ def main():
                             sentences = text.split(". ", 1)
                             l_title = sentences[0]
                             l_detail = sentences[1] if len(sentences) > 1 else ""
+                        _detail_html = (
+                            '<div style="color:#ccc; font-size:13px; margin-top:4px;">' + l_detail + '</div>'
+                            if l_detail else ""
+                        )
                         st.markdown(
                             f'<div style="background:#1e1e2e; border-left:3px solid #3b82f6; padding:12px 16px; margin-bottom:8px; border-radius:0 8px 8px 0;">'
                             f'<div style="color:#fafafa; font-weight:600; font-size:14px;">{l_title}</div>'
-                            f'{"<div style=\"color:#ccc; font-size:13px; margin-top:4px;\">" + l_detail + "</div>" if l_detail else ""}'
+                            f'{_detail_html}'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
@@ -708,10 +712,14 @@ def main():
                             parts = text.split(": ", 1)
                             h_title = parts[0]
                             h_detail = parts[1]
+                        _h_detail_html = (
+                            '<div style="color:#ccc; font-size:13px; margin-top:4px;">' + h_detail + '</div>'
+                            if h_detail else ""
+                        )
                         st.markdown(
                             f'<div style="background:#1e1e2e; border-left:3px solid #f59e0b; padding:12px 16px; margin-bottom:8px; border-radius:0 8px 8px 0;">'
                             f'<div style="color:#fafafa; font-weight:600; font-size:14px;">{h_title}</div>'
-                            f'{"<div style=\"color:#ccc; font-size:13px; margin-top:4px;\">" + h_detail + "</div>" if h_detail else ""}'
+                            f'{_h_detail_html}'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
@@ -758,39 +766,38 @@ def main():
             save_notes_to_run(run_path, notes)
             st.success("Notes saved!")
 
-    # ── PDF Export (Part 7) ───────────────────────────────────────────────
-    st.markdown("---")
-    if st.button("Export PDF Report", use_container_width=True):
-        with st.spinner("Generating PDF..."):
-            from creative_feedback_loop.reporter.pdf_generator import generate_pdf
+    # ── PDF Export ────────────────────────────────────────────────────────
+    try:
+        from creative_feedback_loop.report_generator import build_html_report, generate_pdf_sync
+        import tempfile
 
-            try:
-                pdf_path = loop.run_until_complete(
-                    generate_pdf(
-                        brand_name=brand_name,
-                        csv_start=csv_start,
-                        csv_end=csv_end,
-                        classification_counts=classification_counts,
-                        total_spend=total_spend,
-                        dashboard_data=dashboard_data,
-                        top50_dashboard_data=top50_dashboard_data,
-                        pattern_results=pattern_results,
-                        previous_run=previous_run,
-                        priority=priority,
-                    )
+        st.markdown("---")
+        if st.button("📥 Export PDF Report"):
+            with st.spinner("Generating PDF..."):
+                html_content = build_html_report(
+                    brand_name=brand_name,
+                    csv_start=str(csv_start),
+                    csv_end=str(csv_end),
+                    classification_counts=classification_counts,
+                    dashboard_data=dashboard_data,
+                    pattern_results=pattern_results or {},
+                    top50_dashboard_data=top50_dashboard_data,
                 )
-                st.success(f"PDF saved: {pdf_path}")
-
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+                    pdf_path = tmp_pdf.name
+                generate_pdf_sync(html_content, pdf_path)
                 with open(pdf_path, "rb") as f:
-                    st.download_button(
-                        "Download PDF",
-                        data=f.read(),
-                        file_name=pdf_path.name,
-                        mime="application/pdf",
-                        use_container_width=True,
-                    )
-            except Exception as e:
-                st.error(f"PDF generation failed: {e}")
+                    pdf_bytes = f.read()
+                filename = f"{brand_name.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_report.pdf"
+                st.download_button(
+                    label="⬇️ Download PDF",
+                    data=pdf_bytes,
+                    file_name=filename,
+                    mime="application/pdf",
+                )
+    except Exception as e:
+        st.error(f"PDF export failed: {e}")
+        logger.exception("PDF export failed")
 
 
 def _slugify(text: str) -> str:
