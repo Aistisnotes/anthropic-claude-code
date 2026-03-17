@@ -28,6 +28,22 @@ st.set_page_config(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_LEAKED_HEADERS = re.compile(
+    r'^\s*(HYPOTHESES|LEARNINGS|OPPORTUNITIES|EXECUTIVE SUMMARY|INSIGHTS)\s*:?\s*$',
+    re.IGNORECASE | re.MULTILINE,
+)
+
+def clean_markdown(text: str) -> str:
+    """Strip raw markdown markers and leaked section headers from Claude output."""
+    if not isinstance(text, str):
+        return str(text)
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)   # **bold**
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)  # ## headers
+    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'\1', text)  # *italic*
+    text = _LEAKED_HEADERS.sub('', text)
+    return text.strip()
+
+
 PROJECT_ROOT = Path(__file__).parent.parent
 RUNS_DIR = PROJECT_ROOT / "output" / "runs"
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -572,7 +588,7 @@ def main():
                 st.markdown(
                     f'<div style="background:#1a1a2e; border-left:3px solid #e91e8c; padding:16px; '
                     f'border-radius:0 8px 8px 0; margin-bottom:16px;">'
-                    f'<p style="color:#fafafa;">{pattern_results["executive_summary"]}</p></div>',
+                    f'<p style="color:#fafafa;">{clean_markdown(pattern_results["executive_summary"])}</p></div>',
                     unsafe_allow_html=True,
                 )
 
@@ -594,13 +610,13 @@ def main():
             if pattern_results.get("learnings"):
                 with st.expander("Learnings", expanded=False):
                     for learning in pattern_results["learnings"]:
-                        st.markdown(f'<p style="color:#fafafa; margin-bottom:8px;">• {learning}</p>', unsafe_allow_html=True)
+                        st.markdown(f'<p style="color:#fafafa; margin-bottom:8px;">• {clean_markdown(learning)}</p>', unsafe_allow_html=True)
 
             # Hypotheses — collapsible
             if pattern_results.get("hypotheses"):
                 with st.expander("Hypotheses", expanded=False):
                     for hypothesis in pattern_results["hypotheses"]:
-                        st.markdown(f'<p style="color:#fafafa; margin-bottom:8px;">• {hypothesis}</p>', unsafe_allow_html=True)
+                        st.markdown(f'<p style="color:#fafafa; margin-bottom:8px;">• {clean_markdown(hypothesis)}</p>', unsafe_allow_html=True)
         except Exception as e:
             st.error(f"Pattern analysis error: {e}")
             logger.exception("Pattern analysis failed")
