@@ -671,15 +671,50 @@ def main():
 
             # Learnings — collapsible
             if pattern_results.get("learnings"):
-                with st.expander("Learnings", expanded=False):
+                with st.expander(f"📚 Learnings ({len(pattern_results['learnings'])})", expanded=False):
                     for learning in pattern_results["learnings"]:
-                        st.markdown(f'<p style="color:#fafafa; margin-bottom:8px;">• {clean_markdown(learning)}</p>', unsafe_allow_html=True)
+                        text = clean_markdown(learning)
+                        if " — " in text:
+                            parts = text.split(" — ", 1)
+                            l_title, l_detail = parts[0], parts[1]
+                        elif ": " in text and len(text.split(": ", 1)[0]) < 60:
+                            parts = text.split(": ", 1)
+                            l_title, l_detail = parts[0], parts[1]
+                        else:
+                            sentences = text.split(". ", 1)
+                            l_title = sentences[0]
+                            l_detail = sentences[1] if len(sentences) > 1 else ""
+                        st.markdown(
+                            f'<div style="background:#1e1e2e; border-left:3px solid #3b82f6; padding:12px 16px; margin-bottom:8px; border-radius:0 8px 8px 0;">'
+                            f'<div style="color:#fafafa; font-weight:600; font-size:14px;">{l_title}</div>'
+                            f'{"<div style=\"color:#ccc; font-size:13px; margin-top:4px;\">" + l_detail + "</div>" if l_detail else ""}'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
             # Hypotheses — collapsible
             if pattern_results.get("hypotheses"):
-                with st.expander("Hypotheses", expanded=False):
+                with st.expander(f"💡 Hypotheses ({len(pattern_results['hypotheses'])})", expanded=False):
                     for hypothesis in pattern_results["hypotheses"]:
-                        st.markdown(f'<p style="color:#fafafa; margin-bottom:8px;">• {clean_markdown(hypothesis)}</p>', unsafe_allow_html=True)
+                        text = clean_markdown(hypothesis)
+                        # Parse structured hypothesis: "What — Expected: X — Based on: Y — Risk: Z"
+                        h_title = text
+                        h_detail = ""
+                        if " — " in text:
+                            parts = text.split(" — ", 1)
+                            h_title = parts[0]
+                            h_detail = parts[1]
+                        elif ": " in text and len(text.split(": ", 1)[0]) < 60:
+                            parts = text.split(": ", 1)
+                            h_title = parts[0]
+                            h_detail = parts[1]
+                        st.markdown(
+                            f'<div style="background:#1e1e2e; border-left:3px solid #f59e0b; padding:12px 16px; margin-bottom:8px; border-radius:0 8px 8px 0;">'
+                            f'<div style="color:#fafafa; font-weight:600; font-size:14px;">{h_title}</div>'
+                            f'{"<div style=\"color:#ccc; font-size:13px; margin-top:4px;\">" + h_detail + "</div>" if h_detail else ""}'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
         except Exception as e:
             st.error(f"Pattern analysis error: {e}")
             logger.exception("Pattern analysis failed")
