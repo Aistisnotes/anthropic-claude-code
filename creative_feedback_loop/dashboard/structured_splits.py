@@ -69,7 +69,7 @@ def compute_dimension_summary(dimension: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def render_dashboard(
+def _render_dashboard_pure(
     data: dict[str, Any],
     *,
     include_negative: bool = True,
@@ -185,8 +185,123 @@ def _format_card(card: dict[str, Any]) -> dict[str, Any]:
 
 def render_summary_text(data: dict[str, Any]) -> str:
     """Render a plain-text summary of the dashboard for CLI output."""
-    result = render_dashboard(data)
+    result = _render_dashboard_pure(data)
     lines = [result["title"], "=" * len(result["title"]), ""]
     for card in result["summary_cards"]:
         lines.append(card["display_text"])
     return "\n".join(lines)
+
+
+# ── Backward-compatible wrapper for app.py ────────────────────────────────────
+
+def render_dashboard(  # type: ignore[misc]  # shadows module-level def intentionally
+    ads_data_or_dict,
+    title: str = "Dashboard",
+    *,
+    include_negative: bool = True,
+) -> dict[str, Any]:
+    """Overloaded render_dashboard for app.py compatibility.
+
+    app.py calls render_dashboard(ads_data: list, title: str) and expects:
+    - Streamlit cards rendered to the page
+    - A dashboard_data dict returned (with "dimensions", "summary_cards", etc.)
+
+    If passed a list, converts it to the dimension structure expected by the
+    new pure-computation render_dashboard, renders cards via Streamlit, and
+    returns the result.
+
+    If passed a dict (new-style call), delegates directly to the pure function.
+    """
+    # If already a dict (new-style call), delegate to pure function
+    if isinstance(ads_data_or_dict, dict):
+        return _render_dashboard_pure(ads_data_or_dict, include_negative=include_negative)
+
+    import streamlit as st
+
+    ads_data: list = ads_data_or_dict
+    if not ads_data:
+        st.info(f"No ads to display for {title}.")
+        return {"title": title, "dimensions": [], "summary_cards": [], "all_signals": []}
+
+    # Build dimension structure from flat ad list
+    winners = [a for a in ads_data if a.get("status") == "winner"]
+    losers = [a for a in ads_data if a.get("status") == "loser"]
+    n_winners = len(winners) or 1
+    n_losers = len(losers) or 1
+
+    dimension_keys = [
+        ("pain_point", "Pain Point"),
+        ("root_cause", "Root Cause"),
+        ("mechanism", "Mechanism"),
+        ("ad_format", "Ad Format"),
+        ("awareness_level", "Awareness Level"),
+        ("hook_type", "Hook Type"),
+    ]
+
+    dimensions = []
+    for key, label in dimension_keys:
+        # Collect all distinct values across winners and losers
+        all_values: set[str] = set()
+        for ad in ads_data:
+            ext = ad.get("extraction") or ad.get("naming_extraction") or {}
+            val = ext.get(key, "") or ""
+            if isinstance(val, dict):
+                val = val.get("depth", "") or val.get("ump", "") or ""
+            val = str(val).strip()
+            if val and val.lower() not in ("none", "unknown", "nan", ""):
+                all_values.add(val)
+
+        if not all_values:
+            continue
+
+        values = []
+        for val in all_values:
+            w_count = sum(
+                1 for a in winners
+                if _get_ext_field(a, key) == val
+            )
+            l_count = sum(
+                1 for a in losers
+                if _get_ext_field(a, key) == val
+            )
+            roas_vals = [
+                float(a.get("roas", 0))
+                for a in ads_data
+                if _get_ext_field(a, key) == val and float(a.get("roas", 0)) > 0
+            ]
+            avg_roas = sum(roas_vals) / len(roas_vals) if roas_vals else 0.0
+            values.append({
+                "value": val,
+                "winner_pct": round(w_count / n_winners * 100, 1),
+                "loser_pct": round(l_count / n_losers * 100, 1),
+                "avg_roas": round(avg_roas, 2),
+            })
+
+        if values:
+            dimensions.append({"name": label, "values": values})
+
+    data = {"title": title, "dimensions": dimensions}
+    result = _render_dashboard_pure(data, include_negative=include_negative)
+
+    # Render to Streamlit
+    st.markdown(f'<h3 style="color:#fafafa;">{title}</h3>', unsafe_allow_html=True)
+    for card in result.get("summary_cards", []):
+        color = "#27ae60" if card.get("is_positive") else "#c0392b"
+        st.markdown(
+            f'<div style="background:#1a1a2e; border-left:3px solid {color}; '
+            f'padding:10px 14px; margin-bottom:8px; border-radius:0 6px 6px 0;">'
+            f'<p style="color:#fafafa; margin:0; font-size:13px;">{card["display_text"]}</p>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    return result
+
+
+def _get_ext_field(ad: dict, key: str) -> str:
+    """Extract a named field from an ad's extraction dict."""
+    ext = ad.get("extraction") or ad.get("naming_extraction") or {}
+    val = ext.get(key, "") or ""
+    if isinstance(val, dict):
+        val = val.get("depth", "") or val.get("ump", "") or ""
+    return str(val).strip()
