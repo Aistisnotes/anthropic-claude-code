@@ -243,11 +243,13 @@ def render_dashboard(
     losers = [a for a in ads_data if a.get("status") == "loser"]
     n_winners = len(winners) or 1
     n_losers = len(losers) or 1
+    total_ads = len(ads_data)
 
     dimension_keys = [
         ("pain_point", "Pain Point"), ("root_cause", "Root Cause"),
         ("mechanism", "Mechanism"), ("ad_format", "Ad Format"),
         ("awareness_level", "Awareness Level"), ("hook_type", "Hook Type"),
+        ("avatar", "Avatar"),
     ]
 
     # Tags that are campaign/editor metadata, not creative dimensions
@@ -278,7 +280,7 @@ def render_dashboard(
                 sub_vals = [v for v in val.values() if isinstance(v, str) and v.strip()]
                 if not sub_vals:
                     continue
-                val = val.get("depth", "") or val.get("ump", "") or ""
+                val = val.get("depth", "") or val.get("ump", "") or val.get("behavior", "") or ""
             val = str(val).strip()
             if _is_valid_value(val, key):
                 all_values.add(val)
@@ -291,11 +293,17 @@ def render_dashboard(
             roas_vals = [float(a.get("roas", 0)) for a in ads_data
                          if _get_ext_field(a, key) == val and float(a.get("roas", 0)) > 0]
             avg_roas = sum(roas_vals) / len(roas_vals) if roas_vals else 0.0
+            spend_total = sum(float(a.get("spend", 0)) for a in ads_data if _get_ext_field(a, key) == val)
+            count = sum(1 for a in ads_data if _get_ext_field(a, key) == val)
+            pct_all = round(count / total_ads * 100, 1) if total_ads > 0 else 0
             values.append({
                 "value": val,
                 "winner_pct": round(w_count / n_winners * 100, 1),
                 "loser_pct": round(l_count / n_losers * 100, 1),
                 "avg_roas": round(avg_roas, 2),
+                "pct_all": pct_all,
+                "spend": round(spend_total, 0),
+                "count": count,
             })
         if values:
             dimensions.append({"name": label, "values": values})
@@ -304,16 +312,53 @@ def render_dashboard(
                                     include_negative=include_negative)
 
     st.markdown(f'<h3 style="color:#fafafa;">{title}</h3>', unsafe_allow_html=True)
-    for card in result.get("summary_cards", []):
-        level = card.get("level", "BASELINE")
-        color = "#27ae60" if level == "HIGH" else "#f39c12" if level == "MEDIUM" else "#c0392b" if level == "AVOID" else "#555"
-        st.markdown(
-            f'<div style="background:#1a1a2e; border-left:3px solid {color}; '
-            f'padding:10px 14px; margin-bottom:8px; border-radius:0 6px 6px 0;">'
-            f'<p style="color:#fafafa; margin:0; font-size:13px;">{card["display_text"]}</p>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+
+    def _fmt_spend(v: float) -> str:
+        if v >= 1000:
+            return f"${v/1000:,.0f}k"
+        return f"${v:,.0f}"
+
+    for i, (dim_info, dim_label) in enumerate(
+        [(d, d["name"]) for d in dimensions]
+    ):
+        with st.expander(dim_label, expanded=(i < 3)):
+            sorted_values = sorted(dim_info["values"], key=lambda x: x.get("spend", 0), reverse=True)
+            rows = ""
+            for j, v in enumerate(sorted_values):
+                bg = "#1e1e2e" if j % 2 == 0 else "#262730"
+                roas = v.get("avg_roas", 0)
+                roas_color = "#27ae60" if roas >= 1.0 else "#e74c3c" if roas > 0 else "#888"
+                wp = v.get("winner_pct", 0)
+                lp = v.get("loser_pct", 0)
+                wp_color = "#27ae60" if wp > lp else "#e74c3c" if wp < lp else "#888"
+                spend_str = _fmt_spend(v.get("spend", 0))
+                rows += (
+                    f'<tr style="background:{bg};">'
+                    f'<td style="padding:8px 12px; color:#fafafa; font-size:13px;">{v.get("value", "")}</td>'
+                    f'<td style="padding:8px 12px; color:#ccc; text-align:right; font-size:13px;">{v.get("pct_all", 0):.1f}%</td>'
+                    f'<td style="padding:8px 12px; color:{wp_color}; text-align:right; font-size:13px;">{wp:.0f}%</td>'
+                    f'<td style="padding:8px 12px; color:#e74c3c; text-align:right; font-size:13px;">{lp:.0f}%</td>'
+                    f'<td style="padding:8px 12px; color:{roas_color}; text-align:right; font-size:13px;">{roas:.2f}x</td>'
+                    f'<td style="padding:8px 12px; color:#fafafa; text-align:right; font-size:13px;">{spend_str}</td>'
+                    f'</tr>'
+                )
+            table_html = (
+                f'<table style="width:100%; border-collapse:collapse; background:#1e1e2e; border-radius:8px; overflow:hidden; font-size:13px;">'
+                f'<thead>'
+                f'<tr style="background:#2d2d3d;">'
+                f'<th style="color:#fafafa; padding:8px 12px; text-align:left;">Value</th>'
+                f'<th style="color:#fafafa; padding:8px 12px; text-align:right;">% All</th>'
+                f'<th style="color:#fafafa; padding:8px 12px; text-align:right;">% Winners</th>'
+                f'<th style="color:#fafafa; padding:8px 12px; text-align:right;">% Losers</th>'
+                f'<th style="color:#fafafa; padding:8px 12px; text-align:right;">Avg ROAS</th>'
+                f'<th style="color:#fafafa; padding:8px 12px; text-align:right;">Spend</th>'
+                f'</tr>'
+                f'</thead>'
+                f'<tbody>{rows}</tbody>'
+                f'</table>'
+            )
+            st.markdown(table_html, unsafe_allow_html=True)
+
     return result
 
 
@@ -321,5 +366,5 @@ def _get_ext_field(ad: dict, key: str) -> str:
     ext = ad.get("extraction") or ad.get("naming_extraction") or {}
     val = ext.get(key, "") or ""
     if isinstance(val, dict):
-        val = val.get("depth", "") or val.get("ump", "") or ""
+        val = val.get("depth", "") or val.get("ump", "") or val.get("behavior", "") or ""
     return str(val).strip()
