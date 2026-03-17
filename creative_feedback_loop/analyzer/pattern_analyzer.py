@@ -230,3 +230,119 @@ def format_opportunity_card(opp: dict[str, Any]) -> str:
     )
 
     return f"{title}\n{stats_line}"
+
+
+# ── Backward-compatible async wrapper for app.py ──────────────────────────────
+
+async def analyze_patterns(  # noqa: RUF029  (intentionally async for app.py loop)
+    ads_data: list,
+    dashboard_data: dict,
+    priority_prompt: str = "",
+    previous_notes: str = "",
+    model: str = "claude-sonnet-4-20250514",
+) -> dict:
+    """Async wrapper called by app.py.
+
+    Builds a Claude prompt from the ad list, calls the API, parses the response
+    with the existing parse/enrich helpers, and maps the results to the dict
+    shape that app.py expects:
+      {executive_summary, insights, learnings, hypotheses}
+    """
+    import anthropic
+    import pandas as pd
+
+    if not ads_data:
+        return {"executive_summary": "", "insights": [], "learnings": [], "hypotheses": []}
+
+    # Build a compact summary of winners/losers for the prompt
+    winners = [a for a in ads_data if a.get("status") == "winner"]
+    losers = [a for a in ads_data if a.get("status") == "loser"]
+    untested = [a for a in ads_data if a.get("status") == "untested"]
+
+    def _ad_line(ad: dict) -> str:
+        ext = ad.get("extraction") or ad.get("naming_extraction") or {}
+        return (
+            f"- {ad.get('ad_name', '')} | spend=${ad.get('spend', 0):.0f} "
+            f"roas={ad.get('roas', 0):.2f} | "
+            f"pain={ext.get('pain_point','?')} mechanism={ext.get('mechanism','?')} "
+            f"format={ext.get('ad_format','?')}"
+        )
+
+    winner_lines = "\n".join(_ad_line(a) for a in winners[:20])
+    loser_lines = "\n".join(_ad_line(a) for a in losers[:20])
+
+    prompt = f"""You are a creative strategist analyzing Meta ad performance data.
+
+WINNERS ({len(winners)} ads):
+{winner_lines or 'none'}
+
+LOSERS ({len(losers)} ads):
+{loser_lines or 'none'}
+
+UNTESTED: {len(untested)} ads
+
+{f'OPERATOR PRIORITIES: {priority_prompt}' if priority_prompt else ''}
+{f'PREVIOUS NOTES: {previous_notes}' if previous_notes else ''}
+
+Respond with:
+
+EXECUTIVE SUMMARY:
+[2-3 sentence summary of the key performance signal]
+
+OPPORTUNITIES:
+[List 3-5 specific pattern opportunities found in the data]
+
+LEARNINGS:
+[List 5-7 concrete learnings with supporting evidence]
+
+HYPOTHESES:
+[List 3-5 testable hypotheses for improving performance]
+"""
+
+    client = anthropic.Anthropic()
+    message = client.messages.create(
+        model=model,
+        max_tokens=2000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    response_text = message.content[0].text
+
+    # Parse structured sections from response
+    def _extract_section(text: str, header: str) -> str:
+        import re
+        m = re.search(rf"{header}:?\s*\n(.*?)(?=\n[A-Z ]+:|\Z)", text, re.DOTALL | re.IGNORECASE)
+        return m.group(1).strip() if m else ""
+
+    def _parse_bullets(text: str) -> list:
+        lines = [ln.lstrip("-•*0123456789. ").strip() for ln in text.splitlines() if ln.strip()]
+        return [ln for ln in lines if len(ln) > 5]
+
+    executive_summary = _extract_section(response_text, "EXECUTIVE SUMMARY")
+
+    # Parse opportunities into insight dicts using existing helpers
+    opps_text = _extract_section(response_text, "OPPORTUNITIES")
+    raw_opps = _parse_opportunities_from_text(opps_text or response_text)
+    if dashboard_data:
+        _enrich_from_dashboard(raw_opps, dashboard_data)
+
+    insights = []
+    for opp in raw_opps:
+        insights.append({
+            "title": opp.get("title", ""),
+            "detail": opp.get("description", ""),
+            "winner_count": opp.get("winner_count", 0),
+            "loser_count": opp.get("loser_count", 0),
+            "avg_roas": opp.get("avg_roas", 0.0),
+            "confidence": opp.get("confidence", ""),
+            "is_baseline": opp.get("is_baseline", False),
+        })
+
+    learnings_text = _extract_section(response_text, "LEARNINGS")
+    hypotheses_text = _extract_section(response_text, "HYPOTHESES")
+
+    return {
+        "executive_summary": executive_summary,
+        "insights": insights,
+        "learnings": _parse_bullets(learnings_text),
+        "hypotheses": _parse_bullets(hypotheses_text),
+    }
