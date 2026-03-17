@@ -644,6 +644,31 @@ def main():
                     unsafe_allow_html=True,
                 )
 
+            # Top 5 Strongest Patterns
+            top_insights = sorted(
+                [ins for ins in pattern_results.get("insights", []) if ins.get("detail")],
+                key=lambda x: (x.get("score", 0), 1 if x.get("stats_verified") else 0),
+                reverse=True
+            )[:5]
+            if top_insights:
+                st.markdown("---")
+                st.markdown('<h2 style="color:#fafafa;">🏆 Top 5 Strongest Patterns — Expansion Opportunities</h2>', unsafe_allow_html=True)
+                for rank, ins in enumerate(top_insights, 1):
+                    t = clean_markdown(ins.get("title", ""))
+                    d = clean_markdown(ins.get("detail", ""))
+                    r = ins.get("avg_roas")
+                    roas_str = f"{r:.2f}x ROAS" if r else ""
+                    st.markdown(
+                        f'<div style="background:#1e1e2e; border-radius:12px; padding:20px; margin-bottom:16px; border:1px solid #f59e0b40;">'
+                        f'<div style="border-left:4px solid #f59e0b; padding-left:12px; margin-bottom:12px;">'
+                        f'<h3 style="color:#fafafa; margin:0; font-size:16px;">#{rank}: {t}</h3>'
+                        f'<p style="color:#ccc; font-size:13px; margin:4px 0;">{roas_str}</p>'
+                        f'</div>'
+                        f'<div style="color:#ccc; font-size:14px; line-height:1.6;">{d}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
             # Learnings — collapsible
             if pattern_results.get("learnings"):
                 with st.expander("Learnings", expanded=False):
