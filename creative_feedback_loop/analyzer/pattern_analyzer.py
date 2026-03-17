@@ -47,13 +47,17 @@ def _parse_opportunities_from_text(text: str) -> list[dict[str, Any]]:
     """Parse opportunity sections from Claude response text.
 
     Looks for structured opportunity blocks and extracts both the narrative
-    text and embedded numeric fields.
+    text and embedded numeric fields. Handles both "Opportunity #N" and
+    numbered-list "1. Title" formats.
     """
     opportunities = []
 
-    # Split on common opportunity delimiters
-    # Claude typically outputs numbered opportunities or ### headers
-    sections = re.split(r'(?:^|\n)(?:#{1,3}\s*)?(?:Opportunity\s*#?\d+|OPPORTUNITY\s*#?\d+)[:\s]*', text, flags=re.IGNORECASE)
+    # Split on either "Opportunity #N" OR numbered items "1. Title" (capital after number)
+    # Use (?:^|\n) so the first item at position 0 is also captured as a split point.
+    sections = re.split(
+        r'(?:^|\n)(?:#{1,3}\s*)?(?:Opportunity\s*#?\d+\s*[:–—]?\s*|\d+[\.\)]\s+(?=[A-Z\w]))',
+        text, flags=re.IGNORECASE | re.MULTILINE
+    )
 
     # If no structured sections found, treat entire text as one opportunity
     if len(sections) <= 1:
@@ -441,6 +445,10 @@ HYPOTHESES:
         return any(low.startswith(p) for p in _HYPOTHESIS_PREFIXES) or "expected:" in low
 
     executive_summary = _extract_section(response_text, "EXECUTIVE SUMMARY")
+    # Truncate exec summary before any leaked numbered items (opportunities spill-over)
+    _exec_parts = re.split(r'\n\s*\d+[\.\)]\s', executive_summary)
+    executive_summary = _exec_parts[0].strip()
+
     opps_text = _extract_section(response_text, "OPPORTUNITIES")
 
     if not opps_text:
@@ -450,8 +458,24 @@ HYPOTHESES:
     if dashboard_data:
         _enrich_from_dashboard(raw_opps, dashboard_data)
 
+    raw_learnings = _parse_bullets(_extract_section(response_text, "LEARNINGS"))
+    raw_hypotheses = _parse_bullets(_extract_section(response_text, "HYPOTHESES"))
+
+    # Dedup keys: first 50 chars lowercase of learnings + hypotheses
+    learn_keys = {item.lower()[:50] for item in raw_learnings}
+    hyp_keys = {item.lower()[:50] for item in raw_hypotheses}
+
     insights = []
+    seen_insight_keys: set = set()
     for opp in raw_opps:
+        # Skip if this insight overlaps with a learning or hypothesis (BUG 2)
+        opp_key = (opp.get("title", "") or opp.get("text", "")).lower()[:50]
+        if opp_key in learn_keys or opp_key in hyp_keys:
+            continue
+        if opp_key in seen_insight_keys:
+            continue
+        seen_insight_keys.add(opp_key)
+
         verified = opp.get("stats_verified", False)
         w = opp.get("winner_count")
         l = opp.get("loser_count")
@@ -471,14 +495,10 @@ HYPOTHESES:
             "is_baseline": False,
         })
 
-    raw_learnings = _parse_bullets(_extract_section(response_text, "LEARNINGS"))
-    raw_hypotheses = _parse_bullets(_extract_section(response_text, "HYPOTHESES"))
-
     # Move hypothesis-like items out of learnings; deduplicate hypotheses
-    clean_learnings = [item for item in raw_learnings if not _is_hypothesis(item)]
+    clean_learnings = [item for item in raw_learnings if not _is_hypothesis(item) and item.lower()[:50] not in hyp_keys]
     spilled = [item for item in raw_learnings if _is_hypothesis(item)]
-    hyp_set = {h.lower()[:60] for h in raw_hypotheses}
-    extra_hyps = [h for h in spilled if h.lower()[:60] not in hyp_set]
+    extra_hyps = [h for h in spilled if h.lower()[:60] not in {h2.lower()[:60] for h2 in raw_hypotheses}]
 
     return {
         "executive_summary": executive_summary,

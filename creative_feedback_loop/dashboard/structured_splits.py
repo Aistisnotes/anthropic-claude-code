@@ -269,19 +269,44 @@ def render_dashboard(
             return bool(_CAMEL_RE.match(val))
         return True
 
+    def _extract_val_from_ext(ext: dict, key: str) -> str:
+        """Extract a scalar value from an extraction dict for a given key.
+
+        Handles nested dicts with key-specific field priority:
+          avatar      → behavior (primary), impact (fallback)
+          root_cause  → depth (primary), chain (fallback)
+          mechanism   → ump (primary), ums (fallback)
+          others      → depth → ump → behavior (generic fallback chain)
+
+        Also normalises awareness_level values: replaces underscores with
+        spaces and title-cases the result so "problem_aware" → "Problem Aware".
+        """
+        raw = ext.get(key, "")
+        # Treat None the same as missing
+        if raw is None:
+            raw = ""
+        val = raw or ""
+        if isinstance(val, dict):
+            if key == "avatar":
+                val = val.get("behavior", "") or val.get("impact", "") or ""
+            elif key == "root_cause":
+                val = val.get("depth", "") or val.get("chain", "") or ""
+            elif key == "mechanism":
+                val = val.get("ump", "") or val.get("ums", "") or ""
+            else:
+                val = val.get("depth", "") or val.get("ump", "") or val.get("behavior", "") or ""
+        val = str(val).strip()
+        # Normalise awareness_level: "problem_aware" → "Problem Aware"
+        if key == "awareness_level" and val:
+            val = val.replace("_", " ").title()
+        return val
+
     dimensions = []
     for key, label in dimension_keys:
         all_values: set[str] = set()
         for ad in ads_data:
             ext = ad.get("extraction") or ad.get("naming_extraction") or {}
-            val = ext.get(key, "") or ""
-            if isinstance(val, dict):
-                # Skip empty dicts (all sub-fields empty)
-                sub_vals = [v for v in val.values() if isinstance(v, str) and v.strip()]
-                if not sub_vals:
-                    continue
-                val = val.get("depth", "") or val.get("ump", "") or val.get("behavior", "") or ""
-            val = str(val).strip()
+            val = _extract_val_from_ext(ext, key)
             if _is_valid_value(val, key):
                 all_values.add(val)
         if not all_values:
@@ -290,10 +315,19 @@ def render_dashboard(
         for val in all_values:
             w_count = sum(1 for a in winners if _get_ext_field(a, key) == val)
             l_count = sum(1 for a in losers if _get_ext_field(a, key) == val)
-            roas_vals = [float(a.get("roas", 0)) for a in ads_data
-                         if _get_ext_field(a, key) == val and float(a.get("roas", 0)) > 0]
+            # Use float() safely — roas may be string "0" in some rows
+            roas_vals = []
+            for a in ads_data:
+                if _get_ext_field(a, key) != val:
+                    continue
+                try:
+                    r = float(a.get("roas", 0) or 0)
+                except (TypeError, ValueError):
+                    r = 0.0
+                if r > 0:
+                    roas_vals.append(r)
             avg_roas = sum(roas_vals) / len(roas_vals) if roas_vals else 0.0
-            spend_total = sum(float(a.get("spend", 0)) for a in ads_data if _get_ext_field(a, key) == val)
+            spend_total = sum(float(a.get("spend", 0) or 0) for a in ads_data if _get_ext_field(a, key) == val)
             count = sum(1 for a in ads_data if _get_ext_field(a, key) == val)
             pct_all = round(count / total_ads * 100, 1) if total_ads > 0 else 0
             values.append({
@@ -364,7 +398,21 @@ def render_dashboard(
 
 def _get_ext_field(ad: dict, key: str) -> str:
     ext = ad.get("extraction") or ad.get("naming_extraction") or {}
-    val = ext.get(key, "") or ""
+    raw = ext.get(key, "")
+    if raw is None:
+        raw = ""
+    val = raw or ""
     if isinstance(val, dict):
-        val = val.get("depth", "") or val.get("ump", "") or val.get("behavior", "") or ""
-    return str(val).strip()
+        if key == "avatar":
+            val = val.get("behavior", "") or val.get("impact", "") or ""
+        elif key == "root_cause":
+            val = val.get("depth", "") or val.get("chain", "") or ""
+        elif key == "mechanism":
+            val = val.get("ump", "") or val.get("ums", "") or ""
+        else:
+            val = val.get("depth", "") or val.get("ump", "") or val.get("behavior", "") or ""
+    val = str(val).strip()
+    # Normalise awareness_level to match all_values collection
+    if key == "awareness_level" and val:
+        val = val.replace("_", " ").title()
+    return val

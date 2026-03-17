@@ -644,27 +644,28 @@ def main():
                     unsafe_allow_html=True,
                 )
 
-            # Top 5 Strongest Patterns
+            # Top 5 Strongest Patterns — compact reference list (avoids repeating full cards)
             top_insights = sorted(
-                [ins for ins in pattern_results.get("insights", []) if ins.get("detail")],
+                [ins for ins in pattern_results.get("insights", []) if ins.get("title")],
                 key=lambda x: (x.get("score", 0), 1 if x.get("stats_verified") else 0),
                 reverse=True
             )[:5]
-            if top_insights:
+            if top_insights and len(pattern_results.get("insights", [])) > 3:
                 st.markdown("---")
-                st.markdown('<h2 style="color:#fafafa;">🏆 Top 5 Strongest Patterns — Expansion Opportunities</h2>', unsafe_allow_html=True)
+                st.markdown('<h2 style="color:#fafafa;">🏆 Top 5 Strongest Patterns</h2>', unsafe_allow_html=True)
                 for rank, ins in enumerate(top_insights, 1):
                     t = clean_markdown(ins.get("title", ""))
-                    d = clean_markdown(ins.get("detail", ""))
                     r = ins.get("avg_roas")
-                    roas_str = f"{r:.2f}x ROAS" if r else ""
+                    roas_str = f" — {r:.2f}x ROAS" if r else ""
+                    score = ins.get("score", 0)
+                    score_str = f" — Score: {score}/100" if score else ""
+                    conf = ins.get("confidence", "")
+                    conf_str = f" — {conf}" if conf and conf != "Based on Claude analysis" else ""
                     st.markdown(
-                        f'<div style="background:#1e1e2e; border-radius:12px; padding:20px; margin-bottom:16px; border:1px solid #f59e0b40;">'
-                        f'<div style="border-left:4px solid #f59e0b; padding-left:12px; margin-bottom:12px;">'
-                        f'<h3 style="color:#fafafa; margin:0; font-size:16px;">#{rank}: {t}</h3>'
-                        f'<p style="color:#ccc; font-size:13px; margin:4px 0;">{roas_str}</p>'
-                        f'</div>'
-                        f'<div style="color:#ccc; font-size:14px; line-height:1.6;">{d}</div>'
+                        f'<div style="background:#1e1e2e; border-left:4px solid #f59e0b; padding:10px 16px; '
+                        f'margin-bottom:8px; border-radius:0 8px 8px 0;">'
+                        f'<span style="color:#f59e0b; font-weight:700; font-size:14px;">#{rank}</span> '
+                        f'<span style="color:#fafafa; font-size:14px;">{t}{roas_str}{score_str}{conf_str}</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
