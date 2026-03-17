@@ -594,15 +594,23 @@ def main():
 
             for insight in pattern_results.get("insights", []):
                 baseline_badge = '<span style="background:#333; color:#999; padding:2px 8px; border-radius:4px; font-size:11px; margin-left:8px;">BASELINE</span>' if insight.get("is_baseline") else ""
+                w = insight.get("winner_count")
+                l = insight.get("loser_count")
+                r = insight.get("avg_roas")
+                conf = insight.get("confidence", "")
+                if w is not None and (w or l):
+                    stats_line = (
+                        f'Winners: {w} | Losers: {l} | '
+                        f'Avg ROAS: {r:.2f}x | Confidence: {conf}'
+                    )
+                else:
+                    stats_line = conf
                 st.markdown(
                     f'<div style="background:#1a1a2e; border-left:3px solid #e91e8c; padding:12px 16px; '
                     f'margin-bottom:10px; border-radius:0 6px 6px 0;">'
-                    f'<p style="color:#fafafa; font-weight:700;">{insight.get("title", "")}{baseline_badge}</p>'
-                    f'<p style="color:#ccc; font-size:13px; margin-top:4px;">{insight.get("detail", "")}</p>'
-                    f'<p style="color:#888; font-size:11px; margin-top:4px;">Winners: {insight.get("winner_count", 0)} | '
-                    f'Losers: {insight.get("loser_count", 0)} | '
-                    f'Avg ROAS: {insight.get("avg_roas", 0)}x | '
-                    f'Confidence: {insight.get("confidence", "")}</p></div>',
+                    f'<p style="color:#fafafa; font-weight:700; font-size:14px;">{clean_markdown(insight.get("title", ""))}{baseline_badge}</p>'
+                    f'<p style="color:#ccc; font-size:14px; margin-top:4px;">{clean_markdown(insight.get("detail", ""))}</p>'
+                    f'<p style="color:#888; font-size:11px; margin-top:4px;">{stats_line}</p></div>',
                     unsafe_allow_html=True,
                 )
 
