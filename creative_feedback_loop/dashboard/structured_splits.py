@@ -132,14 +132,18 @@ def _render_dashboard_pure(
     for dim in dimensions:
         for v in dim.get("values", []):
             delta = v.get("winner_pct", 0) - v.get("loser_pct", 0)
+            avg_roas = v.get("avg_roas", 0)
+            icon, level, _ = _get_signal_level(delta, avg_roas)
             all_signals.append({
                 "dimension": dim.get("name", "Unknown"),
                 "value": v.get("value", "Unknown"),
                 "winner_pct": v.get("winner_pct", 0),
                 "loser_pct": v.get("loser_pct", 0),
                 "delta": delta,
-                "avg_roas": v.get("avg_roas", 0),
-                "is_positive": delta > 0,
+                "avg_roas": avg_roas,
+                "icon": icon,
+                "level": level,
+                "is_positive": level in ("HIGH", "MEDIUM"),
             })
 
     # Sort all signals by delta descending
@@ -153,18 +157,40 @@ def _render_dashboard_pure(
     }
 
 
+def _get_signal_level(delta: float, avg_roas: float) -> tuple[str, str, str]:
+    """Determine signal level based on delta AND ROAS.
+
+    Returns (icon, level, suffix) tuple.
+
+    Rules:
+        🟢 HIGH:     delta > +15% AND avg ROAS >= 1.0
+        🟡 MEDIUM:   delta > +10% AND avg ROAS >= 1.0
+                      OR delta > +15% but ROAS < 1.0 (caution — losing money)
+        ⚪ BASELINE:  delta <= +10% (insufficient signal)
+        🔴 AVOID:    negative delta OR avg ROAS < 0.8
+    """
+    if delta < 0 or avg_roas < 0.8:
+        return "🔴", "AVOID", " (AVOID)"
+    if delta > 15 and avg_roas >= 1.0:
+        return "🟢", "HIGH", ""
+    if (delta > 10 and avg_roas >= 1.0) or (delta > 15 and avg_roas < 1.0):
+        return "🟡", "MEDIUM", " (CAUTION)"
+    return "⚪", "BASELINE", ""
+
+
 def _format_card(card: dict[str, Any]) -> dict[str, Any]:
     """Format a summary card for display.
 
-    Produces output like:
-        🟢 Pain Point: Kidney | Winners: 55% | Losers: 15% | Delta: +40% | 1.45x ROAS
-        🔴 Pain Point: Thyroid | Winners: 8% | Losers: 20% | Delta: -12% | 0.73x ROAS (AVOID)
+    Signal color is determined by BOTH delta AND average ROAS:
+        🟢 HIGH:     delta > +15% AND avg ROAS >= 1.0
+        🟡 MEDIUM:   delta > +10% AND avg ROAS >= 1.0, or high delta but ROAS < 1.0
+        ⚪ BASELINE:  delta <= +10%
+        🔴 AVOID:    negative delta OR avg ROAS < 0.8
     """
-    is_positive = card.get("is_positive", False)
-    icon = "🟢" if is_positive else "🔴"
     delta = card.get("delta", 0)
+    avg_roas = card.get("avg_roas", 0)
+    icon, level, suffix = _get_signal_level(delta, avg_roas)
     delta_str = f"+{delta:.0f}%" if delta > 0 else f"{delta:.0f}%"
-    suffix = "" if is_positive else " (AVOID)"
     warning = " ⚠️ No positive signal found" if card.get("is_warning") else ""
 
     display_text = (
@@ -178,6 +204,7 @@ def _format_card(card: dict[str, Any]) -> dict[str, Any]:
     return {
         **card,
         "icon": icon,
+        "level": level,
         "delta_str": delta_str,
         "display_text": display_text,
     }
@@ -194,25 +221,13 @@ def render_summary_text(data: dict[str, Any]) -> str:
 
 # ── Backward-compatible wrapper for app.py ────────────────────────────────────
 
-def render_dashboard(  # type: ignore[misc]  # shadows module-level def intentionally
+def render_dashboard(
     ads_data_or_dict,
     title: str = "Dashboard",
     *,
     include_negative: bool = True,
 ) -> dict[str, Any]:
-    """Overloaded render_dashboard for app.py compatibility.
-
-    app.py calls render_dashboard(ads_data: list, title: str) and expects:
-    - Streamlit cards rendered to the page
-    - A dashboard_data dict returned (with "dimensions", "summary_cards", etc.)
-
-    If passed a list, converts it to the dimension structure expected by the
-    new pure-computation render_dashboard, renders cards via Streamlit, and
-    returns the result.
-
-    If passed a dict (new-style call), delegates directly to the pure function.
-    """
-    # If already a dict (new-style call), delegate to pure function
+    """Wrapper for app.py: accepts (list, title) or (dict) and renders to Streamlit."""
     if isinstance(ads_data_or_dict, dict):
         return _render_dashboard_pure(ads_data_or_dict, include_negative=include_negative)
 
@@ -223,24 +238,19 @@ def render_dashboard(  # type: ignore[misc]  # shadows module-level def intentio
         st.info(f"No ads to display for {title}.")
         return {"title": title, "dimensions": [], "summary_cards": [], "all_signals": []}
 
-    # Build dimension structure from flat ad list
     winners = [a for a in ads_data if a.get("status") == "winner"]
     losers = [a for a in ads_data if a.get("status") == "loser"]
     n_winners = len(winners) or 1
     n_losers = len(losers) or 1
 
     dimension_keys = [
-        ("pain_point", "Pain Point"),
-        ("root_cause", "Root Cause"),
-        ("mechanism", "Mechanism"),
-        ("ad_format", "Ad Format"),
-        ("awareness_level", "Awareness Level"),
-        ("hook_type", "Hook Type"),
+        ("pain_point", "Pain Point"), ("root_cause", "Root Cause"),
+        ("mechanism", "Mechanism"), ("ad_format", "Ad Format"),
+        ("awareness_level", "Awareness Level"), ("hook_type", "Hook Type"),
     ]
 
     dimensions = []
     for key, label in dimension_keys:
-        # Collect all distinct values across winners and losers
         all_values: set[str] = set()
         for ad in ads_data:
             ext = ad.get("extraction") or ad.get("naming_extraction") or {}
@@ -250,25 +260,14 @@ def render_dashboard(  # type: ignore[misc]  # shadows module-level def intentio
             val = str(val).strip()
             if val and val.lower() not in ("none", "unknown", "nan", ""):
                 all_values.add(val)
-
         if not all_values:
             continue
-
         values = []
         for val in all_values:
-            w_count = sum(
-                1 for a in winners
-                if _get_ext_field(a, key) == val
-            )
-            l_count = sum(
-                1 for a in losers
-                if _get_ext_field(a, key) == val
-            )
-            roas_vals = [
-                float(a.get("roas", 0))
-                for a in ads_data
-                if _get_ext_field(a, key) == val and float(a.get("roas", 0)) > 0
-            ]
+            w_count = sum(1 for a in winners if _get_ext_field(a, key) == val)
+            l_count = sum(1 for a in losers if _get_ext_field(a, key) == val)
+            roas_vals = [float(a.get("roas", 0)) for a in ads_data
+                         if _get_ext_field(a, key) == val and float(a.get("roas", 0)) > 0]
             avg_roas = sum(roas_vals) / len(roas_vals) if roas_vals else 0.0
             values.append({
                 "value": val,
@@ -276,17 +275,16 @@ def render_dashboard(  # type: ignore[misc]  # shadows module-level def intentio
                 "loser_pct": round(l_count / n_losers * 100, 1),
                 "avg_roas": round(avg_roas, 2),
             })
-
         if values:
             dimensions.append({"name": label, "values": values})
 
-    data = {"title": title, "dimensions": dimensions}
-    result = _render_dashboard_pure(data, include_negative=include_negative)
+    result = _render_dashboard_pure({"title": title, "dimensions": dimensions},
+                                    include_negative=include_negative)
 
-    # Render to Streamlit
     st.markdown(f'<h3 style="color:#fafafa;">{title}</h3>', unsafe_allow_html=True)
     for card in result.get("summary_cards", []):
-        color = "#27ae60" if card.get("is_positive") else "#c0392b"
+        level = card.get("level", "BASELINE")
+        color = "#27ae60" if level == "HIGH" else "#f39c12" if level == "MEDIUM" else "#c0392b" if level == "AVOID" else "#555"
         st.markdown(
             f'<div style="background:#1a1a2e; border-left:3px solid {color}; '
             f'padding:10px 14px; margin-bottom:8px; border-radius:0 6px 6px 0;">'
@@ -294,12 +292,10 @@ def render_dashboard(  # type: ignore[misc]  # shadows module-level def intentio
             f'</div>',
             unsafe_allow_html=True,
         )
-
     return result
 
 
 def _get_ext_field(ad: dict, key: str) -> str:
-    """Extract a named field from an ad's extraction dict."""
     ext = ad.get("extraction") or ad.get("naming_extraction") or {}
     val = ext.get(key, "") or ""
     if isinstance(val, dict):
