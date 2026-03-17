@@ -609,25 +609,38 @@ def main():
                     unsafe_allow_html=True,
                 )
 
-            for insight in pattern_results.get("insights", []):
-                baseline_badge = '<span style="background:#333; color:#999; padding:2px 8px; border-radius:4px; font-size:11px; margin-left:8px;">BASELINE</span>' if insight.get("is_baseline") else ""
+            for i, insight in enumerate(pattern_results.get("insights", []), 1):
+                title = clean_markdown(insight.get("title", ""))
+                detail = clean_markdown(insight.get("detail", ""))
+                score = insight.get("score", 0)
                 w = insight.get("winner_count")
                 l = insight.get("loser_count")
                 r = insight.get("avg_roas")
-                conf = insight.get("confidence", "")
-                if w is not None and (w or l):
-                    stats_line = (
-                        f'Winners: {w} | Losers: {l} | '
-                        f'Avg ROAS: {r:.2f}x | Confidence: {conf}'
-                    )
+                conf = insight.get("confidence", "Based on Claude analysis")
+                verified = insight.get("stats_verified", False)
+
+                if verified and w is not None and (w or l):
+                    stats_line = f"Winners: {w} | Losers: {l} | Avg ROAS: {r:.2f}x"
                 else:
-                    stats_line = conf
+                    stats_line = ""
+
+                score_badge = f" — Score: {score}/100" if score else ""
+
                 st.markdown(
-                    f'<div style="background:#1a1a2e; border-left:3px solid #e91e8c; padding:12px 16px; '
-                    f'margin-bottom:10px; border-radius:0 6px 6px 0;">'
-                    f'<p style="color:#fafafa; font-weight:700; font-size:14px;">{clean_markdown(insight.get("title", ""))}{baseline_badge}</p>'
-                    f'<p style="color:#ccc; font-size:14px; margin-top:4px;">{clean_markdown(insight.get("detail", ""))}</p>'
-                    f'<p style="color:#888; font-size:11px; margin-top:4px;">{stats_line}</p></div>',
+                    f'<div style="background:#1e1e2e; border-radius:12px; padding:20px; margin-bottom:16px; border:1px solid #333;">'
+                    f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">'
+                    f'<span style="background:#e91e8c; color:white; padding:4px 12px; border-radius:6px; font-size:13px; font-weight:600;">PATTERN #{i}{score_badge}</span>'
+                    f'<span style="color:#888; font-size:12px;">{stats_line}</span>'
+                    f'</div>'
+                    f'<h3 style="color:#fafafa; margin:0 0 8px 0; font-size:16px;">{title}</h3>'
+                    f'<div style="color:#ccc; font-size:14px; line-height:1.6; margin-bottom:12px;">{detail}</div>'
+                    f'<div style="display:flex; gap:12px;">'
+                    f'<div style="flex:1; background:#262730; padding:10px; border-radius:6px;">'
+                    f'<div style="color:#888; font-size:11px; text-transform:uppercase; margin-bottom:4px;">Confidence</div>'
+                    f'<div style="color:#fafafa; font-size:13px;">{conf}</div>'
+                    f'</div>'
+                    f'</div>'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
 
