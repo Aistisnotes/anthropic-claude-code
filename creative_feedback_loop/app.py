@@ -1,773 +1,709 @@
-"""Creative Feedback Loop Analyzer — Streamlit Application.
+"""Creative Feedback Loop — Streamlit App
 
-Full pipeline:
-1. CSV upload/aggregation (ad performance data)
-2. ClickUp integration (optional — pull ad scripts/copy)
-3. Classification (winner/loser/untested based on ROAS + spend thresholds)
-4. Naming parser (extract batch, version, format from ad names)
-5. Script component extraction (Claude-powered dimension extraction)
-6. Strategic opportunity analysis (Claude-powered scoring)
-7. Visual card dashboard (dark theme, no tables)
-
-Run: streamlit run creative_feedback_loop/app.py
+Standalone Streamlit app running on port 8503.
+Structured dashboards, deep extraction, operator context, run storage.
 """
 
 from __future__ import annotations
 
 import asyncio
-import io
 import json
+import logging
+import os
+import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
 import streamlit as st
 
-from creative_feedback_loop.naming_parser import parse_ad_name, group_ads_by_batch
-from creative_feedback_loop.dashboard.structured_splits import (
-    render_header_metrics,
-    render_compact_summary,
-    render_detailed_breakdown,
-    render_opportunities_section,
-    render_drift_alerts,
-    compute_dimension_summary,
-    compute_detailed_breakdown,
-)
-
-# ── Page Config ──────────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Creative Feedback Loop",
-    page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-# ── Dark Theme CSS ───────────────────────────────────────────────────────────
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+PROJECT_ROOT = Path(__file__).parent.parent
+RUNS_DIR = PROJECT_ROOT / "output" / "runs"
+RUNS_DIR.mkdir(parents=True, exist_ok=True)
+
+# ── Dark Mode CSS ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
     .stApp { background-color: #0e1117; }
-    .stMetric { background: #1e1e2e; border-radius: 8px; padding: 12px; }
-    .stMetric label { color: #9ca3af !important; }
-    .stMetric [data-testid="stMetricValue"] { color: #fafafa !important; }
-    .stExpander { background: #1e1e2e; border-radius: 8px; }
-    .stExpander summary { color: #fafafa !important; }
-    h1, h2, h3, h4, h5, h6 { color: #fafafa !important; }
-    p, li, span { color: #ccc; }
-    .stSelectbox label, .stMultiSelect label, .stNumberInput label,
-    .stTextInput label, .stRadio label, .stFileUploader label { color: #fafafa !important; }
-    .stButton > button {
-        background: #3b82f6; color: white; border: none; border-radius: 6px;
-        padding: 8px 24px; font-weight: 600;
+    .stMarkdown, .stText, p, span, label, .stSelectbox label,
+    .stTextArea label, .stNumberInput label, .stFileUploader label {
+        color: #fafafa !important;
     }
-    .stButton > button:hover { background: #2563eb; }
-    div[data-testid="stSidebar"] { background: #1e1e2e; }
-    div[data-testid="stSidebar"] label { color: #fafafa !important; }
+    h1, h2, h3, h4 { color: #fafafa !important; }
+    .stMetric label { color: #999 !important; }
+    .stMetric [data-testid="stMetricValue"] { color: #e91e8c !important; }
+    div[data-testid="stExpander"] { border-color: #333 !important; }
+    .stButton > button {
+        background-color: #e91e8c !important;
+        color: white !important;
+        border: none !important;
+        font-weight: 600 !important;
+    }
+    .stButton > button:hover {
+        background-color: #c2185b !important;
+    }
+    section[data-testid="stSidebar"] {
+        background-color: #1a1a2e !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ── Session State Initialization ─────────────────────────────────────────────
-if "pipeline_complete" not in st.session_state:
-    st.session_state.pipeline_complete = False
-if "ads_df" not in st.session_state:
-    st.session_state.ads_df = None
-if "top50_df" not in st.session_state:
-    st.session_state.top50_df = None
-if "opportunities" not in st.session_state:
-    st.session_state.opportunities = []
-if "drift_alerts" not in st.session_state:
-    st.session_state.drift_alerts = []
-if "dimension_summaries" not in st.session_state:
-    st.session_state.dimension_summaries = []
-if "top50_summaries" not in st.session_state:
-    st.session_state.top50_summaries = []
-if "detailed_breakdowns" not in st.session_state:
-    st.session_state.detailed_breakdowns = {}
-if "extraction_done" not in st.session_state:
-    st.session_state.extraction_done = False
-if "learnings" not in st.session_state:
-    st.session_state.learnings = ""
-if "hypotheses" not in st.session_state:
-    st.session_state.hypotheses = ""
-
-
-# ── Sidebar: Inputs ─────────────────────────────────────────────────────────
-st.sidebar.title("🎯 Creative Feedback Loop")
-st.sidebar.markdown("---")
-
-# CSV Upload
-st.sidebar.subheader("1. Upload Ad Data")
-recent_csv = st.sidebar.file_uploader(
-    "Recent Ads CSV",
-    type=["csv"],
-    help="CSV with columns: ad_name, spend, revenue, roas, impressions (and optionally: ad_text/script)",
-    key="recent_csv",
-)
-
-top50_csv = st.sidebar.file_uploader(
-    "Top 50 Ads CSV (optional)",
-    type=["csv"],
-    help="Historical best-performing ads for drift comparison",
-    key="top50_csv",
-)
-
-st.sidebar.markdown("---")
-
-# Classification Thresholds
-st.sidebar.subheader("2. Classification")
-roas_threshold = st.sidebar.number_input(
-    "Winner ROAS Threshold",
-    min_value=0.5,
-    max_value=10.0,
-    value=1.0,
-    step=0.1,
-    help="Ads with ROAS >= this are winners",
-)
-min_spend = st.sidebar.number_input(
-    "Min Spend for Classification ($)",
-    min_value=0,
-    max_value=100000,
-    value=500,
-    step=100,
-    help="Ads below this spend are 'untested'",
-)
-
-st.sidebar.markdown("---")
-
-# Operator Priority
-st.sidebar.subheader("3. Analysis Priority")
-priority = st.sidebar.selectbox(
-    "What matters most?",
-    ["General", "Spend Volume", "Efficiency", "New Angles"],
-    help="Shapes the entire Claude analysis",
-)
-
-st.sidebar.markdown("---")
-
-# ClickUp Integration (optional)
-st.sidebar.subheader("4. ClickUp Integration")
-clickup_enabled = st.sidebar.checkbox("Enable ClickUp", value=False)
-clickup_api_key = ""
-clickup_list_id = ""
-if clickup_enabled:
-    clickup_api_key = st.sidebar.text_input("ClickUp API Key", type="password")
-    clickup_list_id = st.sidebar.text_input("ClickUp List ID")
-
-st.sidebar.markdown("---")
-
-# Claude Extraction
-st.sidebar.subheader("5. Claude Extraction")
-run_extraction = st.sidebar.checkbox(
-    "Run Claude Script Extraction",
-    value=False,
-    help="Extract pain points, root causes, mechanisms from ad scripts using Claude. Requires ad_text column and ANTHROPIC_API_KEY.",
-)
-claude_model = st.sidebar.selectbox(
-    "Claude Model",
-    ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"],
-    index=0,
-)
-
-st.sidebar.markdown("---")
-
-# Operator Notes
-st.sidebar.subheader("6. Operator Notes")
-operator_notes = st.sidebar.text_area(
-    "Notes for this analysis run",
-    placeholder="e.g., Testing new kidney angles this week...",
-    height=80,
-)
-
-
-# ── Helper Functions ─────────────────────────────────────────────────────────
-
-def load_csv(file) -> pd.DataFrame:
-    """Load, aggregate by ad name, and normalize CSV file.
-
-    Meta CSVs have one row per ad per ad set. Without aggregation the same ad
-    appears 20+ times with tiny per-row spend and gets classified as untested.
-    load_and_aggregate_csv groups rows by ad name and sums spend/revenue,
-    producing blended ROAS before any classification happens (FIX 1).
-    """
-    import tempfile, os as _os
-    from creative_feedback_loop.csv_aggregator import load_and_aggregate_csv
-
-    # Save uploaded file to temp path (csv_aggregator needs a file path)
-    raw_bytes = file.getvalue() if hasattr(file, "getvalue") else file.read()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as _tmp:
-        _tmp.write(raw_bytes)
-        _tmp_path = _tmp.name
-
-    try:
-        aggregated_ads, _ = load_and_aggregate_csv(_tmp_path)
-    finally:
-        _os.unlink(_tmp_path)
-
-    # Build normalized DataFrame from aggregated ads
-    rows = [
-        {
-            "ad_name": ad.ad_name,
-            "spend": ad.total_spend,
-            "revenue": ad.total_revenue,
-            "roas": ad.blended_roas,
-            "impressions": ad.total_impressions,
-            "conversions": ad.total_conversions,
-            "_row_count": ad.row_count,
-        }
-        for ad in aggregated_ads
-    ]
-    df = pd.DataFrame(rows) if rows else pd.DataFrame()
-    return df
-
-
-def classify_ads(df: pd.DataFrame, roas_thresh: float, min_spend_val: float) -> pd.DataFrame:
-    """Classify ads as winner/loser/untested."""
-    conditions = []
-    labels = []
-
-    # Untested: spend below threshold
-    mask_untested = df["spend"] < min_spend_val if "spend" in df.columns else pd.Series([False] * len(df))
-
-    # Winners: ROAS >= threshold AND spend >= min
-    mask_winner = (df["roas"] >= roas_thresh) & (~mask_untested) if "roas" in df.columns else pd.Series([False] * len(df))
-
-    # Losers: ROAS < threshold AND spend >= min
-    mask_loser = (df["roas"] < roas_thresh) & (~mask_untested) if "roas" in df.columns else pd.Series([False] * len(df))
-
-    df["classification"] = "untested"
-    df.loc[mask_winner, "classification"] = "winner"
-    df.loc[mask_loser, "classification"] = "loser"
-
-    return df
-
-
-def apply_naming_parser(df: pd.DataFrame) -> pd.DataFrame:
-    """Apply naming parser to extract components from ad names."""
-    if "ad_name" not in df.columns:
-        return df
-
-    batches = []
-    versions = []
-    formats = []
-    for name in df["ad_name"]:
-        parsed = parse_ad_name(str(name))
-        batches.append(parsed.batch)
-        versions.append(parsed.version)
-        formats.append(parsed.format_code or "Unknown")
-
-    df["batch"] = batches
-    df["version"] = versions
-    df["format_code"] = formats
-
-    return df
-
-
-async def run_claude_extraction(df: pd.DataFrame, model: str) -> pd.DataFrame:
-    """Run Claude extraction on ads with ad_text column."""
-    from creative_feedback_loop.extraction.script_component_extractor import extract_batch
-
-    if "ad_text" not in df.columns:
-        st.warning("No 'ad_text' column found. Skipping Claude extraction.")
-        return df
-
-    ads_with_text = df[df["ad_text"].notna() & (df["ad_text"].str.len() > 20)]
-    if ads_with_text.empty:
-        st.warning("No ads with sufficient text for extraction.")
-        return df
-
-    ads_list = [
-        {"name": row["ad_name"], "text": row["ad_text"]}
-        for _, row in ads_with_text.iterrows()
-    ]
-
-    progress = st.progress(0, text="Extracting script components with Claude...")
-    results = await extract_batch(ads_list, model=model)
-    progress.progress(100, text="Extraction complete!")
-
-    # Merge results back
-    extraction_cols = [
-        "pain_point", "pain_point_category", "root_cause", "root_cause_depth",
-        "mechanism", "mechanism_depth", "avatar", "avatar_category",
-        "awareness_level", "hook_type", "ad_format",
-    ]
-
-    for col in extraction_cols:
-        if col not in df.columns:
-            df[col] = None
-
-    for result in results:
-        ad_name = result.get("ad_name", "")
-        mask = df["ad_name"] == ad_name
-        if mask.any():
-            for col in extraction_cols:
-                val = result.get(col)
-                if val and str(val).lower() not in ("not specified", "unknown", ""):
-                    df.loc[mask, col] = val
-
-    return df
-
-
-async def fetch_clickup_tasks(api_key: str, list_id: str) -> list[dict]:
-    """Fetch tasks from ClickUp list."""
-    import httpx
-
-    url = f"https://api.clickup.com/api/v2/list/{list_id}/task"
-    headers = {"Authorization": api_key}
-    params = {"page": 0, "include_closed": "true"}
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers, params=params)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("tasks", [])
-        else:
-            st.error(f"ClickUp API error: {response.status_code}")
-            return []
-
-
-def merge_clickup_data(df: pd.DataFrame, tasks: list[dict]) -> pd.DataFrame:
-    """Merge ClickUp task data (ad scripts) into the dataframe."""
-    task_map = {}
-    for task in tasks:
-        name = task.get("name", "")
-        description = task.get("description", "") or ""
-        # Try to match task name to ad name
-        task_map[name.strip()] = description
-
-    if "ad_text" not in df.columns:
-        df["ad_text"] = None
-
-    for idx, row in df.iterrows():
-        ad_name = str(row.get("ad_name", ""))
-        # Try exact match then partial
-        if ad_name in task_map:
-            df.at[idx, "ad_text"] = task_map[ad_name]
-        else:
-            for task_name, desc in task_map.items():
-                if ad_name in task_name or task_name in ad_name:
-                    df.at[idx, "ad_text"] = desc
-                    break
-
-    return df
-
-
-def compute_all_summaries(
-    df: pd.DataFrame,
-    winner_mask: pd.Series,
-    loser_mask: pd.Series,
-) -> tuple[list[dict], dict[str, list[dict]]]:
-    """Compute compact summaries and detailed breakdowns for all dimensions."""
-    dimensions = {
-        "Pain Point": "pain_point_category",
-        "Root Cause": "root_cause_depth",
-        "Mechanism": "mechanism_depth",
-        "Ad Format": "ad_format",
-        "Avatar": "avatar_category",
-        "Awareness": "awareness_level",
-        "Hook Type": "hook_type",
-        "Format Code": "format_code",
-    }
-
-    summaries = []
-    breakdowns = {}
-
-    for label, col in dimensions.items():
-        if col in df.columns:
-            summary = compute_dimension_summary(df, col, label, winner_mask, loser_mask)
-            summaries.append(summary)
-            breakdown = compute_detailed_breakdown(df, col, winner_mask, loser_mask)
-            if breakdown:
-                breakdowns[label] = breakdown
-
-    # Sort summaries by absolute delta
-    summaries.sort(key=lambda x: abs(x.get("delta", 0)), reverse=True)
-
-    return summaries, breakdowns
-
-
-def generate_pdf_report(
-    ads_data: dict,
-    summaries: list[dict],
-    opportunities: list[dict],
-    drift_alerts: list[dict],
-    operator_notes: str,
-) -> bytes:
-    """Generate PDF report from analysis results."""
-    try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib.units import inch
-        from reportlab.pdfgen import canvas as pdf_canvas
-        from reportlab.lib.colors import HexColor
-
-        buffer = io.BytesIO()
-        c = pdf_canvas.Canvas(buffer, pagesize=letter)
-        width, height = letter
-
-        # Title
-        c.setFont("Helvetica-Bold", 20)
-        c.drawString(1 * inch, height - 1 * inch, "Creative Feedback Loop Report")
-        c.setFont("Helvetica", 10)
-        c.drawString(1 * inch, height - 1.3 * inch, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-
-        y = height - 1.8 * inch
-
-        # Metrics
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(1 * inch, y, "Performance Summary")
-        y -= 20
-        c.setFont("Helvetica", 10)
-        metrics = [
-            f"Total Ads: {ads_data.get('total', 0)}",
-            f"Winners: {ads_data.get('winners', 0)}",
-            f"Losers: {ads_data.get('losers', 0)}",
-            f"Total Spend: ${ads_data.get('total_spend', 0):,.0f}",
-            f"Avg ROAS: {ads_data.get('avg_roas', 0):.2f}x",
-        ]
-        for m in metrics:
-            c.drawString(1.2 * inch, y, m)
-            y -= 14
-
-        # Dimension Summary
-        y -= 10
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(1 * inch, y, "Dimension Summary")
-        y -= 20
-        c.setFont("Helvetica", 9)
-        for s in summaries[:8]:
-            delta = s.get("delta", 0)
-            signal = "HIGH" if delta > 20 else "MED" if delta > 10 else "BASE" if delta >= 0 else "AVOID"
-            line = f"[{signal}] {s['dimension']}: {s['top_value']} | Win: {s['winner_pct']:.0f}% | Lose: {s['loser_pct']:.0f}% | Delta: {delta:+.0f}%"
-            c.drawString(1.2 * inch, y, line[:90])
-            y -= 13
-            if y < 1 * inch:
-                c.showPage()
-                y = height - 1 * inch
-
-        # Opportunities
-        y -= 10
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(1 * inch, y, "Strategic Opportunities")
-        y -= 20
-
-        for opp in opportunities[:7]:
-            if opp.get("type") == "expensive_mistake":
-                continue
-            c.setFont("Helvetica-Bold", 10)
-            c.drawString(1.2 * inch, y, f"[{opp.get('score', 0)}/100] {opp.get('title', '')[:70]}")
-            y -= 14
-            c.setFont("Helvetica", 9)
-            evidence = opp.get("evidence", "")[:120]
-            c.drawString(1.4 * inch, y, evidence)
-            y -= 18
-            if y < 1 * inch:
-                c.showPage()
-                y = height - 1 * inch
-
-        # Operator Notes
-        if operator_notes:
-            y -= 10
-            c.setFont("Helvetica-Bold", 12)
-            c.drawString(1 * inch, y, "Operator Notes")
-            y -= 16
-            c.setFont("Helvetica", 9)
-            for line in operator_notes.split("\n")[:5]:
-                c.drawString(1.2 * inch, y, line[:90])
-                y -= 13
-
-        c.save()
-        buffer.seek(0)
-        return buffer.read()
-
-    except ImportError:
-        return b"PDF generation requires reportlab. Install with: pip install reportlab"
-
-
-# ── Main Content ─────────────────────────────────────────────────────────────
-
-st.title("🎯 Creative Feedback Loop Analyzer")
-st.markdown(
-    '<p style="color: #9ca3af; margin-top: -10px;">Compact visual dashboard with scored strategic opportunities backed by spend/ROAS data.</p>',
-    unsafe_allow_html=True,
-)
-
-# ── Run Pipeline ─────────────────────────────────────────────────────────────
-if recent_csv is not None:
-    run_btn = st.button("🚀 Run Analysis Pipeline", use_container_width=True)
-
-    if run_btn:
-        with st.spinner("Running analysis pipeline..."):
-
-            # Step 1: Load CSV
-            st.info("📊 Loading CSV data...")
-            df = load_csv(recent_csv)
-            st.success(f"Loaded {len(df)} ads from CSV")
-
-            # Step 2: ClickUp integration
-            if clickup_enabled and clickup_api_key and clickup_list_id:
-                st.info("📋 Fetching ClickUp tasks...")
-                tasks = asyncio.run(fetch_clickup_tasks(clickup_api_key, clickup_list_id))
-                if tasks:
-                    df = merge_clickup_data(df, tasks)
-                    st.success(f"Merged {len(tasks)} ClickUp tasks")
-
-            # Step 3: Classification
-            st.info("🏷️ Classifying ads...")
-            df = classify_ads(df, roas_threshold, min_spend)
-
-            # Step 4: Naming parser
-            st.info("🔍 Parsing ad names...")
-            df = apply_naming_parser(df)
-
-            # Step 5: Claude extraction (optional)
-            if run_extraction:
-                st.info("🤖 Running Claude script extraction...")
-                df = asyncio.run(run_claude_extraction(df, claude_model))
-                st.session_state.extraction_done = True
-
-            # Step 6: Load Top 50 if provided
-            top50 = None
-            if top50_csv is not None:
-                st.info("📊 Loading Top 50 data...")
-                top50 = load_csv(top50_csv)
-                top50 = classify_ads(top50, roas_threshold, min_spend)
-                top50 = apply_naming_parser(top50)
-                if run_extraction and "ad_text" in top50.columns:
-                    top50 = asyncio.run(run_claude_extraction(top50, claude_model))
-
-            # Step 7: Compute summaries
-            st.info("📈 Computing dimension summaries...")
-            winner_mask = df["classification"] == "winner"
-            loser_mask = df["classification"] == "loser"
-            summaries, breakdowns = compute_all_summaries(df, winner_mask, loser_mask)
-
-            top50_summaries_data = []
-            top50_breakdowns = {}
-            if top50 is not None:
-                t50_win = top50["classification"] == "winner"
-                t50_lose = top50["classification"] == "loser"
-                top50_summaries_data, top50_breakdowns = compute_all_summaries(top50, t50_win, t50_lose)
-
-            # Step 8: Strategic opportunities (Claude)
-            has_extraction_cols = any(
-                col in df.columns for col in [
-                    "pain_point_category", "root_cause_depth", "mechanism_depth",
-                ]
-            )
-
-            opportunities = []
-            if has_extraction_cols:
-                st.info("🧠 Generating strategic opportunities with Claude...")
-                opportunities = asyncio.run(
-                    generate_strategic_opportunities(
-                        df, winner_mask, loser_mask,
-                        priority=priority,
-                        model=claude_model,
-                    )
-                )
+# ── Auth Gate ─────────────────────────────────────────────────────────────────
+def check_auth() -> bool:
+    """Check TOOL_PASSWORD env var for authentication."""
+    password = os.environ.get("TOOL_PASSWORD", "")
+    if not password:
+        return True  # No password set = skip auth
+
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.markdown('<h1 style="color:#fafafa; text-align:center;">Creative Feedback Loop</h1>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#999; text-align:center;">Enter password to continue</p>', unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        pwd = st.text_input("Password", type="password", key="login_password")
+        if st.button("Login", use_container_width=True):
+            if pwd == password:
+                st.session_state["authenticated"] = True
+                st.rerun()
             else:
-                st.warning("No extracted dimensions available. Upload data with dimension columns or enable Claude extraction.")
+                st.error("Incorrect password")
+    return False
 
-            # Step 9: Drift alerts (if top 50 available)
-            drift_alerts = []
-            if top50 is not None and has_extraction_cols:
-                st.info("📊 Generating drift alerts...")
-                t50_win = top50["classification"] == "winner"
-                t50_lose = top50["classification"] == "loser"
-                drift_alerts = asyncio.run(
-                    generate_drift_alerts(
-                        df, top50, winner_mask, loser_mask,
-                        t50_win, t50_lose, model=claude_model,
-                    )
-                )
 
-            # Store results in session state
-            st.session_state.ads_df = df
-            st.session_state.top50_df = top50
-            st.session_state.opportunities = opportunities
-            st.session_state.drift_alerts = drift_alerts
-            st.session_state.dimension_summaries = summaries
-            st.session_state.top50_summaries = top50_summaries_data
-            st.session_state.detailed_breakdowns = breakdowns
-            st.session_state.top50_breakdowns = top50_breakdowns
-            st.session_state.pipeline_complete = True
+# ── CSV Processing ────────────────────────────────────────────────────────────
+def detect_date_range(df: pd.DataFrame) -> tuple[str, str]:
+    """Auto-detect date range from CSV columns.
 
-            st.success("✅ Pipeline complete!")
+    Looks for 'Reporting starts' and 'Reporting ends' columns.
+    Returns (start_date_str, end_date_str).
+    """
+    start_col = None
+    end_col = None
 
-    # Import here to avoid circular imports
-    from creative_feedback_loop.analyzer.pattern_analyzer import (
-        generate_strategic_opportunities,
-        generate_drift_alerts,
+    for col in df.columns:
+        col_lower = col.lower().strip()
+        if "reporting" in col_lower and "start" in col_lower:
+            start_col = col
+        elif "reporting" in col_lower and "end" in col_lower:
+            end_col = col
+
+    if start_col and end_col:
+        try:
+            starts = pd.to_datetime(df[start_col], errors="coerce").dropna()
+            ends = pd.to_datetime(df[end_col], errors="coerce").dropna()
+            if not starts.empty and not ends.empty:
+                min_date = starts.min().strftime("%B %d, %Y")
+                max_date = ends.max().strftime("%B %d, %Y")
+                return min_date, max_date
+        except Exception:
+            pass
+
+    return "Unknown", "Unknown"
+
+
+def classify_ads(
+    df: pd.DataFrame,
+    winner_roas: float,
+    winner_min_spend: float,
+    loser_roas: float,
+    loser_min_spend: float,
+) -> pd.DataFrame:
+    """Classify ads as winner/loser/untested based on separate thresholds.
+
+    Winner: ROAS >= winner_roas AND spend >= winner_min_spend
+    Loser: ROAS < loser_roas AND spend >= loser_min_spend (ROAS=0 with spend = loser)
+    Untested: spend below both thresholds
+    """
+    df = df.copy()
+
+    # Find ROAS column
+    roas_col = None
+    for col in df.columns:
+        if "roas" in col.lower():
+            roas_col = col
+            break
+
+    # Find spend column
+    spend_col = None
+    for col in df.columns:
+        col_lower = col.lower()
+        if "spend" in col_lower or "amount spent" in col_lower or "cost" in col_lower:
+            spend_col = col
+            break
+
+    if roas_col is None or spend_col is None:
+        st.warning("Could not find ROAS or Spend columns in CSV. All ads marked as untested.")
+        df["_status"] = "untested"
+        df["_roas"] = 0.0
+        df["_spend"] = 0.0
+        return df
+
+    # Clean numeric columns
+    df["_roas"] = pd.to_numeric(df[roas_col].astype(str).str.replace("[,$]", "", regex=True), errors="coerce").fillna(0)
+    df["_spend"] = pd.to_numeric(df[spend_col].astype(str).str.replace("[,$]", "", regex=True), errors="coerce").fillna(0)
+
+    # Classify with separate winner/loser thresholds
+    def _classify(row):
+        spend = row["_spend"]
+        roas = row["_roas"]
+        # Winner: meets winner spend threshold AND ROAS >= winner ROAS
+        if spend >= winner_min_spend and roas >= winner_roas:
+            return "winner"
+        # Loser: meets loser spend threshold AND ROAS < loser ROAS
+        # ROAS=0 with spend above loser_min = LOSER (spent money, got nothing)
+        if spend >= loser_min_spend and roas < loser_roas:
+            return "loser"
+        return "untested"
+
+    df["_status"] = df.apply(_classify, axis=1)
+    return df
+
+
+def find_script_column(df: pd.DataFrame) -> Optional[str]:
+    """Find the column containing ad scripts/briefs."""
+    candidates = [
+        "script", "brief", "copy", "ad copy", "ad_copy", "primary_text",
+        "primary text", "body", "text", "content", "description", "message",
+    ]
+    for col in df.columns:
+        if col.lower().strip() in candidates:
+            return col
+
+    # Fallback: look for longest text columns
+    for col in df.columns:
+        if df[col].dtype == "object":
+            avg_len = df[col].astype(str).str.len().mean()
+            if avg_len > 200:
+                return col
+    return None
+
+
+def find_ad_name_column(df: pd.DataFrame) -> Optional[str]:
+    """Find the column containing ad names/IDs."""
+    candidates = [
+        "ad name", "ad_name", "name", "ad id", "ad_id", "creative name",
+        "creative_name", "id", "ad set name",
+    ]
+    for col in df.columns:
+        if col.lower().strip() in candidates:
+            return col
+    return df.columns[0] if len(df.columns) > 0 else None
+
+
+def find_ad_format_column(df: pd.DataFrame) -> Optional[str]:
+    """Find ad format column from CSV or ClickUp fields."""
+    candidates = ["format", "ad format", "ad_format", "creative format", "type", "ad type"]
+    for col in df.columns:
+        if col.lower().strip() in candidates:
+            return col
+    return None
+
+
+def get_top_50_by_spend(df: pd.DataFrame) -> pd.DataFrame:
+    """Get top 50 ads by spend."""
+    return df.nlargest(50, "_spend") if "_spend" in df.columns else df.head(50)
+
+
+# ── Main App ──────────────────────────────────────────────────────────────────
+def main():
+    if not check_auth():
+        return
+
+    st.markdown('<h1 style="color:#fafafa;">Creative Feedback Loop</h1>', unsafe_allow_html=True)
+
+    # ── Input Form ────────────────────────────────────────────────────────
+    with st.form("analysis_form"):
+        st.markdown('<p style="color:#fafafa; font-weight:600;">Upload Performance CSV</p>', unsafe_allow_html=True)
+
+        uploaded_file = st.file_uploader(
+            "CSV File",
+            type=["csv"],
+            label_visibility="collapsed",
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            brand_name = st.text_input("Brand Name", placeholder="e.g., Sculptique")
+        with col2:
+            st.markdown("")  # spacer
+
+        st.markdown("---")
+
+        # Winner Thresholds
+        st.markdown('<p style="color:#fafafa; font-weight:600;">Winner Criteria</p>', unsafe_allow_html=True)
+        wc1, wc2 = st.columns(2)
+        with wc1:
+            winner_roas = st.number_input("Winner ROAS (>=)", value=1.0, step=0.1, min_value=0.0, key="winner_roas")
+        with wc2:
+            winner_min_spend = st.number_input("Winner Min Spend ($)", value=50.0, step=25.0, min_value=0.0, key="winner_spend")
+
+        # Loser Thresholds
+        st.markdown('<p style="color:#fafafa; font-weight:600;">Loser Criteria</p>', unsafe_allow_html=True)
+        lc1, lc2 = st.columns(2)
+        with lc1:
+            loser_roas = st.number_input("Loser ROAS (<)", value=1.0, step=0.1, min_value=0.0, key="loser_roas")
+        with lc2:
+            loser_min_spend = st.number_input("Loser Min Spend ($)", value=50.0, step=25.0, min_value=0.0, key="loser_spend")
+
+        st.markdown("---")
+
+        # Operator priority (Part 3)
+        from creative_feedback_loop.context.operator_priorities import render_priority_input, build_priority_prompt
+        priority, custom_context = render_priority_input()
+
+        st.markdown("---")
+
+        run_analysis = st.form_submit_button("Run Analysis", use_container_width=True)
+
+    if not run_analysis:
+        # Show previous notes if brand is set
+        if brand_name:
+            from creative_feedback_loop.context.operator_notes import render_previous_notes
+            render_previous_notes(_slugify(brand_name))
+        return
+
+    if not uploaded_file:
+        st.error("Please upload a CSV file.")
+        return
+
+    if not brand_name:
+        st.error("Please enter a brand name.")
+        return
+
+    # ── Process CSV ───────────────────────────────────────────────────────
+    import tempfile
+    import os as _os
+    try:
+        raw_bytes = uploaded_file.getvalue()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as _tmp:
+            _tmp.write(raw_bytes)
+            _tmp_path = _tmp.name
+        raw_df = pd.read_csv(_tmp_path)
+    except Exception as e:
+        st.error(f"Failed to read CSV: {e}")
+        return
+
+    # Auto-detect date range (Part 6)
+    csv_start, csv_end = detect_date_range(raw_df)
+    st.markdown(
+        f'<div style="background:#1a1a2e; padding:12px 16px; border-radius:8px; margin-bottom:16px;">'
+        f'<span style="color:#fafafa;">CSV covers: <b>{csv_start} — {csv_end}</b></span></div>',
+        unsafe_allow_html=True,
     )
 
-# ── Display Results ──────────────────────────────────────────────────────────
-if st.session_state.pipeline_complete and st.session_state.ads_df is not None:
-    df = st.session_state.ads_df
-    winner_mask = df["classification"] == "winner"
-    loser_mask = df["classification"] == "loser"
-    untested_mask = df["classification"] == "untested"
+    # Show previous notes
+    from creative_feedback_loop.context.operator_notes import render_previous_notes, render_notes_input, save_notes_to_run
+    previous_notes_text = render_previous_notes(_slugify(brand_name)) or ""
 
-    # ── 1. HEADER METRICS ROW ────────────────────────────────────────────────
-    ads_data = {
-        "total": len(df),
-        "winners": int(winner_mask.sum()),
-        "losers": int(loser_mask.sum()),
-        "untested": int(untested_mask.sum()),
-        "total_spend": float(df["spend"].sum()) if "spend" in df.columns else 0,
-        "avg_roas": float(df["roas"].mean()) if "roas" in df.columns else 0,
-    }
-    render_header_metrics(ads_data)
+    # ── Aggregate rows by ad name before classifying (FIX 1 — critical) ──
+    # Meta CSVs have one row per ad per ad set. Without aggregation, the same
+    # ad appears 20+ times with tiny per-row spend → all classified "untested".
+    from creative_feedback_loop.csv_aggregator import load_and_aggregate_csv
+    try:
+        aggregated_ads, agg_stats = load_and_aggregate_csv(_tmp_path)
+    except Exception as e:
+        st.error(f"CSV aggregation failed: {e}")
+        _os.unlink(_tmp_path)
+        return
+    _os.unlink(_tmp_path)
 
-    st.markdown("---")
+    # Find script/format columns in raw CSV and build per-ad-name lookups
+    _script_col_raw = find_script_column(raw_df)
+    _name_col_raw = find_ad_name_column(raw_df)
+    _format_col_raw = find_ad_format_column(raw_df)
 
-    # ── 2. COMPACT DIMENSION SUMMARY ─────────────────────────────────────────
-    summaries = st.session_state.dimension_summaries
-    if summaries:
-        render_compact_summary(summaries, title="RECENT ADS — DIMENSION SUMMARY")
-
-    st.markdown("---")
-
-    # ── 3. STRATEGIC OPPORTUNITIES ───────────────────────────────────────────
-    opportunities = st.session_state.opportunities
-    if opportunities:
-        render_opportunities_section(opportunities)
-
-    st.markdown("---")
-
-    # ── 4. TOP 50 COMPACT SUMMARY ────────────────────────────────────────────
-    top50_summaries = st.session_state.top50_summaries
-    if top50_summaries:
-        render_compact_summary(top50_summaries, title="TOP 50 PROVEN ADS — DIMENSION SUMMARY")
-        st.markdown("---")
-
-    # ── 5. DRIFT ALERTS ──────────────────────────────────────────────────────
-    drift_alerts = st.session_state.drift_alerts
-    if drift_alerts:
-        render_drift_alerts(drift_alerts)
-        st.markdown("---")
-
-    # ── 6. EXPANDABLE SECTIONS ───────────────────────────────────────────────
-
-    # Full Dimension Breakdown
-    breakdowns = st.session_state.detailed_breakdowns
-    if breakdowns:
-        render_detailed_breakdown(breakdowns, "Full Dimension Breakdown (Recent)")
-
-    top50_breakdowns = st.session_state.get("top50_breakdowns", {})
-    if top50_breakdowns:
-        render_detailed_breakdown(top50_breakdowns, "Full Dimension Breakdown (Top 50)")
-
-    # Individual Ad Details
-    with st.expander("📋 Individual Ad Details", expanded=False):
-        # Show ads as styled HTML cards, not dataframe
-        for cls_label, cls_color in [("winner", "#22c55e"), ("loser", "#ef4444"), ("untested", "#6b7280")]:
-            cls_ads = df[df["classification"] == cls_label]
-            if cls_ads.empty:
+    script_lookup: dict = {}
+    format_lookup: dict = {}
+    if _name_col_raw:
+        for _, _row in raw_df.iterrows():
+            _key = str(_row[_name_col_raw]).strip()
+            if not _key or _key.lower() == "nan":
                 continue
+            if _script_col_raw and _key not in script_lookup:
+                _val = _row.get(_script_col_raw)
+                if pd.notna(_val):
+                    script_lookup[_key] = str(_val)
+            if _format_col_raw and _key not in format_lookup:
+                _val = _row.get(_format_col_raw)
+                if pd.notna(_val):
+                    format_lookup[_key] = str(_val)
 
-            st.markdown(
-                f'<div style="color: {cls_color}; font-size: 16px; font-weight: 700; margin: 16px 0 8px 0; text-transform: uppercase;">{cls_label}S ({len(cls_ads)})</div>',
-                unsafe_allow_html=True,
-            )
+    # Classify aggregated ads using blended ROAS and total spend (separate winner/loser thresholds)
+    def _classify_agg(spend: float, roas: float) -> str:
+        if spend >= winner_min_spend and roas >= winner_roas:
+            return "winner"
+        if spend >= loser_min_spend and roas < loser_roas:
+            return "loser"
+        return "untested"
 
-            rows_html = ""
-            for _, row in cls_ads.head(50).iterrows():
-                spend = row.get("spend", 0)
-                roas = row.get("roas", 0)
-                name = row.get("ad_name", "")
-                pain = row.get("pain_point_category", "")
-                fmt = row.get("format_code", row.get("ad_format", ""))
-                bg = "#262730"
+    # Build DataFrame of unique ads with aggregated metrics
+    _agg_rows = []
+    for _ad in aggregated_ads:
+        _agg_rows.append({
+            "_agg_name": _ad.ad_name,
+            "_spend": _ad.total_spend,
+            "_roas": _ad.blended_roas,
+            "_status": _classify_agg(_ad.total_spend, _ad.blended_roas),
+            "_script": script_lookup.get(_ad.ad_name, ""),
+            "_format": format_lookup.get(_ad.ad_name, ""),
+        })
+    df = pd.DataFrame(_agg_rows)
+    name_col = "_agg_name"
+    script_col = "_script"
+    format_col = "_format"
 
-                rows_html += f"""<tr style="background: {bg};">
-<td style="padding: 6px 10px; color: #fafafa; font-weight: 500;">{name}</td>
-<td style="padding: 6px 10px; color: #fafafa; text-align: right;">${spend:,.0f}</td>
-<td style="padding: 6px 10px; color: {'#22c55e' if roas >= 1 else '#ef4444'}; text-align: center; font-weight: 600;">{roas:.2f}x</td>
-<td style="padding: 6px 10px; color: #ccc;">{pain}</td>
-<td style="padding: 6px 10px; color: #ccc;">{fmt}</td>
-</tr>"""
+    if not _script_col_raw:
+        st.info("No script/copy column found — extracting components from ad naming conventions.")
 
-            table_html = f"""<table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
-<thead><tr style="background: #1e1e2e;">
-<th style="padding: 8px 10px; color: #fafafa; text-align: left;">Ad Name</th>
-<th style="padding: 8px 10px; color: #fafafa; text-align: right;">Spend</th>
-<th style="padding: 8px 10px; color: #fafafa; text-align: center;">ROAS</th>
-<th style="padding: 8px 10px; color: #fafafa; text-align: left;">Pain Point</th>
-<th style="padding: 8px 10px; color: #fafafa; text-align: left;">Format</th>
-</tr></thead>
-<tbody>{rows_html}</tbody>
-</table>"""
-            st.markdown(table_html, unsafe_allow_html=True)
+    # Classification counts
+    counts = df["_status"].value_counts().to_dict()
+    winners_count = counts.get("winner", 0)
+    losers_count = counts.get("loser", 0)
+    untested_count = counts.get("untested", 0)
+    total_spend = df["_spend"].sum() if "_spend" in df.columns else 0
 
-    # Learnings
-    with st.expander("💡 Learnings", expanded=False):
-        learnings_text = st.text_area(
-            "Key Learnings from this analysis",
-            value=st.session_state.learnings,
-            height=150,
-            key="learnings_input",
-            placeholder="Document what you learned from this analysis...",
-        )
-        if learnings_text != st.session_state.learnings:
-            st.session_state.learnings = learnings_text
-
-    # Hypotheses
-    with st.expander("🧪 Hypotheses with Script Outlines", expanded=False):
-        hypotheses_text = st.text_area(
-            "Hypotheses to test",
-            value=st.session_state.hypotheses,
-            height=150,
-            key="hypotheses_input",
-            placeholder="e.g., Hypothesis: Molecular kidney scripts with UGC format will outperform at $50k+ spend...",
-        )
-        if hypotheses_text != st.session_state.hypotheses:
-            st.session_state.hypotheses = hypotheses_text
-
-    # Operator Notes
-    with st.expander("📝 Operator Notes", expanded=False):
-        if operator_notes:
-            st.markdown(
-                f'<div style="background: #1e1e2e; border-radius: 8px; padding: 16px; color: #ccc; line-height: 1.6;">{operator_notes}</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                '<p style="color: #6b7280;">No operator notes provided. Add notes in the sidebar.</p>',
-                unsafe_allow_html=True,
-            )
-
-    # ── 7. PDF EXPORT ────────────────────────────────────────────────────────
+    # ── Header Metrics ────────────────────────────────────────────────────
     st.markdown("---")
-    if st.button("📄 Export PDF Report", use_container_width=True):
-        with st.spinner("Generating PDF..."):
-            pdf_bytes = generate_pdf_report(
-                ads_data,
-                summaries,
-                opportunities,
-                drift_alerts,
-                operator_notes,
-            )
-            st.download_button(
-                label="⬇️ Download PDF",
-                data=pdf_bytes,
-                file_name=f"creative_feedback_loop_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                mime="application/pdf",
+    mcol1, mcol2, mcol3, mcol4, mcol5 = st.columns(5)
+    mcol1.metric("Total Ads", len(df))
+    mcol2.metric("Winners", winners_count)
+    mcol3.metric("Losers", losers_count)
+    mcol4.metric("Untested", untested_count)
+    mcol5.metric("Total Spend", f"${total_spend:,.0f}")
+
+    # ── Prepare ads for extraction ────────────────────────────────────────
+    from creative_feedback_loop.extraction.naming_parser import parse_ad_naming, merge_extractions
+
+    classified_df = df[df["_status"].isin(["winner", "loser"])].copy()
+
+    ads_for_extraction = []
+    for idx, row in classified_df.iterrows():
+        ad_name = str(row[name_col]) if name_col else f"Ad_{idx}"
+        ad = {
+            "ad_name": ad_name,
+            "script_text": str(row[script_col]) if script_col and pd.notna(row[script_col]) else "",
+            "status": row["_status"],
+            "spend": float(row["_spend"]),
+            "roas": float(row["_roas"]),
+        }
+        if format_col and format_col in row.index and pd.notna(row[format_col]) and str(row[format_col]):
+            ad["format_override"] = str(row[format_col])
+        # Always parse naming convention as baseline extraction
+        ad["naming_extraction"] = parse_ad_naming(ad_name)
+        ads_for_extraction.append(ad)
+
+    # Top 50 by spend (ALL ads, not just classified)
+    top50_df = get_top_50_by_spend(df)
+    top50_ads = []
+    for idx, row in top50_df.iterrows():
+        ad_name = str(row[name_col]) if name_col else f"Ad_{idx}"
+        ad = {
+            "ad_name": ad_name,
+            "script_text": str(row[script_col]) if script_col and pd.notna(row[script_col]) else "",
+            "status": row["_status"] if "_status" in row.index else "untested",
+            "spend": float(row["_spend"]) if "_spend" in row.index else 0,
+            "roas": float(row["_roas"]) if "_roas" in row.index else 0,
+        }
+        if format_col and format_col in row.index and pd.notna(row[format_col]) and str(row[format_col]):
+            ad["format_override"] = str(row[format_col])
+        ad["naming_extraction"] = parse_ad_naming(ad_name)
+        top50_ads.append(ad)
+
+    st.markdown(
+        f'<p style="color:#999;">Prepared {len(ads_for_extraction)} classified ads + '
+        f'{len(top50_ads)} top-50 ads for analysis</p>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Deep Extraction (Part 2) ──────────────────────────────────────────
+    has_scripts = any(ad["script_text"].strip() for ad in ads_for_extraction)
+
+    # Create a shared event loop for all async operations
+    loop = asyncio.new_event_loop()
+
+    if has_scripts and os.environ.get("ANTHROPIC_API_KEY"):
+        st.markdown('<h3 style="color:#fafafa;">Extracting ad components with Claude...</h3>', unsafe_allow_html=True)
+
+        try:
+            from creative_feedback_loop.extraction.script_component_extractor import extract_batch
+
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            def update_progress(completed, total):
+                progress_bar.progress(completed / total)
+                status_text.markdown(
+                    f'<p style="color:#999;">Extracted {completed}/{total} ads</p>',
+                    unsafe_allow_html=True,
+                )
+
+            extractions = loop.run_until_complete(
+                extract_batch(ads_for_extraction, progress_callback=update_progress)
             )
 
-else:
-    # No data loaded — show instructions
-    st.markdown("""
-    <div style="background: #1e1e2e; border-radius: 12px; padding: 32px; margin: 40px 0; text-align: center;">
-        <div style="color: #fafafa; font-size: 24px; font-weight: 700; margin-bottom: 16px;">
-            Upload Your Ad Data to Get Started
-        </div>
-        <div style="color: #9ca3af; font-size: 15px; line-height: 1.8; max-width: 600px; margin: 0 auto;">
-            <p><b>Required CSV columns:</b> ad_name, spend, revenue (or roas)</p>
-            <p><b>Optional columns:</b> impressions, clicks, ad_text (for Claude extraction)</p>
-            <p><b>Optional:</b> Upload a Top 50 CSV for drift comparison</p>
-            <p><b>Optional:</b> Enable ClickUp to pull ad scripts automatically</p>
-        </div>
-        <div style="color: #6b7280; font-size: 13px; margin-top: 20px;">
-            Use the sidebar to upload CSVs and configure the analysis.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+            for i, ext in enumerate(extractions):
+                # Merge Claude extraction with naming extraction (Claude takes priority)
+                merged = merge_extractions(ads_for_extraction[i]["naming_extraction"], ext)
+                if ads_for_extraction[i].get("format_override") and not merged.get("ad_format"):
+                    merged["ad_format"] = ads_for_extraction[i]["format_override"]
+                ads_for_extraction[i]["extraction"] = merged
+
+            status_text.markdown(
+                '<p style="color:#999;">Extracting top 50 by spend...</p>',
+                unsafe_allow_html=True,
+            )
+            top50_extractions = loop.run_until_complete(
+                extract_batch(top50_ads)
+            )
+            for i, ext in enumerate(top50_extractions):
+                merged = merge_extractions(top50_ads[i]["naming_extraction"], ext)
+                if top50_ads[i].get("format_override") and not merged.get("ad_format"):
+                    merged["ad_format"] = top50_ads[i]["format_override"]
+                top50_ads[i]["extraction"] = merged
+
+            progress_bar.empty()
+            status_text.empty()
+        except Exception as e:
+            st.error(f"Claude extraction error: {e}")
+            logger.exception("Claude extraction failed")
+            # Fall back to naming-only extraction
+            for ad in ads_for_extraction:
+                if "extraction" not in ad:
+                    ad["extraction"] = ad["naming_extraction"]
+            for ad in top50_ads:
+                if "extraction" not in ad:
+                    ad["extraction"] = ad["naming_extraction"]
+    else:
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            st.warning("ANTHROPIC_API_KEY not set. Using naming convention extraction only.")
+        # Use naming extraction as primary (no Claude)
+        for ad in ads_for_extraction:
+            extraction = ad["naming_extraction"].copy()
+            if ad.get("format_override") and not extraction.get("ad_format"):
+                extraction["ad_format"] = ad["format_override"]
+            ad["extraction"] = extraction
+        for ad in top50_ads:
+            extraction = ad["naming_extraction"].copy()
+            if ad.get("format_override") and not extraction.get("ad_format"):
+                extraction["ad_format"] = ad["format_override"]
+            ad["extraction"] = extraction
+
+    # ── Structured Dashboard (Part 1) — Section A ─────────────────────────
+    from creative_feedback_loop.dashboard.structured_splits import render_dashboard
+
+    dashboard_data = {}
+    try:
+        st.markdown("---")
+        dashboard_data = render_dashboard(ads_for_extraction, "Section A — Classified Ads")
+    except Exception as e:
+        st.error(f"Dashboard error (Section A): {e}")
+        logger.exception("Section A dashboard failed")
+
+    # ── Structured Dashboard — Section B (Top 50) ─────────────────────────
+    top50_dashboard_data = {}
+    try:
+        st.markdown("---")
+        top50_dashboard_data = render_dashboard(top50_ads, "Section B — Top 50 by Spend")
+    except Exception as e:
+        st.error(f"Dashboard error (Section B): {e}")
+        logger.exception("Section B dashboard failed")
+
+    # ── Load Previous Run for Comparison ──────────────────────────────────
+    from creative_feedback_loop.context.run_store import load_previous_run, render_comparison
+
+    previous_run = load_previous_run(brand_name)
+    if previous_run:
+        try:
+            st.markdown("---")
+            prev_dashboard = previous_run.get("dashboard_data", {})
+            prev_date = previous_run.get("run_timestamp", "")[:10]
+            if prev_dashboard:
+                render_comparison(dashboard_data, prev_dashboard, prev_date)
+        except Exception as e:
+            st.error(f"Comparison error: {e}")
+            logger.exception("Run comparison failed")
+
+    # ── Pattern Analysis (Part 8) ─────────────────────────────────────────
+    pattern_results = None
+    has_extraction_data = any(
+        ad.get("extraction", {}).get("pain_point") or ad.get("extraction", {}).get("ad_format")
+        for ad in ads_for_extraction
+    )
+
+    if os.environ.get("ANTHROPIC_API_KEY") and has_extraction_data:
+        try:
+            st.markdown("---")
+            st.markdown('<h3 style="color:#fafafa;">Running pattern analysis...</h3>', unsafe_allow_html=True)
+
+            from creative_feedback_loop.analyzer.pattern_analyzer import analyze_patterns
+            from creative_feedback_loop.context.operator_priorities import build_priority_prompt
+
+            priority_prompt = build_priority_prompt(priority, custom_context)
+
+            pattern_results = loop.run_until_complete(
+                analyze_patterns(
+                    ads_for_extraction,
+                    dashboard_data,
+                    priority_prompt=priority_prompt,
+                    previous_notes=previous_notes_text,
+                )
+            )
+
+            # Display insights
+            st.markdown("---")
+            st.markdown('<h2 style="color:#fafafa;">Pattern Insights</h2>', unsafe_allow_html=True)
+
+            if pattern_results.get("executive_summary"):
+                st.markdown(
+                    f'<div style="background:#1a1a2e; border-left:3px solid #e91e8c; padding:16px; '
+                    f'border-radius:0 8px 8px 0; margin-bottom:16px;">'
+                    f'<p style="color:#fafafa;">{pattern_results["executive_summary"]}</p></div>',
+                    unsafe_allow_html=True,
+                )
+
+            for insight in pattern_results.get("insights", []):
+                baseline_badge = '<span style="background:#333; color:#999; padding:2px 8px; border-radius:4px; font-size:11px; margin-left:8px;">BASELINE</span>' if insight.get("is_baseline") else ""
+                st.markdown(
+                    f'<div style="background:#1a1a2e; border-left:3px solid #e91e8c; padding:12px 16px; '
+                    f'margin-bottom:10px; border-radius:0 6px 6px 0;">'
+                    f'<p style="color:#fafafa; font-weight:700;">{insight.get("title", "")}{baseline_badge}</p>'
+                    f'<p style="color:#ccc; font-size:13px; margin-top:4px;">{insight.get("detail", "")}</p>'
+                    f'<p style="color:#888; font-size:11px; margin-top:4px;">Winners: {insight.get("winner_count", 0)} | '
+                    f'Losers: {insight.get("loser_count", 0)} | '
+                    f'Avg ROAS: {insight.get("avg_roas", 0)}x | '
+                    f'Confidence: {insight.get("confidence", "")}</p></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Learnings — collapsible
+            if pattern_results.get("learnings"):
+                with st.expander("Learnings", expanded=False):
+                    for learning in pattern_results["learnings"]:
+                        st.markdown(f'<p style="color:#fafafa; margin-bottom:8px;">• {learning}</p>', unsafe_allow_html=True)
+
+            # Hypotheses — collapsible
+            if pattern_results.get("hypotheses"):
+                with st.expander("Hypotheses", expanded=False):
+                    for hypothesis in pattern_results["hypotheses"]:
+                        st.markdown(f'<p style="color:#fafafa; margin-bottom:8px;">• {hypothesis}</p>', unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Pattern analysis error: {e}")
+            logger.exception("Pattern analysis failed")
+
+    # ── Operator Notes (Part 4) ───────────────────────────────────────────
+    notes = render_notes_input()
+
+    # ── Save Run (Part 5) ─────────────────────────────────────────────────
+    from creative_feedback_loop.context.run_store import save_run
+
+    classification_counts = {
+        "winners": winners_count,
+        "losers": losers_count,
+        "untested": untested_count,
+    }
+    threshold_config = {
+        "winner_roas": winner_roas,
+        "winner_min_spend": winner_min_spend,
+        "loser_roas": loser_roas,
+        "loser_min_spend": loser_min_spend,
+    }
+
+    run_path = save_run(
+        brand_name=brand_name,
+        csv_start_date=csv_start,
+        csv_end_date=csv_end,
+        classification_counts=classification_counts,
+        threshold_config=threshold_config,
+        dashboard_data=dashboard_data,
+        top50_dashboard_data=top50_dashboard_data,
+        operator_priority=priority,
+        operator_notes=notes,
+        pattern_results=pattern_results,
+    )
+
+    st.session_state["current_run_path"] = str(run_path)
+
+    # Save notes button
+    if notes:
+        if st.button("Save Notes"):
+            save_notes_to_run(run_path, notes)
+            st.success("Notes saved!")
+
+    # ── PDF Export (Part 7) ───────────────────────────────────────────────
+    st.markdown("---")
+    if st.button("Export PDF Report", use_container_width=True):
+        with st.spinner("Generating PDF..."):
+            from creative_feedback_loop.reporter.pdf_generator import generate_pdf
+
+            try:
+                pdf_path = loop.run_until_complete(
+                    generate_pdf(
+                        brand_name=brand_name,
+                        csv_start=csv_start,
+                        csv_end=csv_end,
+                        classification_counts=classification_counts,
+                        total_spend=total_spend,
+                        dashboard_data=dashboard_data,
+                        top50_dashboard_data=top50_dashboard_data,
+                        pattern_results=pattern_results,
+                        previous_run=previous_run,
+                        priority=priority,
+                    )
+                )
+                st.success(f"PDF saved: {pdf_path}")
+
+                with open(pdf_path, "rb") as f:
+                    st.download_button(
+                        "Download PDF",
+                        data=f.read(),
+                        file_name=pdf_path.name,
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+            except Exception as e:
+                st.error(f"PDF generation failed: {e}")
+
+
+def _slugify(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"[^a-z0-9]+", "_", text)
+    return text.strip("_")[:40]
+
+
+def _build_basic_extraction(ad: dict) -> dict:
+    """Build a basic extraction from ad metadata when Claude is unavailable."""
+    return {
+        "hooks": [],
+        "body_copy_summary": "",
+        "pain_point": "",
+        "symptoms": [],
+        "root_cause": {"depth": "", "chain": ""},
+        "mechanism": {"ump": "", "ums": ""},
+        "avatar": {"behavior": "", "impact": "", "root_cause_connection": "", "why_previous_failed": ""},
+        "ad_format": ad.get("format_override", ""),
+        "awareness_level": "",
+        "emotional_triggers": [],
+        "language_patterns": [],
+        "lead_type": "",
+        "cta_type": "",
+        "hook_type": "",
+    }
+
+
+if __name__ == "__main__":
+    main()
