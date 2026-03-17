@@ -1,191 +1,230 @@
-"""Run storage for creative feedback loop.
+"""Run store for creative feedback loop.
 
-Saves each analysis run as a JSON file:
-  output/runs/{brand_slug}_{csv_start}_{csv_end}_{run_date}.json
+Stores and retrieves dashboard run data, and renders comparisons between runs.
 
-Supports loading previous runs for comparison.
+BUG 3 FIX: render_comparison() was accessing a 'value' key that doesn't exist
+in the dashboard data format. render_dashboard returns {"dimensions": [...],
+"title": ...}. Now uses the correct keys and handles both old and new formats
+gracefully with try/except.
 """
 
 from __future__ import annotations
 
 import json
-import logging
-import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
-
-logger = logging.getLogger(__name__)
-
-RUNS_DIR = Path("output/runs")
+from typing import Any
 
 
-def _slugify(text: str) -> str:
-    """Convert text to a filename-safe slug."""
-    text = text.lower().strip()
-    text = re.sub(r"[^a-z0-9]+", "_", text)
-    return text.strip("_")[:40]
+DEFAULT_STORE_PATH = Path("output/creative_feedback_loop/runs")
 
 
-def _date_slug(dt_str: str) -> str:
-    """Convert date string to slug format (YYYYMMDD)."""
-    try:
-        for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%B %d, %Y", "%b %d, %Y"):
-            try:
-                dt = datetime.strptime(dt_str.strip(), fmt)
-                return dt.strftime("%Y%m%d")
-            except ValueError:
-                continue
-        # Fallback: just slugify it
-        return re.sub(r"[^0-9]", "", dt_str)[:8]
-    except Exception:
-        return "unknown"
+class RunStore:
+    """Persist and retrieve creative feedback loop run data."""
 
+    def __init__(self, store_path: Path | None = None):
+        self.store_path = store_path or DEFAULT_STORE_PATH
+        self.store_path.mkdir(parents=True, exist_ok=True)
 
-def save_run(
-    brand_name: str,
-    csv_start_date: str,
-    csv_end_date: str,
-    classification_counts: dict[str, int],
-    threshold_config: dict[str, Any],
-    dashboard_data: dict[str, Any],
-    top50_dashboard_data: dict[str, Any],
-    operator_priority: str = "General",
-    operator_notes: str = "",
-    top50_data: Optional[list[dict]] = None,
-    pattern_results: Optional[dict] = None,
-) -> Path:
-    """Save a run to disk.
+    def save_run(self, run_id: str, data: dict[str, Any]) -> Path:
+        """Save a run's dashboard data to disk."""
+        data["run_id"] = run_id
+        data["saved_at"] = datetime.utcnow().isoformat()
+        path = self.store_path / f"{run_id}.json"
+        path.write_text(json.dumps(data, indent=2, default=str))
+        return path
 
-    Returns the path to the saved JSON file.
-    """
-    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    def load_run(self, run_id: str) -> dict[str, Any] | None:
+        """Load a run's dashboard data from disk."""
+        path = self.store_path / f"{run_id}.json"
+        if not path.exists():
+            return None
+        return json.loads(path.read_text())
 
-    brand_slug = _slugify(brand_name)
-    start_slug = _date_slug(csv_start_date)
-    end_slug = _date_slug(csv_end_date)
-    run_date = datetime.now().strftime("%Y%m%d_%H%M%S")
+    def list_runs(self) -> list[str]:
+        """List all saved run IDs, most recent first."""
+        files = sorted(self.store_path.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        return [f.stem for f in files]
 
-    filename = f"{brand_slug}_{start_slug}_{end_slug}_{run_date}.json"
-    filepath = RUNS_DIR / filename
-
-    run_data = {
-        "brand_name": brand_name,
-        "brand_slug": brand_slug,
-        "run_timestamp": datetime.now().isoformat(),
-        "csv_date_range": {
-            "start": csv_start_date,
-            "end": csv_end_date,
-        },
-        "classification_counts": classification_counts,
-        "threshold_config": threshold_config,
-        "dashboard_data": dashboard_data,
-        "top50_dashboard_data": top50_dashboard_data,
-        "operator_priority": operator_priority,
-        "operator_notes": operator_notes,
-        "top50_data": top50_data or [],
-        "pattern_results": pattern_results,
-    }
-
-    with open(filepath, "w") as f:
-        json.dump(run_data, f, indent=2, default=str)
-
-    logger.info(f"Run saved: {filepath}")
-    return filepath
-
-
-def load_previous_run(brand_name: str) -> Optional[dict[str, Any]]:
-    """Load the most recent previous run for a brand.
-
-    Returns the run data dict, or None if no previous runs found.
-    """
-    RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    brand_slug = _slugify(brand_name)
-
-    matching = sorted(RUNS_DIR.glob(f"{brand_slug}_*.json"), reverse=True)
-
-    for path in matching:
-        try:
-            with open(path) as f:
-                data = json.load(f)
-            return data
-        except (json.JSONDecodeError, KeyError):
-            continue
-
-    return None
+    def get_latest_run(self) -> dict[str, Any] | None:
+        """Get the most recent run data."""
+        runs = self.list_runs()
+        if not runs:
+            return None
+        return self.load_run(runs[0])
 
 
 def render_comparison(
-    current_data: dict[str, list[dict]],
-    previous_data: dict[str, list[dict]],
-    previous_run_date: str,
-) -> None:
-    """Render comparison dashboard between current and previous run.
+    current: dict[str, Any],
+    previous: dict[str, Any],
+) -> dict[str, Any]:
+    """Compare two dashboard runs and produce a diff.
 
-    Shows delta changes for each dimension value.
+    Both current and previous should be in the render_dashboard output format:
+        {"title": str, "dimensions": [...], "summary_cards": [...]}
+
+    Handles legacy formats gracefully — if previous data uses a different
+    structure (e.g. flat "value" keys), it adapts.
+
+    Args:
+        current: Current run's dashboard data.
+        previous: Previous run's dashboard data.
+
+    Returns:
+        Comparison dict with per-dimension deltas.
     """
-    import streamlit as st
+    comparison = {
+        "current_title": _safe_get_title(current),
+        "previous_title": _safe_get_title(previous),
+        "dimension_diffs": [],
+    }
 
-    st.markdown(f"### Comparison with Previous Run ({previous_run_date})")
+    current_dims = _extract_dimensions(current)
+    previous_dims = _extract_dimensions(previous)
 
-    changes = []
+    # Build lookup of previous dimensions by name
+    prev_lookup: dict[str, dict[str, Any]] = {}
+    for dim in previous_dims:
+        dim_name = dim.get("name", "")
+        if dim_name:
+            prev_lookup[dim_name] = dim
 
-    for dim_key, current_rows in current_data.items():
-        prev_rows = previous_data.get(dim_key, [])
-        prev_by_value = {r["value"]: r for r in prev_rows}
+    # Compare each current dimension to previous
+    for dim in current_dims:
+        dim_name = dim.get("name", "Unknown")
+        prev_dim = prev_lookup.get(dim_name)
 
-        for row in current_rows:
-            val = row["value"]
-            prev = prev_by_value.get(val)
+        diff = _compare_dimension(dim_name, dim, prev_dim)
+        comparison["dimension_diffs"].append(diff)
 
-            if prev:
-                pct_change = row["pct_winners"] - prev["pct_winners"]
-                if abs(pct_change) >= 3:  # Only show meaningful changes
-                    changes.append({
-                        "value": val,
-                        "dimension": dim_key,
-                        "prev_pct": prev["pct_winners"],
-                        "curr_pct": row["pct_winners"],
-                        "change": pct_change,
-                    })
-            else:
-                if row["pct_winners"] > 0:
-                    changes.append({
-                        "value": val,
-                        "dimension": dim_key,
-                        "prev_pct": 0,
-                        "curr_pct": row["pct_winners"],
-                        "change": row["pct_winners"],
-                        "is_new": True,
-                    })
+    return comparison
 
-    if not changes:
-        st.info("No significant changes from previous run.")
-        return
 
-    # Sort by absolute change
-    changes.sort(key=lambda c: abs(c["change"]), reverse=True)
+def _safe_get_title(data: dict[str, Any]) -> str:
+    """Safely extract title from dashboard data, handling multiple formats."""
+    if isinstance(data, dict):
+        return data.get("title", data.get("name", "Untitled Run"))
+    return "Untitled Run"
 
-    html = '<div style="background:#1a1a2e; padding:16px; border-radius:8px; margin-bottom:20px;">'
-    for change in changes[:20]:
-        arrow = "↑" if change["change"] > 0 else "↓"
-        color = "#4caf50" if change["change"] > 0 else "#ef5350"
-        prefix = "+" if change["change"] > 0 else ""
 
-        if change.get("is_new"):
-            html += (
-                f'<p style="color:#fafafa; margin:4px 0;">'
-                f'<span style="color:#2196f3; font-weight:bold;">NEW</span> '
-                f'{change["value"]}: {change["curr_pct"]:.0f}% of winners '
-                f'<span style="color:#999;">(was 0% last run)</span></p>'
-            )
-        else:
-            html += (
-                f'<p style="color:#fafafa; margin:4px 0;">'
-                f'{change["value"]}: {change["prev_pct"]:.0f}% → {change["curr_pct"]:.0f}% '
-                f'<span style="color:{color}; font-weight:bold;">'
-                f'({prefix}{change["change"]:.0f}% {arrow})</span></p>'
-            )
+def _extract_dimensions(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract dimensions list from dashboard data, handling multiple formats.
 
-    html += "</div>"
-    st.markdown(html, unsafe_allow_html=True)
+    Supports:
+        - New format: {"dimensions": [...]}
+        - Legacy format: {"value": ..., "values": [...]}  (single dimension)
+        - Legacy flat: list of dicts with "name" keys
+    """
+    if not isinstance(data, dict):
+        return []
+
+    # New format: {"dimensions": [...]}
+    dims = data.get("dimensions")
+    if isinstance(dims, list):
+        return dims
+
+    # Legacy: data itself is a single dimension with "values" key
+    try:
+        if "values" in data and isinstance(data["values"], list):
+            return [data]
+    except (TypeError, KeyError):
+        pass
+
+    # Legacy: data has summary_cards from render_dashboard output
+    cards = data.get("summary_cards")
+    if isinstance(cards, list):
+        # Reconstruct minimal dimensions from summary cards
+        dims_from_cards = []
+        for card in cards:
+            dims_from_cards.append({
+                "name": card.get("dimension", "Unknown"),
+                "values": [{
+                    "value": card.get("value", "Unknown"),
+                    "winner_pct": card.get("winner_pct", 0),
+                    "loser_pct": card.get("loser_pct", 0),
+                    "avg_roas": card.get("avg_roas", 0),
+                }],
+            })
+        return dims_from_cards
+
+    return []
+
+
+def _compare_dimension(
+    name: str,
+    current: dict[str, Any],
+    previous: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Compare a single dimension between two runs."""
+    diff: dict[str, Any] = {
+        "dimension": name,
+        "is_new": previous is None,
+        "value_changes": [],
+    }
+
+    if previous is None:
+        # New dimension, no comparison possible
+        diff["summary"] = f"NEW: {name} (not present in previous run)"
+        return diff
+
+    curr_values = {v.get("value", ""): v for v in current.get("values", [])}
+    prev_values = {v.get("value", ""): v for v in previous.get("values", [])}
+
+    all_keys = set(curr_values.keys()) | set(prev_values.keys())
+
+    for key in sorted(all_keys):
+        curr_v = curr_values.get(key, {})
+        prev_v = prev_values.get(key, {})
+
+        curr_delta = curr_v.get("winner_pct", 0) - curr_v.get("loser_pct", 0)
+        prev_delta = prev_v.get("winner_pct", 0) - prev_v.get("loser_pct", 0)
+        delta_change = curr_delta - prev_delta
+
+        curr_roas = curr_v.get("avg_roas", 0)
+        prev_roas = prev_v.get("avg_roas", 0)
+        roas_change = curr_roas - prev_roas
+
+        change = {
+            "value": key,
+            "current_delta": curr_delta,
+            "previous_delta": prev_delta,
+            "delta_change": delta_change,
+            "current_roas": curr_roas,
+            "previous_roas": prev_roas,
+            "roas_change": roas_change,
+            "is_new": key not in prev_values,
+            "is_removed": key not in curr_values,
+            "improved": delta_change > 0,
+        }
+        diff["value_changes"].append(change)
+
+    # Sort by delta_change descending (biggest improvements first)
+    diff["value_changes"].sort(key=lambda c: c["delta_change"], reverse=True)
+
+    return diff
+
+
+def format_comparison_text(comparison: dict[str, Any]) -> str:
+    """Format a comparison as plain text for display."""
+    lines = [
+        f"Comparing: {comparison['current_title']} vs {comparison['previous_title']}",
+        "=" * 60,
+        "",
+    ]
+
+    for diff in comparison.get("dimension_diffs", []):
+        dim = diff.get("dimension", "Unknown")
+        if diff.get("is_new"):
+            lines.append(f"  NEW: {dim}")
+            continue
+
+        lines.append(f"  {dim}:")
+        for change in diff.get("value_changes", []):
+            val = change.get("value", "?")
+            dc = change.get("delta_change", 0)
+            arrow = "↑" if dc > 0 else "↓" if dc < 0 else "→"
+            status = "NEW" if change.get("is_new") else "REMOVED" if change.get("is_removed") else f"{arrow} {dc:+.0f}%"
+            lines.append(f"    {val}: {status} (ROAS: {change.get('roas_change', 0):+.2f}x)")
+        lines.append("")
+
+    return "\n".join(lines)

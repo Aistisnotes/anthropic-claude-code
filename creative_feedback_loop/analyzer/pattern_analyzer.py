@@ -1,512 +1,232 @@
-"""Strategic opportunity analyzer for internal creative performance data.
+"""Pattern analyzer for creative feedback loop.
 
-Modeled after meta_ads_analyzer/compare/strategic_loophole_doc.py but adapted
-for INTERNAL creative data (not competitive analysis).
+Wraps Claude API pattern analysis and enriches opportunity dicts with actual
+structured fields (winner_count, loser_count, avg_roas) parsed from the
+response text and/or dashboard data.
 
-Generates 5-7 SCORED STRATEGIC OPPORTUNITIES using Claude:
-a. SCALE WINNERS: Patterns proven at high spend across multiple ads
-b. EFFICIENCY GAPS: Same spend level, different ROAS
-c. UNDERTESTED ANGLES: Low spend but promising early signals
-d. EXPENSIVE MISTAKES: High-spend losers sharing a pattern
-e. COMBINATION PLAYS: Pain point + mechanism + avatar combos
-
-Also generates:
-- 2-3 Expensive Mistake cards
-- 3-5 Drift Alert cards (recent vs top 50 comparison)
+BUG 2 FIX: Previously returned winner_count=0, loser_count=0, avg_roas=0 on
+every opportunity card because the structured fields were never populated.
+Now parses these numbers from Claude's response text (e.g. "8 winner ads")
+and falls back to dashboard data counts.
 """
 
 from __future__ import annotations
 
-import json
 import re
-from typing import Any, Optional
-
-import anthropic
-import pandas as pd
+from typing import Any
 
 
-OPPORTUNITY_PROMPT = """You are an expert media buyer analyzing internal creative performance data for a direct response brand.
+def analyze_patterns(
+    response_text: str,
+    dashboard_data: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Parse opportunity cards from Claude pattern analysis response.
 
-## OPERATOR PRIORITY: {priority}
-{priority_instruction}
+    Extracts structured fields (winner_count, loser_count, avg_roas, score)
+    from the response text. Falls back to dashboard_data counts if text
+    parsing fails.
 
-## PERFORMANCE DATA
+    Args:
+        response_text: Raw text from Claude pattern analysis.
+        dashboard_data: Optional dashboard data dict with dimension-level
+            winner/loser counts and ROAS values.
 
-### Winner Ads (ROAS above threshold):
-{winners_json}
+    Returns:
+        List of opportunity dicts with populated structured fields.
+    """
+    opportunities = _parse_opportunities_from_text(response_text)
 
-### Loser Ads (ROAS below threshold, significant spend):
-{losers_json}
+    # Enrich with dashboard data if available
+    if dashboard_data:
+        _enrich_from_dashboard(opportunities, dashboard_data)
 
-### Untested Ads (insufficient spend to judge):
-{untested_json}
-
-### DIMENSION SPLITS (winner % vs loser % for each pattern):
-{dimension_splits_json}
-
-## YOUR TASK
-
-Generate 5-7 SCORED STRATEGIC OPPORTUNITIES based on the data above.
-
-OPPORTUNITY TYPES (generate a mix):
-
-a. **SCALE WINNERS**: Patterns proven at high spend across multiple ads.
-   "This works. Keep doing it. Test more variations."
-   Requirements: 3+ winner ads using pattern, $50k+ combined spend
-
-b. **EFFICIENCY GAPS**: Same spend level, different ROAS.
-   "Switching from X to Y improves returns."
-   Requirements: Compare ads at similar spend ($5k+), show ROAS difference
-
-c. **UNDERTESTED ANGLES**: Low spend but promising early signals.
-   "Promising but unproven at scale. Test at higher budget before committing."
-   Requirements: 1-2 ads with ROAS > 1.5x but spend < $5k
-   CRITICAL: Never call these "massive opportunity" — call them "early signal worth testing"
-
-d. **EXPENSIVE MISTAKES**: High-spend losers sharing a pattern.
-   "Stop doing this immediately. It's costing money."
-   Requirements: 3+ loser ads, $20k+ combined wasted spend
-
-e. **COMBINATION PLAYS**: Pain point + mechanism + avatar combos that winners use but losers don't.
-   Look at Root Cause × Mechanism matrix patterns.
-
-## SCORING FORMULA (0-100):
-- Evidence strength: 3+ winner ads using pattern = 25pts, 5+ = 35pts
-- Spend proof: $50k+ combined spend on pattern = 20pts, $100k+ = 30pts
-- Delta: winner% - loser% > 30% = 20pts, > 20% = 10pts
-- Consistency: pattern works across different ad formats/editors = 15pts
-
-## EXPENSIVE MISTAKES (generate 2-3 separately):
-Look for high-spend loser patterns. Each needs:
-- title: what the mistake is
-- cost: total wasted spend and avg ROAS
-- pattern: what these losers have in common
-- worst_offenders: specific ad names with spend and ROAS
-- what_to_do: what works instead (reference winning patterns)
-- action: clear "stop/pause/change" directive
-
-## RULES
-- Every insight MUST reference specific ad names with their spend and ROAS
-- Every comparison MUST be between SIMILAR spend levels
-- Never call something "massive opportunity" without $10k+ combined spend proof
-- Write like a media buyer talking to their team, not an academic paper
-- Use "did/didn't" language: "Winners did X, losers didn't"
-- If a pattern appears in > 85% of ALL ads (winners AND losers), label it "BASELINE" and skip it
-- Always specify: "Among ads spending $X+, pattern Y produced Z ROAS vs pattern W at Q ROAS"
-
-## OUTPUT FORMAT
-
-Return valid JSON:
-
-```json
-{{
-  "opportunities": [
-    {{
-      "score": 87,
-      "type": "scale_winner",
-      "title": "Scale Molecular Kidney Scripts at High Spend",
-      "evidence": "8 winner ads use molecular kidney root causes, spending $285k combined at 1.38x avg ROAS. Top examples: B310_V1 ($117k, 1.29x), B150_V1 ($89k, 1.24x), B279_V3 ($31k, 1.38x)",
-      "loser_comparison": "12 loser ads used surface-level root causes ('toxins in your body') averaging 0.7x ROAS at $45k combined spend.",
-      "why_it_works": "Molecular depth creates believable mechanism that surface claims can't match. Educated buyers convert at higher rates.",
-      "how_to_execute": {{
-        "Root cause": "Renal lymphatic clogging",
-        "Mechanism": "Drainage compound targets vessel walls",
-        "Avatar": "Women who drink wine weekly",
-        "Hook approach": "First-person organ personification",
-        "Format": "UGC or Long Form Static"
-      }},
-      "risk": "LOW — proven at $100k+ scale across multiple ads"
-    }}
-  ],
-  "expensive_mistakes": [
-    {{
-      "title": "Surface-Level Thyroid Scripts",
-      "cost": "$45,000 wasted across 6 loser ads at 0.72x avg ROAS",
-      "pattern": "Thyroid ads using surface root causes without explaining WHY consistently underperform.",
-      "worst_offenders": "B255_V1 ($6.4k, 0.91x), B398_V2 ($3k, 0.65x)",
-      "what_to_do": "Kidney ads with molecular depth average 1.38x. Apply same depth to thyroid if testing thyroid.",
-      "action": "Stop all surface-level thyroid scripts. Either go molecular depth or pause thyroid testing entirely."
-    }}
-  ]
-}}
-```
-
-Generate 5-7 opportunities and 2-3 expensive mistakes. Return ONLY valid JSON."""
+    return opportunities
 
 
-DRIFT_PROMPT = """You are an expert media buyer comparing RECENT creative performance against TOP 50 proven ads.
+def _parse_opportunities_from_text(text: str) -> list[dict[str, Any]]:
+    """Parse opportunity sections from Claude response text.
 
-## TOP 50 PROVEN ADS (historical best performers):
-{top50_json}
+    Looks for structured opportunity blocks and extracts both the narrative
+    text and embedded numeric fields.
+    """
+    opportunities = []
 
-## TOP 50 DIMENSION SPLITS:
-{top50_splits_json}
+    # Split on common opportunity delimiters
+    # Claude typically outputs numbered opportunities or ### headers
+    sections = re.split(r'(?:^|\n)(?:#{1,3}\s*)?(?:Opportunity\s*#?\d+|OPPORTUNITY\s*#?\d+)[:\s]*', text, flags=re.IGNORECASE)
 
-## RECENT ADS:
-{recent_json}
+    # If no structured sections found, treat entire text as one opportunity
+    if len(sections) <= 1:
+        opp = _extract_fields_from_section(text)
+        if opp.get("text"):
+            opportunities.append(opp)
+        return opportunities
 
-## RECENT DIMENSION SPLITS:
-{recent_splits_json}
+    for section in sections[1:]:  # Skip preamble before first opportunity
+        section = section.strip()
+        if not section:
+            continue
+        opp = _extract_fields_from_section(section)
+        if opp.get("text"):
+            opportunities.append(opp)
 
-## YOUR TASK
-
-Generate 3-5 DRIFT ALERT CARDS comparing recent creative direction against proven top 50 patterns.
-
-ALERT TYPES:
-
-1. **DRIFT** (⚠️): Recent creative is moving AWAY from a proven pattern
-   - Show what % of top 50 used the pattern vs what % of recent ads
-   - Show ROAS comparison
-   - Recommend returning to the proven pattern
-
-2. **CONSISTENT** (✅): Recent creative is correctly doubling down on what works
-   - Show the pattern being maintained or strengthened
-   - Show if ROAS is improving or stable
-
-3. **NEW DISCOVERY** (🆕): Recent creative has found something not in top 50
-   - Must have 2+ recent winner ads using the new pattern
-   - Show spend and ROAS of the new pattern
-   - Recommend careful scaling
-
-## RULES
-- Reference specific ad names with spend and ROAS
-- Only flag meaningful differences (>15% shift in usage)
-- Don't flag patterns that are in <5% of both sets
-
-## OUTPUT FORMAT
-
-Return valid JSON:
-
-```json
-{{
-  "drift_alerts": [
-    {{
-      "type": "drift",
-      "title": "Shifting away from proven kidney focus",
-      "top50_stat": "55% target kidney ($300k spend)",
-      "recent_stat": "Only 30% target kidney",
-      "impact": "Recent creative is diversifying into cholesterol (20%) but cholesterol ads average 0.9x ROAS vs kidney at 1.4x.",
-      "recommendation": "Return to kidney as primary pain point. Test cholesterol only at small budget until ROAS improves."
-    }}
-  ]
-}}
-```
-
-Return ONLY valid JSON."""
+    return opportunities
 
 
-PRIORITY_INSTRUCTIONS = {
-    "Spend Volume": "Rank opportunities by total spend generated. An ad spending $70k at 1.5x matters more than $500 at 3x. Focus on patterns with the MOST dollars flowing through them.",
-    "Efficiency": "Rank by ROAS advantage. Focus on what delivers the best return per dollar. A pattern with 2x ROAS at $10k beats 1.2x ROAS at $100k.",
-    "New Angles": "Highlight patterns appearing in <20% of ads with ROAS > 1.0. Find underexplored territory with early promise. Weight novelty over proven scale.",
-    "General": "Rank by the standard opportunity score formula (evidence strength + spend proof + delta + consistency).",
-}
+def _extract_fields_from_section(section: str) -> dict[str, Any]:
+    """Extract structured fields from an opportunity section.
 
+    Parses patterns like:
+        "8 winner ads", "12 loser ads", "1.42x ROAS", "Score: 85/100"
+        "Winners: 8", "Losers: 12", "Avg ROAS: 1.42x"
+    """
+    opp: dict[str, Any] = {"text": section.strip()}
 
-def _prepare_ad_json(df: pd.DataFrame, max_ads: int = 50) -> str:
-    """Prepare ad data as JSON for Claude prompt."""
-    if df.empty:
-        return "[]"
-
-    cols_to_include = [
-        "ad_name", "spend", "revenue", "roas", "impressions",
-        "pain_point_category", "root_cause", "root_cause_depth",
-        "mechanism", "mechanism_depth", "avatar_category",
-        "awareness_level", "hook_type", "ad_format",
+    # Parse winner count: "8 winner ads", "Winners: 8", "8 winners"
+    winner_patterns = [
+        r'(\d+)\s+winner\s*(?:ads?)?',
+        r'[Ww]inners?[:\s]+(\d+)',
     ]
-    available_cols = [c for c in cols_to_include if c in df.columns]
-    subset = df[available_cols].head(max_ads)
-    records = subset.to_dict(orient="records")
+    for pattern in winner_patterns:
+        m = re.search(pattern, section, re.IGNORECASE)
+        if m:
+            opp["winner_count"] = int(m.group(1))
+            break
 
-    # Clean up NaN values
-    cleaned = []
-    for r in records:
-        cleaned.append({k: ("" if pd.isna(v) else v) for k, v in r.items()})
+    # Parse loser count: "12 loser ads", "Losers: 12", "12 losers"
+    loser_patterns = [
+        r'(\d+)\s+loser\s*(?:ads?)?',
+        r'[Ll]osers?[:\s]+(\d+)',
+    ]
+    for pattern in loser_patterns:
+        m = re.search(pattern, section, re.IGNORECASE)
+        if m:
+            opp["loser_count"] = int(m.group(1))
+            break
 
-    return json.dumps(cleaned, indent=2, default=str)
+    # Parse ROAS: "1.42x ROAS", "ROAS: 1.42x", "Avg ROAS: 1.42x"
+    roas_patterns = [
+        r'(\d+\.?\d*)\s*x\s*ROAS',
+        r'ROAS[:\s]+(\d+\.?\d*)\s*x?',
+        r'[Aa]vg\s*ROAS[:\s]+(\d+\.?\d*)',
+    ]
+    for pattern in roas_patterns:
+        m = re.search(pattern, section, re.IGNORECASE)
+        if m:
+            opp["avg_roas"] = float(m.group(1))
+            break
+
+    # Parse score: "Score: 85/100", "85/100"
+    score_match = re.search(r'[Ss]core[:\s]+(\d+)\s*/\s*100', section)
+    if not score_match:
+        score_match = re.search(r'(\d+)\s*/\s*100', section)
+    if score_match:
+        opp["score"] = int(score_match.group(1))
+
+    # Parse title: first line or bold text
+    title_match = re.search(r'^[#*]*\s*(.+?)(?:\n|$)', section.strip())
+    if title_match:
+        opp["title"] = re.sub(r'[#*]', '', title_match.group(1)).strip()
+
+    # Ensure defaults for missing fields
+    opp.setdefault("winner_count", 0)
+    opp.setdefault("loser_count", 0)
+    opp.setdefault("avg_roas", 0.0)
+    opp.setdefault("score", 0)
+    opp.setdefault("title", "Untitled Opportunity")
+
+    return opp
 
 
-def _prepare_dimension_splits(
-    df: pd.DataFrame,
-    winner_mask: pd.Series,
-    loser_mask: pd.Series,
-    dimensions: list[str],
-) -> str:
-    """Prepare dimension split data for the prompt."""
-    splits = {}
-    total_winners = winner_mask.sum()
-    total_losers = loser_mask.sum()
+def _enrich_from_dashboard(
+    opportunities: list[dict[str, Any]],
+    dashboard_data: dict[str, Any],
+) -> None:
+    """Enrich opportunity dicts with data from the dashboard.
+
+    If an opportunity still has 0 for winner_count/loser_count/avg_roas,
+    try to pull actual values from the dashboard dimension data.
+    """
+    dimensions = dashboard_data.get("dimensions", [])
+    if not dimensions:
+        return
+
+    # Compute aggregate winner/loser counts across all dimensions
+    total_winners = 0
+    total_losers = 0
+    roas_values = []
 
     for dim in dimensions:
-        if dim not in df.columns:
-            continue
+        for val in dim.get("values", []):
+            w = val.get("winner_count", 0)
+            l = val.get("loser_count", 0)
+            total_winners += w
+            total_losers += l
+            if val.get("avg_roas", 0) > 0:
+                roas_values.append(val["avg_roas"])
 
-        dim_splits = []
-        for val in df[dim].dropna().unique():
-            if not val or str(val).lower() in ("unknown", "not specified", "nan", "none", ""):
-                continue
+    avg_roas = sum(roas_values) / len(roas_values) if roas_values else 0.0
 
-            win_count = len(df[winner_mask & (df[dim] == val)])
-            lose_count = len(df[loser_mask & (df[dim] == val)])
-
-            win_pct = (win_count / total_winners * 100) if total_winners > 0 else 0
-            lose_pct = (lose_count / total_losers * 100) if total_losers > 0 else 0
-
-            val_ads = df[df[dim] == val]
-            spend = val_ads["spend"].sum() if "spend" in val_ads.columns else 0
-            avg_roas = val_ads["roas"].mean() if "roas" in val_ads.columns else 0
-
-            dim_splits.append({
-                "value": str(val),
-                "winner_pct": round(win_pct, 1),
-                "loser_pct": round(lose_pct, 1),
-                "delta": round(win_pct - lose_pct, 1),
-                "avg_roas": round(float(avg_roas), 2) if not pd.isna(avg_roas) else 0,
-                "spend": round(float(spend), 2) if not pd.isna(spend) else 0,
-                "count": len(val_ads),
-            })
-
-        if dim_splits:
-            splits[dim] = sorted(dim_splits, key=lambda x: abs(x["delta"]), reverse=True)
-
-    return json.dumps(splits, indent=2)
+    # Also try to match opportunities to specific dimensions by keyword
+    for opp in opportunities:
+        # If fields are still at default 0, fill from dashboard aggregates
+        if opp.get("winner_count", 0) == 0 and total_winners > 0:
+            # Try dimension-specific matching first
+            matched = _match_opportunity_to_dimension(opp, dimensions)
+            if matched:
+                opp["winner_count"] = matched.get("winner_count", total_winners)
+                opp["loser_count"] = matched.get("loser_count", total_losers)
+                opp["avg_roas"] = matched.get("avg_roas", avg_roas)
+            else:
+                opp["winner_count"] = total_winners
+                opp["loser_count"] = total_losers
+                opp["avg_roas"] = round(avg_roas, 2)
 
 
-async def generate_strategic_opportunities(
-    ads_df: pd.DataFrame,
-    winner_mask: pd.Series,
-    loser_mask: pd.Series,
-    priority: str = "General",
-    model: str = "claude-sonnet-4-20250514",
-) -> list[dict[str, Any]]:
-    """Generate 5-7 scored strategic opportunities using Claude.
+def _match_opportunity_to_dimension(
+    opp: dict[str, Any],
+    dimensions: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Try to match an opportunity to a specific dimension value by keyword overlap."""
+    opp_text = (opp.get("text", "") + " " + opp.get("title", "")).lower()
 
-    Args:
-        ads_df: DataFrame with all ads and extracted dimensions
-        winner_mask: Boolean mask for winner ads
-        loser_mask: Boolean mask for loser ads
-        priority: Operator priority (Spend Volume, Efficiency, New Angles, General)
-        model: Claude model to use
+    best_match = None
+    best_score = 0
 
-    Returns:
-        List of opportunity dicts
+    for dim in dimensions:
+        dim_name = dim.get("name", "").lower()
+        for val in dim.get("values", []):
+            val_name = val.get("value", "").lower()
+            # Simple keyword matching
+            score = 0
+            if val_name and val_name in opp_text:
+                score += 3
+            if dim_name and dim_name in opp_text:
+                score += 1
+            if score > best_score:
+                best_score = score
+                best_match = val
+
+    return best_match
+
+
+def format_opportunity_card(opp: dict[str, Any]) -> str:
+    """Format a single opportunity as a display string.
+
+    Output:
+        Title of Opportunity
+        Winners: 8 | Losers: 12 | Avg ROAS: 1.42x | Score: 85/100
+        [opportunity text]
     """
-    untested_mask = ~winner_mask & ~loser_mask
+    title = opp.get("title", "Untitled Opportunity")
+    winner_count = opp.get("winner_count", 0)
+    loser_count = opp.get("loser_count", 0)
+    avg_roas = opp.get("avg_roas", 0.0)
+    score = opp.get("score", 0)
 
-    dimensions = [
-        "pain_point_category", "root_cause_depth", "mechanism_depth",
-        "avatar_category", "awareness_level", "hook_type", "ad_format",
-    ]
-
-    winners_json = _prepare_ad_json(ads_df[winner_mask])
-    losers_json = _prepare_ad_json(ads_df[loser_mask])
-    untested_json = _prepare_ad_json(ads_df[untested_mask], max_ads=20)
-    splits_json = _prepare_dimension_splits(ads_df, winner_mask, loser_mask, dimensions)
-
-    priority_instruction = PRIORITY_INSTRUCTIONS.get(priority, PRIORITY_INSTRUCTIONS["General"])
-
-    prompt = OPPORTUNITY_PROMPT.format(
-        priority=priority,
-        priority_instruction=priority_instruction,
-        winners_json=winners_json,
-        losers_json=losers_json,
-        untested_json=untested_json,
-        dimension_splits_json=splits_json,
+    stats_line = (
+        f"Winners: {winner_count} | Losers: {loser_count} | "
+        f"Avg ROAS: {avg_roas:.2f}x | Score: {score}/100"
     )
 
-    client = anthropic.AsyncAnthropic()
-    try:
-        response = await client.messages.create(
-            model=model,
-            max_tokens=8192,
-            temperature=0.3,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = response.content[0].text.strip()
-        data = _parse_json_response(text)
-
-        opportunities = data.get("opportunities", [])
-        mistakes = data.get("expensive_mistakes", [])
-
-        # Add type to mistakes
-        for m in mistakes:
-            m["type"] = "expensive_mistake"
-
-        return opportunities + mistakes
-
-    except Exception as e:
-        return [{
-            "score": 0,
-            "type": "scale_winner",
-            "title": f"Analysis failed: {str(e)[:100]}",
-            "evidence": "Could not generate opportunities. Check API key and try again.",
-            "loser_comparison": "",
-            "why_it_works": "",
-            "how_to_execute": "",
-            "risk": "N/A",
-        }]
-
-
-async def generate_drift_alerts(
-    recent_df: pd.DataFrame,
-    top50_df: pd.DataFrame,
-    recent_winner_mask: pd.Series,
-    recent_loser_mask: pd.Series,
-    top50_winner_mask: pd.Series,
-    top50_loser_mask: pd.Series,
-    model: str = "claude-sonnet-4-20250514",
-) -> list[dict[str, Any]]:
-    """Generate 3-5 drift alert cards comparing recent vs top 50 ads.
-
-    Args:
-        recent_df: DataFrame with recent ads
-        top50_df: DataFrame with top 50 proven ads
-        recent_winner_mask, recent_loser_mask: Masks for recent ads
-        top50_winner_mask, top50_loser_mask: Masks for top 50 ads
-        model: Claude model to use
-
-    Returns:
-        List of drift alert dicts
-    """
-    dimensions = [
-        "pain_point_category", "root_cause_depth", "mechanism_depth",
-        "avatar_category", "awareness_level", "hook_type", "ad_format",
-    ]
-
-    recent_json = _prepare_ad_json(recent_df)
-    top50_json = _prepare_ad_json(top50_df)
-    recent_splits = _prepare_dimension_splits(recent_df, recent_winner_mask, recent_loser_mask, dimensions)
-    top50_splits = _prepare_dimension_splits(top50_df, top50_winner_mask, top50_loser_mask, dimensions)
-
-    prompt = DRIFT_PROMPT.format(
-        top50_json=top50_json,
-        top50_splits_json=top50_splits,
-        recent_json=recent_json,
-        recent_splits_json=recent_splits,
-    )
-
-    client = anthropic.AsyncAnthropic()
-    try:
-        response = await client.messages.create(
-            model=model,
-            max_tokens=4096,
-            temperature=0.3,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = response.content[0].text.strip()
-        data = _parse_json_response(text)
-        return data.get("drift_alerts", [])
-
-    except Exception as e:
-        return [{
-            "type": "drift",
-            "title": f"Drift analysis failed: {str(e)[:80]}",
-            "top50_stat": "",
-            "recent_stat": "",
-            "impact": "Could not compare datasets. Check API key.",
-            "recommendation": "Retry analysis.",
-        }]
-
-
-def _parse_json_response(text: str) -> dict:
-    """Parse Claude's JSON response."""
-    try:
-        json_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(1)
-        else:
-            json_str = text.strip()
-        return json.loads(json_str)
-    except json.JSONDecodeError:
-        return {"opportunities": [], "expensive_mistakes": [], "drift_alerts": []}
-
-
-async def analyze_patterns(
-    ads_data: list,
-    dashboard_data: dict,
-    priority_prompt: str = "",
-    previous_notes: str = "",
-    model: str = "claude-sonnet-4-20250514",
-) -> dict:
-    """Backward-compatible wrapper for app.py.
-
-    Converts list of ad dicts to DataFrame, calls generate_strategic_opportunities,
-    and returns result in the format app.py expects:
-    {executive_summary, insights, learnings, hypotheses}
-    """
-    if not ads_data:
-        return {"executive_summary": "", "insights": [], "learnings": [], "hypotheses": []}
-
-    # Build DataFrame from ad dicts
-    rows = []
-    for ad in ads_data:
-        ext = ad.get("extraction") or ad.get("naming_extraction") or {}
-        root_cause = ext.get("root_cause", "")
-        if isinstance(root_cause, dict):
-            root_cause = root_cause.get("depth", "")
-        mechanism = ext.get("mechanism", "")
-        if isinstance(mechanism, dict):
-            mechanism = mechanism.get("ump", "")
-        rows.append({
-            "ad_name": ad.get("ad_name", ""),
-            "status": ad.get("status", "untested"),
-            "spend": float(ad.get("spend", 0)),
-            "roas": float(ad.get("roas", 0)),
-            "pain_point_category": ext.get("pain_point", "") or ext.get("pain_point_category", ""),
-            "root_cause_depth": root_cause,
-            "mechanism_depth": mechanism,
-            "ad_format": ext.get("ad_format", ""),
-            "avatar_category": ext.get("avatar", {}).get("behavior", "") if isinstance(ext.get("avatar"), dict) else ext.get("avatar", ""),
-            "awareness_level": ext.get("awareness_level", ""),
-            "hook_type": ext.get("hook_type", ""),
-        })
-    df = pd.DataFrame(rows)
-
-    winner_mask = df["status"] == "winner"
-    loser_mask = df["status"] == "loser"
-
-    # Infer priority from priority_prompt
-    priority = "General"
-    if "spend" in priority_prompt.lower():
-        priority = "Spend Volume"
-    elif "efficiency" in priority_prompt.lower():
-        priority = "Efficiency"
-    elif "angle" in priority_prompt.lower() or "new" in priority_prompt.lower():
-        priority = "New Angles"
-
-    opportunities = await generate_strategic_opportunities(
-        df, winner_mask, loser_mask, priority=priority, model=model
-    )
-
-    # Convert opportunities to analyze_patterns return format
-    real_opps = [o for o in opportunities if o.get("type") != "expensive_mistake"]
-    mistakes = [o for o in opportunities if o.get("type") == "expensive_mistake"]
-
-    insights = []
-    for opp in real_opps[:7]:
-        insights.append({
-            "title": opp.get("title", ""),
-            "detail": opp.get("evidence", "") + " " + opp.get("why_it_works", ""),
-            "winner_count": 0,
-            "loser_count": 0,
-            "avg_roas": 0,
-            "confidence": f"Score: {opp.get('score', 0)}/100",
-            "is_baseline": False,
-        })
-
-    learnings = [m.get("title", "") for m in mistakes[:3]]
-    hypotheses = [
-        opp.get("how_to_execute", "") if isinstance(opp.get("how_to_execute"), str)
-        else str(opp.get("how_to_execute", ""))
-        for opp in real_opps[:5]
-        if opp.get("how_to_execute")
-    ]
-
-    executive_summary = real_opps[0].get("evidence", "") if real_opps else ""
-
-    return {
-        "executive_summary": executive_summary,
-        "insights": insights,
-        "learnings": learnings,
-        "hypotheses": hypotheses,
-    }
+    return f"{title}\n{stats_line}"
