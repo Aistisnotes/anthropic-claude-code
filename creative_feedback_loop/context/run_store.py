@@ -26,10 +26,29 @@ class RunStore:
         self.store_path = store_path or DEFAULT_STORE_PATH
         self.store_path.mkdir(parents=True, exist_ok=True)
 
-    def save_run(self, run_id: str, data: dict[str, Any]) -> Path:
-        """Save a run's dashboard data to disk."""
+    def save_run(
+        self,
+        run_id: str,
+        data: dict[str, Any],
+        *,
+        brand_name: str = "",
+        date_range: str = "",
+    ) -> Path:
+        """Save a run's dashboard data to disk.
+
+        Args:
+            run_id: Unique run identifier.
+            data: Dashboard data dict.
+            brand_name: Brand name for filtering comparisons.
+            date_range: CSV date range string (e.g. "Mar 5-11") so we can
+                detect whether two runs cover the same period.
+        """
         data["run_id"] = run_id
         data["saved_at"] = datetime.utcnow().isoformat()
+        if brand_name:
+            data["brand_name"] = brand_name
+        if date_range:
+            data["date_range"] = date_range
         path = self.store_path / f"{run_id}.json"
         path.write_text(json.dumps(data, indent=2, default=str))
         return path

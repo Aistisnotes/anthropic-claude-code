@@ -273,27 +273,33 @@ def _match_opportunity_to_dimension(
 def format_opportunity_card(opp: dict[str, Any]) -> str:
     """Format a single opportunity as a display string.
 
-    If stats are verified (matched to real dashboard data), shows actual numbers.
-    If unverified (no dashboard match), shows "Based on Claude analysis" instead
-    of fabricated numbers.
+    If stats are verified (matched to real dashboard data) AND counts are non-zero,
+    shows actual numbers. If both winner_count and loser_count are 0, suppresses
+    the stats line entirely (BUG 5 — don't show "Winners: 0 | Losers: 0").
+    If unverified, shows score only or nothing.
     """
     title = opp.get("title", "Untitled Opportunity")
     score = opp.get("score", 0)
     stats_verified = opp.get("stats_verified", False)
+    winner_count = opp.get("winner_count") or 0
+    loser_count = opp.get("loser_count") or 0
 
-    if stats_verified and opp.get("winner_count") is not None:
-        winner_count = opp["winner_count"]
-        loser_count = opp.get("loser_count", 0)
-        avg_roas = opp.get("avg_roas", 0.0)
-        total_spend = opp.get("total_spend", 0)
+    if stats_verified and (winner_count > 0 or loser_count > 0):
+        avg_roas = opp.get("avg_roas", 0.0) or 0.0
+        total_spend = opp.get("total_spend", 0) or 0
         stats_line = f"Winners: {winner_count} | Losers: {loser_count} | Avg ROAS: {avg_roas:.2f}x"
         if total_spend:
             if total_spend >= 1000:
                 stats_line += f" | Spend: ${total_spend / 1000:.0f}k"
             else:
                 stats_line += f" | Spend: ${total_spend:.0f}"
-        stats_line += f" | Score: {score}/100"
+        if score:
+            stats_line += f" | Score: {score}/100"
+    elif score:
+        stats_line = f"Score: {score}/100"
     else:
-        stats_line = f"Based on Claude analysis | Score: {score}/100"
+        stats_line = ""
 
-    return f"{title}\n{stats_line}"
+    if stats_line:
+        return f"{title}\n{stats_line}"
+    return title
