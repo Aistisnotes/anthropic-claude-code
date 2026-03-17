@@ -40,6 +40,9 @@ def clean_markdown(text: str) -> str:
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)   # **bold**
     text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)  # ## headers
     text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'\1', text)  # *italic*
+    text = re.sub(r'\*{2,}', '', text)              # strip remaining ** runs (unbalanced)
+    text = text.replace('$', '&#36;')               # escape $ to prevent LaTeX rendering
+    text = re.sub(r'^\s*\d+\.\s*', '', text)        # strip leading "1. " numbering
     text = _LEAKED_HEADERS.sub('', text)
     return text.strip()
 
