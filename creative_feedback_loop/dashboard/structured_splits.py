@@ -12,6 +12,7 @@ least negative one with a warning.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -249,6 +250,23 @@ def render_dashboard(
         ("awareness_level", "Awareness Level"), ("hook_type", "Hook Type"),
     ]
 
+    # Tags that are campaign/editor metadata, not creative dimensions
+    _GARBAGE_SUBSTRINGS = ("copy", "coc", "pdp", "text #", "kandy", "ideation")
+    _CAMEL_RE = re.compile(r'^[A-Z][a-z]+(?:[A-Z][a-z]+)+$')
+
+    def _is_valid_value(val: str, key: str) -> bool:
+        if not val or len(val) < 2:
+            return False
+        vl = val.lower()
+        if vl in ("none", "unknown", "nan", ""):
+            return False
+        if any(g in vl for g in _GARBAGE_SUBSTRINGS):
+            return False
+        # Mechanism must be CamelCase compound (no spaces, dashes, special chars)
+        if key == "mechanism":
+            return bool(_CAMEL_RE.match(val))
+        return True
+
     dimensions = []
     for key, label in dimension_keys:
         all_values: set[str] = set()
@@ -256,9 +274,13 @@ def render_dashboard(
             ext = ad.get("extraction") or ad.get("naming_extraction") or {}
             val = ext.get(key, "") or ""
             if isinstance(val, dict):
+                # Skip empty dicts (all sub-fields empty)
+                sub_vals = [v for v in val.values() if isinstance(v, str) and v.strip()]
+                if not sub_vals:
+                    continue
                 val = val.get("depth", "") or val.get("ump", "") or ""
             val = str(val).strip()
-            if val and val.lower() not in ("none", "unknown", "nan", ""):
+            if _is_valid_value(val, key):
                 all_values.add(val)
         if not all_values:
             continue

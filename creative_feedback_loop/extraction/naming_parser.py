@@ -67,8 +67,17 @@ LEAD_TYPE_MAP = {
 }
 
 
+_STRUCTURED_PATTERN = re.compile(r"B\d{2,4}_V\d+", re.IGNORECASE)
+
+
 def parse_ad_naming(ad_name: str) -> dict[str, Any]:
     """Parse an ad name string to extract structured components.
+
+    Only parses names that follow the structured Sculptique convention:
+      B###_V#_... (e.g. B310_V1_LFS_...)
+
+    Unstructured names like "New 2 – copy_coc" or "Lymph - PDP – text #6"
+    return empty immediately to avoid garbage extractions.
 
     Args:
         ad_name: The ad name/ID string, typically underscore-delimited.
@@ -80,6 +89,11 @@ def parse_ad_naming(ad_name: str) -> dict[str, Any]:
         return _empty()
 
     name = ad_name.strip()
+
+    # Only parse structured names matching B###_V# pattern
+    if not _STRUCTURED_PATTERN.search(name):
+        return _empty()
+
     name_lower = name.lower()
 
     # Split by underscores and other delimiters
