@@ -88,6 +88,163 @@ def _html_text(text: str, font_size: int = 14) -> str:
     )
 
 
+# ── Response text splitting ────────────────────────────────────────────────────
+
+def _split_response_text(response_text: str) -> dict[str, str]:
+    """Split a raw Claude response into named sections.
+
+    Claude responses typically contain sections delimited by headers like:
+        EXECUTIVE SUMMARY / OPPORTUNITIES / LEARNINGS / HYPOTHESES
+
+    The LEARNINGS section MUST stop at the HYPOTHESES header. Previously the
+    regex captured everything after "LEARNINGS:" including hypotheses.
+
+    Returns a dict with keys: executive_summary, opportunities, learnings,
+    hypotheses — each containing ONLY the text for that section.
+    """
+    if not response_text:
+        return {"executive_summary": "", "opportunities": "", "learnings": "", "hypotheses": ""}
+
+    text = response_text.strip()
+
+    # Section header patterns (case-insensitive, optional markdown ##)
+    section_pattern = re.compile(
+        r'(?:^|\n)\s*(?:#{1,3}\s*)?'
+        r'(EXECUTIVE\s+SUMMARY|OPPORTUNITIES|LEARNINGS|HYPOTHESES)'
+        r'\s*:?\s*\n',
+        re.IGNORECASE,
+    )
+
+    # Find all section boundaries
+    matches = list(section_pattern.finditer(text))
+
+    sections: dict[str, str] = {
+        "executive_summary": "",
+        "opportunities": "",
+        "learnings": "",
+        "hypotheses": "",
+    }
+
+    if not matches:
+        # No section headers — treat entire text as executive summary
+        sections["executive_summary"] = text
+        return sections
+
+    # Extract text between section headers
+    for i, match in enumerate(matches):
+        section_name = match.group(1).lower().replace(" ", "_")
+        # Normalize to our keys
+        if "executive" in section_name or "summary" in section_name:
+            key = "executive_summary"
+        elif "opportunit" in section_name:
+            key = "opportunities"
+        elif "learning" in section_name:
+            key = "learnings"
+        elif "hypothes" in section_name:
+            key = "hypotheses"
+        else:
+            continue
+
+        start = match.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        sections[key] = text[start:end].strip()
+
+    # If there's text before the first section header, use as exec summary
+    if matches and matches[0].start() > 0:
+        preamble = text[:matches[0].start()].strip()
+        if preamble and not sections["executive_summary"]:
+            sections["executive_summary"] = preamble
+
+    return sections
+
+
+def prepare_pattern_results(pattern_results: dict[str, Any]) -> dict[str, Any]:
+    """Normalize pattern_results to prevent duplicate content.
+
+    If pattern_results has response_text but missing or mixed
+    learnings/hypotheses, splits the response text into proper sections.
+    Ensures:
+      - learnings list contains ONLY learnings (no hypotheses)
+      - hypotheses list contains ONLY hypotheses
+      - executive_summary is extracted if not already set
+      - response_text is kept for opportunity parsing but NEVER displayed
+
+    Args:
+        pattern_results: Raw pattern results dict.
+
+    Returns:
+        Cleaned pattern_results dict with properly separated sections.
+    """
+    result = dict(pattern_results)  # shallow copy
+    response_text = result.get("response_text", "")
+
+    if not response_text:
+        return result
+
+    # Split the response text into sections
+    split = _split_response_text(response_text)
+
+    # Only use split sections if the caller didn't provide them already
+    if not result.get("executive_summary") and split["executive_summary"]:
+        result["executive_summary"] = split["executive_summary"]
+
+    # For learnings: if caller provided them, filter out any that look like
+    # hypotheses (dict with "Root cause" or "Mechanism" keys). If not provided,
+    # extract from split text.
+    raw_learnings = result.get("learnings", [])
+    if raw_learnings:
+        # Filter out hypotheses that leaked into learnings
+        clean_learnings = []
+        leaked_hypotheses = []
+        for item in raw_learnings:
+            if isinstance(item, dict) and (
+                "Root cause" in item or "root_cause" in item
+                or "Mechanism" in item or "mechanism" in item
+                or "Test approach" in item or "test_approach" in item
+            ):
+                leaked_hypotheses.append(item)
+            elif isinstance(item, str) and re.match(
+                r'^\s*(?:#{1,3}\s*)?HYPOTHES', item, re.IGNORECASE,
+            ):
+                # This is a hypotheses header that leaked into learnings
+                continue
+            else:
+                clean_learnings.append(item)
+        result["learnings"] = clean_learnings
+        # Add leaked hypotheses to the hypotheses list
+        if leaked_hypotheses:
+            existing = result.get("hypotheses", [])
+            result["hypotheses"] = existing + leaked_hypotheses
+    elif split["learnings"]:
+        # Extract bullet items from the learnings text
+        result["learnings"] = _extract_bullet_items(split["learnings"])
+
+    # For hypotheses: use caller-provided if available, else extract from split
+    if not result.get("hypotheses") and split["hypotheses"]:
+        result["hypotheses"] = _extract_bullet_items(split["hypotheses"])
+
+    # Strip the opportunities section from response_text so analyze_patterns
+    # only sees the opportunities part (not learnings/hypotheses)
+    if split["opportunities"]:
+        result["response_text"] = split["opportunities"]
+
+    return result
+
+
+def _extract_bullet_items(text: str) -> list[str]:
+    """Extract individual bullet/numbered items from a text block."""
+    if not text:
+        return []
+    items = []
+    # Split on numbered items (1. 2. 3.) or bullet points (- *)
+    parts = re.split(r'\n\s*(?:\d+[.)]\s+|[-*]\s+)', text)
+    for part in parts:
+        part = part.strip()
+        if part and len(part) > 10:  # Skip empty or trivially short items
+            items.append(part)
+    return items if items else [text.strip()]
+
+
 # ── Streamlit rendering ──────────────────────────────────────────────────────
 
 def render_streamlit(
@@ -114,6 +271,9 @@ def render_streamlit(
             comparison logic.
     """
     import streamlit as st
+
+    # ── Normalize: split response_text, dedup learnings/hypotheses ─────
+    pattern_results = prepare_pattern_results(pattern_results)
 
     # ── 1. Executive Summary (1 paragraph ONLY) ──────────────────────────
     summary = pattern_results.get("executive_summary", "")
@@ -342,6 +502,9 @@ def render_full_output(
         Structured output dict with sections ready for display.
     """
     output: dict[str, Any] = {"sections": []}
+
+    # ── Normalize: split response_text, dedup learnings/hypotheses ─────
+    pattern_results = prepare_pattern_results(pattern_results)
 
     # ── 1. Executive Summary ──────────────────────────────────────────────
     summary = pattern_results.get("executive_summary", "")
