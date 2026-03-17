@@ -76,45 +76,13 @@ def _parse_opportunities_from_text(text: str) -> list[dict[str, Any]]:
 def _extract_fields_from_section(section: str) -> dict[str, Any]:
     """Extract structured fields from an opportunity section.
 
-    Parses patterns like:
-        "8 winner ads", "12 loser ads", "1.42x ROAS", "Score: 85/100"
-        "Winners: 8", "Losers: 12", "Avg ROAS: 1.42x"
+    NOTE: We do NOT parse winner_count, loser_count, or avg_roas from Claude's
+    text because Claude often generates approximate or inflated numbers.
+    These stats are populated later from ACTUAL dashboard data in
+    _enrich_from_dashboard(). If no dashboard match is found, we show
+    "Based on Claude analysis" instead of fake numbers.
     """
     opp: dict[str, Any] = {"text": section.strip()}
-
-    # Parse winner count: "8 winner ads", "Winners: 8", "8 winners"
-    winner_patterns = [
-        r'(\d+)\s+winner\s*(?:ads?)?',
-        r'[Ww]inners?[:\s]+(\d+)',
-    ]
-    for pattern in winner_patterns:
-        m = re.search(pattern, section, re.IGNORECASE)
-        if m:
-            opp["winner_count"] = int(m.group(1))
-            break
-
-    # Parse loser count: "12 loser ads", "Losers: 12", "12 losers"
-    loser_patterns = [
-        r'(\d+)\s+loser\s*(?:ads?)?',
-        r'[Ll]osers?[:\s]+(\d+)',
-    ]
-    for pattern in loser_patterns:
-        m = re.search(pattern, section, re.IGNORECASE)
-        if m:
-            opp["loser_count"] = int(m.group(1))
-            break
-
-    # Parse ROAS: "1.42x ROAS", "ROAS: 1.42x", "Avg ROAS: 1.42x"
-    roas_patterns = [
-        r'(\d+\.?\d*)\s*x\s*ROAS',
-        r'ROAS[:\s]+(\d+\.?\d*)\s*x?',
-        r'[Aa]vg\s*ROAS[:\s]+(\d+\.?\d*)',
-    ]
-    for pattern in roas_patterns:
-        m = re.search(pattern, section, re.IGNORECASE)
-        if m:
-            opp["avg_roas"] = float(m.group(1))
-            break
 
     # Parse score: "Score: 85/100", "85/100"
     score_match = re.search(r'[Ss]core[:\s]+(\d+)\s*/\s*100', section)
@@ -128,12 +96,13 @@ def _extract_fields_from_section(section: str) -> dict[str, Any]:
     if title_match:
         opp["title"] = re.sub(r'[#*]', '', title_match.group(1)).strip()
 
-    # Ensure defaults for missing fields
-    opp.setdefault("winner_count", 0)
-    opp.setdefault("loser_count", 0)
-    opp.setdefault("avg_roas", 0.0)
+    # Stats default to None (unverified) — will be filled from dashboard data
+    opp.setdefault("winner_count", None)
+    opp.setdefault("loser_count", None)
+    opp.setdefault("avg_roas", None)
     opp.setdefault("score", 0)
     opp.setdefault("title", "Untitled Opportunity")
+    opp["stats_verified"] = False
 
     return opp
 
@@ -167,20 +136,111 @@ def _enrich_from_dashboard(
 
     avg_roas = sum(roas_values) / len(roas_values) if roas_values else 0.0
 
-    # Also try to match opportunities to specific dimensions by keyword
+    # Match opportunities to specific dimensions by keyword — use REAL data only
     for opp in opportunities:
-        # If fields are still at default 0, fill from dashboard aggregates
-        if opp.get("winner_count", 0) == 0 and total_winners > 0:
-            # Try dimension-specific matching first
+        if opp.get("winner_count") is None:
             matched = _match_opportunity_to_dimension(opp, dimensions)
             if matched:
-                opp["winner_count"] = matched.get("winner_count", total_winners)
-                opp["loser_count"] = matched.get("loser_count", total_losers)
-                opp["avg_roas"] = matched.get("avg_roas", avg_roas)
+                opp["winner_count"] = matched.get("winner_count", 0)
+                opp["loser_count"] = matched.get("loser_count", 0)
+                opp["avg_roas"] = matched.get("avg_roas", 0.0)
+                opp["total_spend"] = matched.get("total_spend", 0)
+                opp["stats_verified"] = True
             else:
-                opp["winner_count"] = total_winners
-                opp["loser_count"] = total_losers
-                opp["avg_roas"] = round(avg_roas, 2)
+                # No match — leave as unverified, don't fill with aggregates
+                opp["winner_count"] = None
+                opp["loser_count"] = None
+                opp["avg_roas"] = None
+                opp["stats_verified"] = False
+
+
+def build_spend_context(
+    ads: list[dict[str, Any]],
+    parsed_names: list[dict[str, Any]] | None = None,
+) -> str:
+    """Build spend aggregation context for the Claude pattern analysis prompt.
+
+    Groups ads by pain point, mechanism, format, and awareness level, then
+    calculates total spend + avg ROAS per group. Includes top 3 ads by spend.
+
+    Args:
+        ads: List of ad dicts with at least 'name', 'spend', 'roas' fields.
+        parsed_names: Optional pre-parsed naming results (from naming_parser).
+
+    Returns:
+        Formatted text block to include in the Claude prompt.
+    """
+    if not ads:
+        return ""
+
+    # If no pre-parsed names, try to parse them
+    if parsed_names is None:
+        try:
+            from creative_feedback_loop.naming_parser import parse_ad_name
+            parsed_names = [parse_ad_name(ad.get("name", "")) for ad in ads]
+        except ImportError:
+            parsed_names = [{}] * len(ads)
+
+    # Group ads by key dimensions
+    groups: dict[str, dict[str, list[dict[str, Any]]]] = {
+        "Pain Point": {},
+        "Mechanism (Problem)": {},
+        "Ad Format": {},
+        "Awareness Level": {},
+    }
+
+    for ad, parsed in zip(ads, parsed_names):
+        spend = ad.get("spend", 0) or 0
+        roas = ad.get("roas", 0) or 0
+        name = ad.get("name", "")
+        entry = {"name": name, "spend": spend, "roas": roas}
+
+        pp = parsed.get("pain_point", "")
+        if pp:
+            groups["Pain Point"].setdefault(pp, []).append(entry)
+
+        mech = parsed.get("mechanism_ump", "")
+        if mech:
+            groups["Mechanism (Problem)"].setdefault(mech, []).append(entry)
+
+        fmt = parsed.get("ad_format", "")
+        if fmt:
+            groups["Ad Format"].setdefault(fmt, []).append(entry)
+
+        aw = parsed.get("awareness_level", "")
+        if aw:
+            groups["Awareness Level"].setdefault(aw, []).append(entry)
+
+    # Build text
+    lines = ["SPEND DATA BY DIMENSION (use these EXACT dollar amounts in your analysis):", ""]
+
+    for dim_name, values in groups.items():
+        if not values:
+            continue
+        lines.append(f"  {dim_name}:")
+        for val_name, val_ads in sorted(values.items(), key=lambda x: -sum(a["spend"] for a in x[1])):
+            total_spend = sum(a["spend"] for a in val_ads)
+            roas_vals = [a["roas"] for a in val_ads if a["roas"] > 0]
+            avg_roas = sum(roas_vals) / len(roas_vals) if roas_vals else 0
+            count = len(val_ads)
+
+            if total_spend >= 1000:
+                spend_str = f"${total_spend / 1000:.0f}k"
+            else:
+                spend_str = f"${total_spend:.0f}"
+
+            lines.append(f"    {val_name}: {count} ads, {spend_str} total spend, {avg_roas:.2f}x avg ROAS")
+
+            # Top 3 ads by spend
+            top_ads = sorted(val_ads, key=lambda a: a["spend"], reverse=True)[:3]
+            for ta in top_ads:
+                ta_spend = f"${ta['spend'] / 1000:.0f}k" if ta["spend"] >= 1000 else f"${ta['spend']:.0f}"
+                lines.append(f"      - {ta['name']} ({ta_spend}, {ta['roas']:.2f}x)")
+
+        lines.append("")
+
+    lines.append("IMPORTANT: Every opportunity MUST include dollar amounts. Reference specific ad names with their spend and ROAS.")
+    return "\n".join(lines)
 
 
 def _match_opportunity_to_dimension(
@@ -213,20 +273,27 @@ def _match_opportunity_to_dimension(
 def format_opportunity_card(opp: dict[str, Any]) -> str:
     """Format a single opportunity as a display string.
 
-    Output:
-        Title of Opportunity
-        Winners: 8 | Losers: 12 | Avg ROAS: 1.42x | Score: 85/100
-        [opportunity text]
+    If stats are verified (matched to real dashboard data), shows actual numbers.
+    If unverified (no dashboard match), shows "Based on Claude analysis" instead
+    of fabricated numbers.
     """
     title = opp.get("title", "Untitled Opportunity")
-    winner_count = opp.get("winner_count", 0)
-    loser_count = opp.get("loser_count", 0)
-    avg_roas = opp.get("avg_roas", 0.0)
     score = opp.get("score", 0)
+    stats_verified = opp.get("stats_verified", False)
 
-    stats_line = (
-        f"Winners: {winner_count} | Losers: {loser_count} | "
-        f"Avg ROAS: {avg_roas:.2f}x | Score: {score}/100"
-    )
+    if stats_verified and opp.get("winner_count") is not None:
+        winner_count = opp["winner_count"]
+        loser_count = opp.get("loser_count", 0)
+        avg_roas = opp.get("avg_roas", 0.0)
+        total_spend = opp.get("total_spend", 0)
+        stats_line = f"Winners: {winner_count} | Losers: {loser_count} | Avg ROAS: {avg_roas:.2f}x"
+        if total_spend:
+            if total_spend >= 1000:
+                stats_line += f" | Spend: ${total_spend / 1000:.0f}k"
+            else:
+                stats_line += f" | Spend: ${total_spend:.0f}"
+        stats_line += f" | Score: {score}/100"
+    else:
+        stats_line = f"Based on Claude analysis | Score: {score}/100"
 
     return f"{title}\n{stats_line}"

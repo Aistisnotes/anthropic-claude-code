@@ -132,14 +132,18 @@ def render_dashboard(
     for dim in dimensions:
         for v in dim.get("values", []):
             delta = v.get("winner_pct", 0) - v.get("loser_pct", 0)
+            avg_roas = v.get("avg_roas", 0)
+            icon, level, _ = _get_signal_level(delta, avg_roas)
             all_signals.append({
                 "dimension": dim.get("name", "Unknown"),
                 "value": v.get("value", "Unknown"),
                 "winner_pct": v.get("winner_pct", 0),
                 "loser_pct": v.get("loser_pct", 0),
                 "delta": delta,
-                "avg_roas": v.get("avg_roas", 0),
-                "is_positive": delta > 0,
+                "avg_roas": avg_roas,
+                "icon": icon,
+                "level": level,
+                "is_positive": level in ("HIGH", "MEDIUM"),
             })
 
     # Sort all signals by delta descending
@@ -153,18 +157,40 @@ def render_dashboard(
     }
 
 
+def _get_signal_level(delta: float, avg_roas: float) -> tuple[str, str, str]:
+    """Determine signal level based on delta AND ROAS.
+
+    Returns (icon, level, suffix) tuple.
+
+    Rules:
+        🟢 HIGH:     delta > +15% AND avg ROAS >= 1.0
+        🟡 MEDIUM:   delta > +10% AND avg ROAS >= 1.0
+                      OR delta > +15% but ROAS < 1.0 (caution — losing money)
+        ⚪ BASELINE:  delta <= +10% (insufficient signal)
+        🔴 AVOID:    negative delta OR avg ROAS < 0.8
+    """
+    if delta < 0 or avg_roas < 0.8:
+        return "🔴", "AVOID", " (AVOID)"
+    if delta > 15 and avg_roas >= 1.0:
+        return "🟢", "HIGH", ""
+    if (delta > 10 and avg_roas >= 1.0) or (delta > 15 and avg_roas < 1.0):
+        return "🟡", "MEDIUM", " (CAUTION)"
+    return "⚪", "BASELINE", ""
+
+
 def _format_card(card: dict[str, Any]) -> dict[str, Any]:
     """Format a summary card for display.
 
-    Produces output like:
-        🟢 Pain Point: Kidney | Winners: 55% | Losers: 15% | Delta: +40% | 1.45x ROAS
-        🔴 Pain Point: Thyroid | Winners: 8% | Losers: 20% | Delta: -12% | 0.73x ROAS (AVOID)
+    Signal color is determined by BOTH delta AND average ROAS:
+        🟢 HIGH:     delta > +15% AND avg ROAS >= 1.0
+        🟡 MEDIUM:   delta > +10% AND avg ROAS >= 1.0, or high delta but ROAS < 1.0
+        ⚪ BASELINE:  delta <= +10%
+        🔴 AVOID:    negative delta OR avg ROAS < 0.8
     """
-    is_positive = card.get("is_positive", False)
-    icon = "🟢" if is_positive else "🔴"
     delta = card.get("delta", 0)
+    avg_roas = card.get("avg_roas", 0)
+    icon, level, suffix = _get_signal_level(delta, avg_roas)
     delta_str = f"+{delta:.0f}%" if delta > 0 else f"{delta:.0f}%"
-    suffix = "" if is_positive else " (AVOID)"
     warning = " ⚠️ No positive signal found" if card.get("is_warning") else ""
 
     display_text = (
@@ -178,6 +204,7 @@ def _format_card(card: dict[str, Any]) -> dict[str, Any]:
     return {
         **card,
         "icon": icon,
+        "level": level,
         "delta_str": delta_str,
         "display_text": display_text,
     }
