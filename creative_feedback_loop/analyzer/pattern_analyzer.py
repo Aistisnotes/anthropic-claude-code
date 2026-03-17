@@ -393,7 +393,10 @@ HYPOTHESES:
     executive_summary = _extract_section(response_text, "EXECUTIVE SUMMARY")
     opps_text = _extract_section(response_text, "OPPORTUNITIES")
 
-    raw_opps = _parse_opportunities_from_text(opps_text or response_text)
+    if not opps_text:
+        # Fall back to everything before LEARNINGS/HYPOTHESES headers, not the full response
+        opps_text = re.split(r'\n(?:LEARNINGS|HYPOTHESES|INSIGHTS):', response_text, maxsplit=1, flags=re.IGNORECASE)[0]
+    raw_opps = _parse_opportunities_from_text(opps_text)
     if dashboard_data:
         _enrich_from_dashboard(raw_opps, dashboard_data)
 
