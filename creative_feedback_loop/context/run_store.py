@@ -26,10 +26,29 @@ class RunStore:
         self.store_path = store_path or DEFAULT_STORE_PATH
         self.store_path.mkdir(parents=True, exist_ok=True)
 
-    def save_run(self, run_id: str, data: dict[str, Any]) -> Path:
-        """Save a run's dashboard data to disk."""
+    def save_run(
+        self,
+        run_id: str,
+        data: dict[str, Any],
+        *,
+        brand_name: str = "",
+        date_range: str = "",
+    ) -> Path:
+        """Save a run's dashboard data to disk.
+
+        Args:
+            run_id: Unique run identifier.
+            data: Dashboard data dict.
+            brand_name: Brand name for filtering comparisons.
+            date_range: CSV date range string (e.g. "Mar 5-11") so we can
+                detect whether two runs cover the same period.
+        """
         data["run_id"] = run_id
         data["saved_at"] = datetime.utcnow().isoformat()
+        if brand_name:
+            data["brand_name"] = brand_name
+        if date_range:
+            data["date_range"] = date_range
         path = self.store_path / f"{run_id}.json"
         path.write_text(json.dumps(data, indent=2, default=str))
         return path
@@ -249,6 +268,11 @@ def save_run(
 ) -> Path:
     """Save a run to disk and return its path. Called by app.py."""
     run_id = f"{brand_name.lower().replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    date_range = ""
+    if csv_start_date and csv_end_date:
+        date_range = f"{csv_start_date} to {csv_end_date}"
+    elif csv_start_date:
+        date_range = f"from {csv_start_date}"
     data = {
         "brand_name": brand_name,
         "run_timestamp": datetime.utcnow().isoformat(),
@@ -262,7 +286,7 @@ def save_run(
         "operator_notes": operator_notes,
         "pattern_results": pattern_results or {},
     }
-    return _store.save_run(run_id, data)
+    return _store.save_run(run_id, data, brand_name=brand_name, date_range=date_range)
 
 
 def load_previous_run(brand_name: str) -> dict[str, Any] | None:
@@ -275,21 +299,34 @@ def load_previous_run(brand_name: str) -> dict[str, Any] | None:
     return None
 
 
-def render_comparison(  # type: ignore[misc]  # shadows module-level def
+def render_comparison(
     current: dict[str, Any],
     previous: dict[str, Any],
     prev_date: str = "",
 ) -> None:
-    """Compare two dashboard runs and render diff to Streamlit. Called by app.py."""
+    """Compare two runs and render diff to Streamlit. Called by app.py.
+
+    Skips dimensions where all deltas are 0 (bug 2 fix).
+    Only shows comparison when date ranges differ.
+    """
     import streamlit as st
+
+    # Skip if date ranges are the same (same CSV re-uploaded)
+    curr_range = current.get("date_range", "")
+    prev_range = previous.get("date_range", "")
+    if curr_range and prev_range and curr_range == prev_range:
+        return
 
     comparison = _render_comparison_pure(current, previous)
 
-    title_current = comparison.get("current_title", "Current")
-    title_previous = comparison.get("previous_title", f"Previous ({prev_date})" if prev_date else "Previous")
+    curr_title = current.get("title", "Current Run")
+    prev_label = f"Previous ({prev_date})" if prev_date else "Previous Run"
+    if curr_range and prev_range:
+        curr_title = f"This Run ({curr_range})"
+        prev_label = f"Previous Run ({prev_range})"
 
     st.markdown(
-        f'<h3 style="color:#fafafa;">Run Comparison: {title_current} vs {title_previous}</h3>',
+        f'<h3 style="color:#fafafa;">Run Comparison: {curr_title} vs {prev_label}</h3>',
         unsafe_allow_html=True,
     )
 
@@ -301,29 +338,28 @@ def render_comparison(  # type: ignore[misc]  # shadows module-level def
     for diff in diffs:
         dim = diff.get("dimension", "Unknown")
         if diff.get("is_new"):
-            st.markdown(f'<p style="color:#888; font-size:12px;">NEW dimension: {dim}</p>', unsafe_allow_html=True)
+            st.markdown(f'<p style="color:#888; font-size:12px;">NEW: {dim}</p>', unsafe_allow_html=True)
             continue
         changes = diff.get("value_changes", [])
-        if not changes:
+        # Skip dimension if all deltas are 0
+        if not any(c.get("delta_change", 0) != 0 for c in changes):
             continue
         with st.expander(f"{dim}", expanded=False):
             for change in changes:
+                if change.get("delta_change", 0) == 0 and not change.get("is_new") and not change.get("is_removed"):
+                    continue
                 val = change.get("value", "?")
                 dc = change.get("delta_change", 0)
                 rc = change.get("roas_change", 0)
                 if change.get("is_new"):
-                    status = "NEW"
-                    color = "#888"
+                    status, color = "NEW", "#888"
                 elif change.get("is_removed"):
-                    status = "REMOVED"
-                    color = "#888"
+                    status, color = "REMOVED", "#888"
                 else:
-                    arrow = "↑" if dc > 0 else "↓" if dc < 0 else "→"
+                    arrow = "↑" if dc > 0 else "↓"
                     status = f"{arrow} {dc:+.0f}% delta | ROAS {rc:+.2f}x"
                     color = "#27ae60" if dc > 0 else "#c0392b"
                 st.markdown(
                     f'<p style="color:{color}; font-size:13px; margin:2px 0;">• {val}: {status}</p>',
                     unsafe_allow_html=True,
                 )
-
-

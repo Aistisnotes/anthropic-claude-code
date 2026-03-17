@@ -273,30 +273,36 @@ def _match_opportunity_to_dimension(
 def format_opportunity_card(opp: dict[str, Any]) -> str:
     """Format a single opportunity as a display string.
 
-    If stats are verified (matched to real dashboard data), shows actual numbers.
-    If unverified (no dashboard match), shows "Based on Claude analysis" instead
-    of fabricated numbers.
+    If stats are verified (matched to real dashboard data) AND counts are non-zero,
+    shows actual numbers. If both winner_count and loser_count are 0, suppresses
+    the stats line entirely (BUG 5 — don't show "Winners: 0 | Losers: 0").
+    If unverified, shows score only or nothing.
     """
     title = opp.get("title", "Untitled Opportunity")
     score = opp.get("score", 0)
     stats_verified = opp.get("stats_verified", False)
+    winner_count = opp.get("winner_count") or 0
+    loser_count = opp.get("loser_count") or 0
 
-    if stats_verified and opp.get("winner_count") is not None:
-        winner_count = opp["winner_count"]
-        loser_count = opp.get("loser_count", 0)
-        avg_roas = opp.get("avg_roas", 0.0)
-        total_spend = opp.get("total_spend", 0)
+    if stats_verified and (winner_count > 0 or loser_count > 0):
+        avg_roas = opp.get("avg_roas", 0.0) or 0.0
+        total_spend = opp.get("total_spend", 0) or 0
         stats_line = f"Winners: {winner_count} | Losers: {loser_count} | Avg ROAS: {avg_roas:.2f}x"
         if total_spend:
             if total_spend >= 1000:
                 stats_line += f" | Spend: ${total_spend / 1000:.0f}k"
             else:
                 stats_line += f" | Spend: ${total_spend:.0f}"
-        stats_line += f" | Score: {score}/100"
+        if score:
+            stats_line += f" | Score: {score}/100"
+    elif score:
+        stats_line = f"Score: {score}/100"
     else:
-        stats_line = f"Based on Claude analysis | Score: {score}/100"
+        stats_line = ""
 
-    return f"{title}\n{stats_line}"
+    if stats_line:
+        return f"{title}\n{stats_line}"
+    return title
 
 
 # ── Backward-compatible async wrapper for app.py ──────────────────────────────
@@ -308,8 +314,9 @@ async def analyze_patterns(  # noqa: RUF029
     previous_notes: str = "",
     model: str = "claude-sonnet-4-20250514",
 ) -> dict:
-    """Async wrapper called by app.py. Calls Claude, returns {executive_summary, insights, learnings, hypotheses}."""
+    """Async wrapper called by app.py. Returns {executive_summary, insights, learnings, hypotheses}."""
     import anthropic
+    import re
 
     if not ads_data:
         return {"executive_summary": "", "insights": [], "learnings": [], "hypotheses": []}
@@ -366,8 +373,6 @@ HYPOTHESES:
     )
     response_text = message.content[0].text
 
-    import re
-
     def _extract_section(text: str, header: str) -> str:
         m = re.search(rf"{header}:?\s*\n(.*?)(?=\n[A-Z ]+:|\Z)", text, re.DOTALL | re.IGNORECASE)
         return m.group(1).strip() if m else ""
@@ -386,13 +391,22 @@ HYPOTHESES:
     insights = []
     for opp in raw_opps:
         verified = opp.get("stats_verified", False)
+        w = opp.get("winner_count")
+        l = opp.get("loser_count")
+        r = opp.get("avg_roas")
+        # Bug 5 fix: suppress zeros — only show stats if verified and non-zero
+        if verified and (w or l):
+            confidence = "Verified"
+        else:
+            w = l = r = None
+            confidence = "Based on Claude analysis"
         insights.append({
             "title": opp.get("title", ""),
             "detail": opp.get("text", ""),
-            "winner_count": opp.get("winner_count") if verified else 0,
-            "loser_count": opp.get("loser_count") if verified else 0,
-            "avg_roas": opp.get("avg_roas") if verified else 0.0,
-            "confidence": "Verified" if verified else "Based on Claude analysis",
+            "winner_count": w,
+            "loser_count": l,
+            "avg_roas": r,
+            "confidence": confidence,
             "is_baseline": False,
         })
 
