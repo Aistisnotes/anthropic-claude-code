@@ -327,42 +327,92 @@ async def analyze_patterns(  # noqa: RUF029
 
     def _ad_line(ad: dict) -> str:
         ext = ad.get("extraction") or ad.get("naming_extraction") or {}
+        mech = ext.get("mechanism", {})
+        if isinstance(mech, dict):
+            mech = mech.get("ump", "") or ""
+        rc = ext.get("root_cause", {})
+        if isinstance(rc, dict):
+            rc = rc.get("depth", "") or ""
+        avatar = ext.get("avatar", {})
+        if isinstance(avatar, dict):
+            avatar = avatar.get("behavior", "") or ""
         return (
-            f"- {ad.get('ad_name', '')} | spend=${ad.get('spend', 0):.0f} "
+            f"- {ad.get('ad_name', '')} | spend=&#36;{ad.get('spend', 0):.0f} "
             f"roas={ad.get('roas', 0):.2f} | "
-            f"pain={ext.get('pain_point','?')} mechanism={ext.get('mechanism','?')} "
-            f"format={ext.get('ad_format','?')}"
+            f"pain={ext.get('pain_point','?')} mech={mech or '?'} "
+            f"format={ext.get('ad_format','?')} awareness={ext.get('awareness_level','?')} "
+            f"root_cause={rc or '?'} avatar={avatar or '?'}"
         )
 
     spend_ctx = build_spend_context(ads_data)
+    winner_spend = sum(float(a.get("spend", 0)) for a in winners)
+    loser_spend = sum(float(a.get("spend", 0)) for a in losers)
 
-    prompt = f"""You are a creative strategist analyzing Meta ad performance data.
+    prompt = f"""You are a creative strategist analyzing Meta ad performance data for a direct response brand.
 
-WINNERS ({len(winners)} ads):
-{chr(10).join(_ad_line(a) for a in winners[:20]) or 'none'}
+YOUR TASK: Find 5-7 multi-dimensional patterns that connect 2-3+ dimensions from the data. Single-dimension insights are BANNED.
 
-LOSERS ({len(losers)} ads):
-{chr(10).join(_ad_line(a) for a in losers[:20]) or 'none'}
+DATA:
+WINNERS ({len(winners)} ads, ${winner_spend:,.0f} total spend):
+{chr(10).join(_ad_line(a) for a in winners[:25]) or 'none'}
+
+LOSERS ({len(losers)} ads, ${loser_spend:,.0f} total spend):
+{chr(10).join(_ad_line(a) for a in losers[:25]) or 'none'}
 
 UNTESTED: {len(untested)} ads
 
+SPEND CONTEXT:
 {spend_ctx}
+
 {f'OPERATOR PRIORITIES: {priority_prompt}' if priority_prompt else ''}
 {f'PREVIOUS NOTES: {previous_notes}' if previous_notes else ''}
 
-Respond with exactly these sections:
+RULES FOR INSIGHTS:
+1. EVERY insight MUST connect 2-3+ dimensions (pain point + awareness, mechanism + format, avatar + pain point, etc.)
+2. EVERY insight MUST include spend and ROAS data for BOTH winning and losing sides
+3. EVERY insight MUST name specific ads with their batch numbers, spend, and ROAS
+4. Show CONTRAST: "Pattern A wins in context B but loses in context C"
+5. Prioritize volume-efficiency ratio: high spend + good ROAS = strongest signal. Low spend = weak signal regardless of ROAS.
+6. If a pattern has high spend tolerance AND efficiency, suggest expanding it to other dimensions.
+7. "Scale this" is NOT an insight. Show WHY it works by connecting dimensions.
+
+BANNED INSIGHTS (too shallow):
+- "Scale kidney campaigns" (single dimension)
+- "Problem Aware outperforms Solution Aware" (single dimension)
+- "Long Form Static works well" (single dimension, no contrast)
+- Any insight without specific ad names and spend data
+
+GOOD INSIGHT EXAMPLE:
+"All 6 kidney winners use Problem Aware + RenalLymphaticClogged mechanism + Long Form Static (combined $183k, 1.32x ROAS). All 4 thyroid losers use the SAME lymphatic mechanism but with Solution Aware positioning ($15k, 0.91x). The mechanism works — the awareness level kills it. Test Problem Aware on thyroid scripts."
+
+For each insight provide:
+- A clear title (max 15 words)
+- The multi-dimensional pattern with specific data
+- Confidence: HIGH ($50k+ spend proof) / MEDIUM ($10-50k) / LOW (<$10k)
+
+For your top 3 insights, also suggest 2 expansion opportunities each — how could this winning pattern be applied to OTHER dimension values not yet tested?
+
+Respond with:
 
 EXECUTIVE SUMMARY:
-[2-3 sentence summary]
+[2-3 sentences connecting the biggest patterns]
 
 OPPORTUNITIES:
-[3-5 specific pattern opportunities]
+1. [Title]
+[Pattern detail with spend, ROAS, specific ads, contrast between winners and losers]
+Confidence: [HIGH/MEDIUM/LOW] — [reason]
+Expansion: [2 expansion ideas]
+
+2. [Title]
+...
 
 LEARNINGS:
-[5-7 concrete learnings with evidence]
+1. [Learning with specific data: X ads, $Y spend, Z ROAS, hit rate A/B]
+2. ...
 
 HYPOTHESES:
-[3-5 testable hypotheses]
+1. [What to test] — Expected: [outcome with numbers] — Based on: [specific winning ads] — Risk: [HIGH/MEDIUM/LOW]
+2. ...
 """
 
     client = anthropic.Anthropic()
