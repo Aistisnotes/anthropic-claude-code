@@ -182,36 +182,41 @@ operator_notes = st.sidebar.text_area(
 # ── Helper Functions ─────────────────────────────────────────────────────────
 
 def load_csv(file) -> pd.DataFrame:
-    """Load and normalize CSV file."""
-    df = pd.read_csv(file)
+    """Load, aggregate by ad name, and normalize CSV file.
 
-    # Normalize column names
-    df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
+    Meta CSVs have one row per ad per ad set. Without aggregation the same ad
+    appears 20+ times with tiny per-row spend and gets classified as untested.
+    load_and_aggregate_csv groups rows by ad name and sums spend/revenue,
+    producing blended ROAS before any classification happens (FIX 1).
+    """
+    import tempfile, os as _os
+    from creative_feedback_loop.csv_aggregator import load_and_aggregate_csv
 
-    # Ensure required columns exist
-    required = ["ad_name"]
-    for col in required:
-        if col not in df.columns:
-            # Try common alternatives
-            alternatives = {
-                "ad_name": ["name", "ad", "creative", "creative_name", "adname"],
-            }
-            for alt in alternatives.get(col, []):
-                if alt in df.columns:
-                    df = df.rename(columns={alt: col})
-                    break
+    # Save uploaded file to temp path (csv_aggregator needs a file path)
+    raw_bytes = file.getvalue() if hasattr(file, "getvalue") else file.read()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as _tmp:
+        _tmp.write(raw_bytes)
+        _tmp_path = _tmp.name
 
-    # Ensure numeric columns
-    for col in ["spend", "revenue", "roas", "impressions", "clicks"]:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    try:
+        aggregated_ads, _ = load_and_aggregate_csv(_tmp_path)
+    finally:
+        _os.unlink(_tmp_path)
 
-    # Calculate ROAS if not present
-    if "roas" not in df.columns and "spend" in df.columns and "revenue" in df.columns:
-        df["roas"] = df.apply(
-            lambda r: r["revenue"] / r["spend"] if r["spend"] > 0 else 0, axis=1
-        )
-
+    # Build normalized DataFrame from aggregated ads
+    rows = [
+        {
+            "ad_name": ad.ad_name,
+            "spend": ad.total_spend,
+            "revenue": ad.total_revenue,
+            "roas": ad.blended_roas,
+            "impressions": ad.total_impressions,
+            "conversions": ad.total_conversions,
+            "_row_count": ad.row_count,
+        }
+        for ad in aggregated_ads
+    ]
+    df = pd.DataFrame(rows) if rows else pd.DataFrame()
     return df
 
 
