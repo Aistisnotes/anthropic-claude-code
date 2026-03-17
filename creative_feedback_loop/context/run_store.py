@@ -54,7 +54,7 @@ class RunStore:
         return self.load_run(runs[0])
 
 
-def render_comparison(
+def _render_comparison_pure(
     current: dict[str, Any],
     previous: dict[str, Any],
 ) -> dict[str, Any]:
@@ -228,3 +228,102 @@ def format_comparison_text(comparison: dict[str, Any]) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+# ── Backward-compatible module-level functions for app.py ─────────────────────
+
+_store = RunStore()
+
+
+def save_run(
+    brand_name: str,
+    csv_start_date: str | None = None,
+    csv_end_date: str | None = None,
+    classification_counts: dict | None = None,
+    threshold_config: dict | None = None,
+    dashboard_data: dict | None = None,
+    top50_dashboard_data: dict | None = None,
+    operator_priority: str = "",
+    operator_notes: str = "",
+    pattern_results: dict | None = None,
+) -> Path:
+    """Save a run to disk and return its path. Called by app.py."""
+    run_id = f"{brand_name.lower().replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    data = {
+        "brand_name": brand_name,
+        "run_timestamp": datetime.utcnow().isoformat(),
+        "csv_start_date": csv_start_date,
+        "csv_end_date": csv_end_date,
+        "classification_counts": classification_counts or {},
+        "threshold_config": threshold_config or {},
+        "dashboard_data": dashboard_data or {},
+        "top50_dashboard_data": top50_dashboard_data or {},
+        "operator_priority": operator_priority,
+        "operator_notes": operator_notes,
+        "pattern_results": pattern_results or {},
+    }
+    return _store.save_run(run_id, data)
+
+
+def load_previous_run(brand_name: str) -> dict[str, Any] | None:
+    """Load the most recent run for a brand. Called by app.py."""
+    slug = brand_name.lower().replace(" ", "_")
+    runs = _store.list_runs()
+    for run_id in runs:
+        if run_id.startswith(slug + "_"):
+            return _store.load_run(run_id)
+    return None
+
+
+def render_comparison(  # type: ignore[misc]  # shadows module-level def
+    current: dict[str, Any],
+    previous: dict[str, Any],
+    prev_date: str = "",
+) -> None:
+    """Compare two dashboard runs and render diff to Streamlit. Called by app.py."""
+    import streamlit as st
+
+    comparison = _render_comparison_pure(current, previous)
+
+    title_current = comparison.get("current_title", "Current")
+    title_previous = comparison.get("previous_title", f"Previous ({prev_date})" if prev_date else "Previous")
+
+    st.markdown(
+        f'<h3 style="color:#fafafa;">Run Comparison: {title_current} vs {title_previous}</h3>',
+        unsafe_allow_html=True,
+    )
+
+    diffs = comparison.get("dimension_diffs", [])
+    if not diffs:
+        st.info("No comparable dimensions found in previous run.")
+        return
+
+    for diff in diffs:
+        dim = diff.get("dimension", "Unknown")
+        if diff.get("is_new"):
+            st.markdown(f'<p style="color:#888; font-size:12px;">NEW dimension: {dim}</p>', unsafe_allow_html=True)
+            continue
+        changes = diff.get("value_changes", [])
+        if not changes:
+            continue
+        with st.expander(f"{dim}", expanded=False):
+            for change in changes:
+                val = change.get("value", "?")
+                dc = change.get("delta_change", 0)
+                rc = change.get("roas_change", 0)
+                if change.get("is_new"):
+                    status = "NEW"
+                    color = "#888"
+                elif change.get("is_removed"):
+                    status = "REMOVED"
+                    color = "#888"
+                else:
+                    arrow = "↑" if dc > 0 else "↓" if dc < 0 else "→"
+                    status = f"{arrow} {dc:+.0f}% delta | ROAS {rc:+.2f}x"
+                    color = "#27ae60" if dc > 0 else "#c0392b"
+                st.markdown(
+                    f'<p style="color:{color}; font-size:13px; margin:2px 0;">• {val}: {status}</p>',
+                    unsafe_allow_html=True,
+                )
+
+
