@@ -1,237 +1,166 @@
-"""Deep component extraction from ad scripts/briefs using Claude.
+"""Claude-powered extraction of strategic components from ad scripts/copy.
 
-Extracts structured JSON with pain points, symptoms, root cause chains,
-mechanisms, avatars, hooks, emotional triggers, and more.
-Uses claude-sonnet-4-20250514 with asyncio.Semaphore(5) for parallel processing.
+Extracts structured dimensions from ad creative text:
+- Pain points
+- Root causes (with depth level)
+- Mechanisms
+- Avatars
+- Awareness levels
+- Ad formats/styles
+- Hook types
+- Emotional triggers
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
-import logging
-import os
+import re
 from typing import Any, Optional
 
 import anthropic
 
-logger = logging.getLogger(__name__)
 
-EXTRACTION_PROMPT = """You are an expert direct-response copywriting analyst. Extract structured components from this ad script/brief.
+EXTRACTION_PROMPT = """You are an expert direct response copywriter analyzing ad creative scripts.
 
-SCRIPT/BRIEF:
-{script_text}
+Extract the following strategic components from this ad script/copy. Be specific and precise — use the EXACT language from the ad, not generic descriptions.
 
-AD METADATA:
-- Ad Name: {ad_name}
-- Status: {status}
-- Spend: {spend}
-- ROAS: {roas}
+AD NAME: {ad_name}
+AD SCRIPT/COPY:
+{ad_text}
 
-Extract into this EXACT JSON structure. Be specific and concrete — no generic descriptions.
+Extract these components as JSON:
 
-CRITICAL RULES:
-- For avatars: NOT "Women over 40 who are health conscious". YES: specific behavior → biological impact → root cause connection → why previous solutions failed.
-- For root_cause.chain: Use arrow notation showing the full biological chain (e.g., "alcohol consumption → lymphatic vessel inflammation → renal lymphatic clogging → reduced kidney filtration → toxin buildup")
-- For hooks: Extract the FULL TEXT of each hook variant
-- For symptoms: List specific symptoms mentioned, not categories
-- If something is not present in the script, use null or empty list — do NOT invent
-
-Return ONLY valid JSON, no markdown fences:
-{
-  "hooks": ["hook 1 full text", "hook 2 full text"],
-  "body_copy_summary": "2-3 sentence summary of the body copy",
-  "pain_point": "specific pain point targeted",
-  "symptoms": ["specific symptom 1", "specific symptom 2"],
-  "root_cause": {
-    "depth": "surface | cellular | molecular",
-    "chain": "cause → effect → effect → effect chain"
-  },
-  "mechanism": {
-    "ump": "unique mechanism of problem — what's causing the issue",
-    "ums": "unique mechanism of solution — how the product fixes it"
-  },
-  "avatar": {
-    "behavior": "specific behavior or habit of the target",
-    "impact": "how that behavior creates biological impact",
-    "root_cause_connection": "how it connects to the root cause",
-    "why_previous_failed": "why other solutions don't work for this avatar"
-  },
-  "ad_format": "UGC | AI | VSL | Long Form Static | Short Form Video | Image | Carousel",
+```json
+{{
+  "pain_point": "The specific problem the ad targets (e.g., 'kidney stones', 'thyroid slowdown', 'crepey skin on arms')",
+  "pain_point_category": "Broad category (e.g., 'Kidney', 'Thyroid', 'Skin', 'Weight', 'Energy', 'Cholesterol')",
+  "root_cause": "What the ad claims causes the problem (e.g., 'renal lymphatic clogging', 'toxin buildup')",
+  "root_cause_depth": "surface | moderate | deep | molecular",
+  "mechanism": "How the product/solution works (e.g., 'drainage compound targets vessel walls')",
+  "mechanism_depth": "claim-only | process-level | cellular | molecular",
+  "avatar": "Who the ad speaks to (e.g., 'Women 45+ who drink wine weekly')",
+  "avatar_category": "Broad avatar group (e.g., 'Wine drinkers', 'Busy moms', 'Seniors')",
   "awareness_level": "unaware | problem_aware | solution_aware | product_aware | most_aware",
-  "emotional_triggers": ["specific emotion 1", "specific emotion 2"],
-  "language_patterns": ["specific pattern like first-person organ personification", "pattern 2"],
-  "lead_type": "story | problem-solution | testimonial | educational | fear | curiosity | news",
-  "cta_type": "learn_more | shop_now | sign_up | watch_video | get_offer",
-  "hook_type": "first-person | question | statistic | fear | curiosity | authority | testimonial | news"
-}"""
+  "hook_type": "Type of hook used (e.g., 'first-person organ personification', 'question hook', 'shocking stat')",
+  "hook_text": "The actual hook text from the ad (first 1-2 sentences)",
+  "emotional_triggers": ["fear", "shame", "hope", "curiosity"],
+  "ad_format": "UGC | Talking Head | Long Form Static | Video Sales Letter | Short Static | Carousel | Unknown",
+  "key_claims": ["Specific claims made in the ad"],
+  "cta_type": "Type of call to action"
+}}
+```
 
-# Semaphore for parallel extraction (max 5 concurrent)
-_semaphore = asyncio.Semaphore(5)
+RULES:
+- Use EXACT language from the ad, not generic descriptions
+- If a component is not clearly present, use "not specified"
+- root_cause_depth: "surface" = vague ("toxins"), "moderate" = named system, "deep" = specific pathway, "molecular" = cellular/molecular detail
+- Be specific about pain_point_category — use the organ/system name, not "health"
+
+Return ONLY valid JSON."""
 
 
-async def extract_components(
-    script_text: str,
-    ad_name: str = "",
-    status: str = "",
-    spend: float = 0.0,
-    roas: float = 0.0,
-    api_key: Optional[str] = None,
-    max_retries: int = 3,
+async def extract_script_components(
+    ad_name: str,
+    ad_text: str,
+    model: str = "claude-sonnet-4-20250514",
 ) -> dict[str, Any]:
-    """Extract structured components from a single ad script using Claude.
+    """Extract strategic components from a single ad script using Claude.
 
     Args:
-        script_text: The full ad script or brief text.
-        ad_name: Name/ID of the ad.
-        status: Win/loss/untested status.
-        spend: Total spend amount.
-        roas: Return on ad spend.
-        api_key: Anthropic API key (defaults to env var).
-        max_retries: Number of retries on rate limit.
+        ad_name: Name/ID of the ad
+        ad_text: Full ad script or copy text
+        model: Claude model to use
 
     Returns:
-        Extracted component dict matching the JSON schema above.
+        Dict with extracted components
     """
-    if not script_text or not script_text.strip():
-        return _empty_extraction()
+    if not ad_text or len(ad_text.strip()) < 20:
+        return _empty_extraction(ad_name)
 
-    client = anthropic.AsyncAnthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
+    prompt = EXTRACTION_PROMPT.format(ad_name=ad_name, ad_text=ad_text[:3000])
 
-    prompt = EXTRACTION_PROMPT.format(
-        script_text=script_text[:8000],  # Limit to avoid token overflow
-        ad_name=ad_name,
-        status=status,
-        spend=f"${spend:,.2f}" if spend else "Unknown",
-        roas=f"{roas:.2f}x" if roas else "Unknown",
-    )
+    client = anthropic.AsyncAnthropic()
+    try:
+        response = await client.messages.create(
+            model=model,
+            max_tokens=2048,
+            temperature=0.1,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = response.content[0].text.strip()
+        return _parse_extraction(text, ad_name)
 
-    for attempt in range(max_retries):
-        try:
-            async with _semaphore:
-                response = await client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=2000,
-                    temperature=0.1,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-
-            text = response.content[0].text.strip()
-            # Strip markdown fences if present
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-                text = text.strip()
-            if text.startswith("json"):
-                text = text[4:].strip()
-
-            parsed = json.loads(text)
-            return _normalize_extraction(parsed)
-
-        except anthropic.RateLimitError:
-            wait = 2 ** (attempt + 1)
-            logger.warning(f"Rate limited on {ad_name}, waiting {wait}s (attempt {attempt + 1}/{max_retries})")
-            await asyncio.sleep(wait)
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON parse error for {ad_name}: {e}")
-            return _empty_extraction()
-        except Exception as e:
-            logger.error(f"Extraction failed for {ad_name}: {e}")
-            return _empty_extraction()
-
-    logger.error(f"Max retries exceeded for {ad_name}")
-    return _empty_extraction()
+    except Exception as e:
+        return _empty_extraction(ad_name, error=str(e))
 
 
 async def extract_batch(
-    ads: list[dict[str, Any]],
-    api_key: Optional[str] = None,
-    progress_callback=None,
+    ads: list[dict[str, str]],
+    model: str = "claude-sonnet-4-20250514",
+    max_concurrent: int = 5,
 ) -> list[dict[str, Any]]:
-    """Extract components from multiple ads in parallel.
+    """Extract components from multiple ads concurrently.
 
     Args:
-        ads: List of ad dicts, each with keys: script_text, ad_name, status, spend, roas.
-        api_key: Anthropic API key.
-        progress_callback: Optional callable(completed, total) for progress updates.
+        ads: List of dicts with 'name' and 'text' keys
+        model: Claude model to use
+        max_concurrent: Max concurrent API calls
 
     Returns:
-        List of extraction dicts in the same order as input.
+        List of extraction results
     """
-    completed = 0
-    total = len(ads)
+    import asyncio
+
+    semaphore = asyncio.Semaphore(max_concurrent)
 
     async def _extract_one(ad: dict) -> dict:
-        nonlocal completed
-        result = await extract_components(
-            script_text=ad.get("script_text", ""),
-            ad_name=ad.get("ad_name", ""),
-            status=ad.get("status", ""),
-            spend=ad.get("spend", 0.0),
-            roas=ad.get("roas", 0.0),
-            api_key=api_key,
-        )
-        completed += 1
-        if progress_callback:
-            progress_callback(completed, total)
-        return result
+        async with semaphore:
+            result = await extract_script_components(
+                ad["name"], ad.get("text", ""), model
+            )
+            return result
 
     tasks = [_extract_one(ad) for ad in ads]
     return await asyncio.gather(*tasks)
 
 
-def _normalize_extraction(data: dict) -> dict:
-    """Normalize extracted data to ensure consistent structure."""
-    return {
-        "hooks": data.get("hooks") or [],
-        "body_copy_summary": data.get("body_copy_summary") or "",
-        "pain_point": data.get("pain_point") or "",
-        "symptoms": data.get("symptoms") or [],
-        "root_cause": {
-            "depth": (data.get("root_cause") or {}).get("depth") or "",
-            "chain": (data.get("root_cause") or {}).get("chain") or "",
-        },
-        "mechanism": {
-            "ump": (data.get("mechanism") or {}).get("ump") or "",
-            "ums": (data.get("mechanism") or {}).get("ums") or "",
-        },
-        "avatar": {
-            "behavior": (data.get("avatar") or {}).get("behavior") or "",
-            "impact": (data.get("avatar") or {}).get("impact") or "",
-            "root_cause_connection": (data.get("avatar") or {}).get("root_cause_connection") or "",
-            "why_previous_failed": (data.get("avatar") or {}).get("why_previous_failed") or "",
-        },
-        "ad_format": data.get("ad_format") or "",
-        "awareness_level": data.get("awareness_level") or "",
-        "emotional_triggers": data.get("emotional_triggers") or [],
-        "language_patterns": data.get("language_patterns") or [],
-        "lead_type": data.get("lead_type") or "",
-        "cta_type": data.get("cta_type") or "",
-        "hook_type": data.get("hook_type") or "",
-    }
+def _parse_extraction(text: str, ad_name: str) -> dict[str, Any]:
+    """Parse Claude's extraction response."""
+    try:
+        json_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            json_str = text.strip()
+
+        data = json.loads(json_str)
+        data["ad_name"] = ad_name
+        data["extraction_success"] = True
+        return data
+
+    except (json.JSONDecodeError, KeyError) as e:
+        return _empty_extraction(ad_name, error=f"Parse error: {e}")
 
 
-def _empty_extraction() -> dict:
-    """Return an empty extraction with the correct schema."""
+def _empty_extraction(ad_name: str, error: Optional[str] = None) -> dict[str, Any]:
+    """Return empty extraction result."""
     return {
-        "hooks": [],
-        "body_copy_summary": "",
-        "pain_point": "",
-        "symptoms": [],
-        "root_cause": {"depth": "", "chain": ""},
-        "mechanism": {"ump": "", "ums": ""},
-        "avatar": {
-            "behavior": "",
-            "impact": "",
-            "root_cause_connection": "",
-            "why_previous_failed": "",
-        },
-        "ad_format": "",
-        "awareness_level": "",
+        "ad_name": ad_name,
+        "extraction_success": False,
+        "error": error,
+        "pain_point": "not specified",
+        "pain_point_category": "Unknown",
+        "root_cause": "not specified",
+        "root_cause_depth": "surface",
+        "mechanism": "not specified",
+        "mechanism_depth": "claim-only",
+        "avatar": "not specified",
+        "avatar_category": "Unknown",
+        "awareness_level": "problem_aware",
+        "hook_type": "Unknown",
+        "hook_text": "",
         "emotional_triggers": [],
-        "language_patterns": [],
-        "lead_type": "",
-        "cta_type": "",
-        "hook_type": "",
+        "ad_format": "Unknown",
+        "key_claims": [],
+        "cta_type": "not specified",
     }
