@@ -373,13 +373,22 @@ HYPOTHESES:
     )
     response_text = message.content[0].text
 
+    _SECTION_HEADERS = r"(?:EXECUTIVE SUMMARY|OPPORTUNITIES|LEARNINGS|HYPOTHESES|INSIGHTS)"
+
     def _extract_section(text: str, header: str) -> str:
-        m = re.search(rf"{header}:?\s*\n(.*?)(?=\n[A-Z ]+:|\Z)", text, re.DOTALL | re.IGNORECASE)
+        pattern = rf"{header}:?\s*\n(.*?)(?=\n{_SECTION_HEADERS}:|\Z)"
+        m = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
         return m.group(1).strip() if m else ""
 
     def _parse_bullets(text: str) -> list:
         lines = [ln.lstrip("-•*0123456789. ").strip() for ln in text.splitlines() if ln.strip()]
         return [ln for ln in lines if len(ln) > 5]
+
+    _HYPOTHESIS_PREFIXES = ("test:", "if we", "given ", "expected:", "hypothesis:")
+
+    def _is_hypothesis(item: str) -> bool:
+        low = item.lower()
+        return any(low.startswith(p) for p in _HYPOTHESIS_PREFIXES) or "expected:" in low
 
     executive_summary = _extract_section(response_text, "EXECUTIVE SUMMARY")
     opps_text = _extract_section(response_text, "OPPORTUNITIES")
@@ -394,7 +403,6 @@ HYPOTHESES:
         w = opp.get("winner_count")
         l = opp.get("loser_count")
         r = opp.get("avg_roas")
-        # Bug 5 fix: suppress zeros — only show stats if verified and non-zero
         if verified and (w or l):
             confidence = "Verified"
         else:
@@ -410,9 +418,18 @@ HYPOTHESES:
             "is_baseline": False,
         })
 
+    raw_learnings = _parse_bullets(_extract_section(response_text, "LEARNINGS"))
+    raw_hypotheses = _parse_bullets(_extract_section(response_text, "HYPOTHESES"))
+
+    # Move hypothesis-like items out of learnings; deduplicate hypotheses
+    clean_learnings = [item for item in raw_learnings if not _is_hypothesis(item)]
+    spilled = [item for item in raw_learnings if _is_hypothesis(item)]
+    hyp_set = {h.lower()[:60] for h in raw_hypotheses}
+    extra_hyps = [h for h in spilled if h.lower()[:60] not in hyp_set]
+
     return {
         "executive_summary": executive_summary,
         "insights": insights,
-        "learnings": _parse_bullets(_extract_section(response_text, "LEARNINGS")),
-        "hypotheses": _parse_bullets(_extract_section(response_text, "HYPOTHESES")),
+        "learnings": clean_learnings,
+        "hypotheses": raw_hypotheses + extra_hyps,
     }
