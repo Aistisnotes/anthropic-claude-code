@@ -299,6 +299,10 @@ def render_dashboard(
         # Normalise awareness_level: "problem_aware" → "Problem Aware"
         if key == "awareness_level" and val:
             val = val.replace("_", " ").title()
+        # Normalise avatar: uppercase content inside parentheses so
+        # "General (lcc)" and "General (LCC)" resolve to the same value.
+        if key == "avatar" and val:
+            val = re.sub(r'\(([^)]+)\)', lambda m: '(' + m.group(1).upper() + ')', val)
         return val
 
     dimensions = []
@@ -415,4 +419,7 @@ def _get_ext_field(ad: dict, key: str) -> str:
     # Normalise awareness_level to match all_values collection
     if key == "awareness_level" and val:
         val = val.replace("_", " ").title()
+    # Normalise avatar parenthetical acronyms to uppercase
+    if key == "avatar" and val:
+        val = re.sub(r'\(([^)]+)\)', lambda m: '(' + m.group(1).upper() + ')', val)
     return val

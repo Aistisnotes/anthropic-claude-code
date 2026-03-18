@@ -95,10 +95,12 @@ def _extract_fields_from_section(section: str) -> dict[str, Any]:
     if score_match:
         opp["score"] = int(score_match.group(1))
 
-    # Parse title: first line or bold text
+    # Parse title: first line or bold text; strip any leftover leading "1." numbering
     title_match = re.search(r'^[#*]*\s*(.+?)(?:\n|$)', section.strip())
     if title_match:
-        opp["title"] = re.sub(r'[#*]', '', title_match.group(1)).strip()
+        raw_title = re.sub(r'[#*]', '', title_match.group(1)).strip()
+        raw_title = re.sub(r'^\d+[\.\)]\s*', '', raw_title)
+        opp["title"] = raw_title
 
     # Stats default to None (unverified) — will be filled from dashboard data
     opp.setdefault("winner_count", None)

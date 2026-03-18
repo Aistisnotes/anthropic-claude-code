@@ -186,8 +186,13 @@ def _compare_dimension(
         diff["summary"] = f"NEW: {name} (not present in previous run)"
         return diff
 
-    curr_values = {v.get("value", ""): v for v in current.get("values", [])}
-    prev_values = {v.get("value", ""): v for v in previous.get("values", [])}
+    def _norm(v: str) -> str:
+        """Normalise dimension values for comparison (awareness_level underscores, case)."""
+        return v.replace("_", " ").strip().lower()
+
+    # Build normalised lookups so "problem_aware" matches "Problem Aware"
+    curr_values = {_norm(v.get("value", "")): v for v in current.get("values", [])}
+    prev_values = {_norm(v.get("value", "")): v for v in previous.get("values", [])}
 
     all_keys = set(curr_values.keys()) | set(prev_values.keys())
 
