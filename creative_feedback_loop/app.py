@@ -670,6 +670,39 @@ def main():
                         unsafe_allow_html=True,
                     )
 
+            # ── Top 5 from Top 50 ──────────────────────────────────────────
+            if top50_dashboard_data and top50_ads:
+                st.markdown("---")
+                st.markdown('<h2 style="color:#fafafa;">🏆 Top 5 Patterns from Top 50 Spenders</h2>', unsafe_allow_html=True)
+                st.markdown(
+                    '<p style="color:#888; font-size:13px;">Based on all-time top 50 ads by spend — proven patterns at scale.</p>',
+                    unsafe_allow_html=True,
+                )
+                top50_ads_sorted = sorted(
+                    [a for a in top50_ads if a.get("spend", 0) > 0],
+                    key=lambda x: x.get("spend", 0),
+                    reverse=True,
+                )[:5]
+                for rank, ad in enumerate(top50_ads_sorted, 1):
+                    ext = ad.get("extraction") or ad.get("naming_extraction") or {}
+                    pain = ext.get("pain_point", "Unknown")
+                    mech = ext.get("mechanism", {})
+                    if isinstance(mech, dict):
+                        mech = mech.get("ump", "") or "Unknown"
+                    awareness = ext.get("awareness_level", "Unknown")
+                    fmt = ext.get("ad_format", "Unknown")
+                    spend = ad.get("spend", 0)
+                    roas = ad.get("roas", 0)
+                    name = ad.get("ad_name", "Unknown")
+                    st.markdown(
+                        f'<div style="background:#1e1e2e; border-left:4px solid #f59e0b; padding:10px 16px; margin-bottom:8px; border-radius:0 8px 8px 0;">'
+                        f'<span style="color:#f59e0b; font-weight:700; font-size:14px;">#{rank}</span> '
+                        f'<span style="color:#fafafa; font-size:14px;">{clean_markdown(name)} — &#36;{spend:,.0f} at {roas:.2f}x ROAS</span><br>'
+                        f'<span style="color:#888; font-size:12px;">{pain} | {mech} | {awareness} | {fmt}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
             # Learnings — collapsible
             if pattern_results.get("learnings"):
                 with st.expander(f"📚 Learnings ({len(pattern_results['learnings'])})", expanded=False):
@@ -724,6 +757,38 @@ def main():
                             f'</div>',
                             unsafe_allow_html=True,
                         )
+            # ── PDF Export ─────────────────────────────────────────────────
+            st.markdown("---")
+            try:
+                from creative_feedback_loop.report_generator import build_report_html, save_pdf_report
+
+                if st.button("📥 Export PDF Report"):
+                    with st.spinner("Generating PDF..."):
+                        html = build_report_html(
+                            brand_name=brand_name,
+                            csv_start=str(csv_start),
+                            csv_end=str(csv_end),
+                            total_ads=len(df),
+                            winners_count=winners_count,
+                            losers_count=losers_count,
+                            untested_count=untested_count,
+                            total_spend=total_spend,
+                            dashboard_data=dashboard_data,
+                            top50_dashboard_data=top50_dashboard_data,
+                            pattern_results=pattern_results,
+                            top_insights=top_insights,
+                        )
+                        pdf_path = save_pdf_report(html, brand_name)
+                        with open(pdf_path, "rb") as f:
+                            st.download_button(
+                                "⬇️ Download PDF",
+                                data=f.read(),
+                                file_name=f"creative_feedback_{brand_name}_{csv_start}.pdf",
+                                mime="application/pdf",
+                            )
+            except Exception as _pdf_err:
+                st.error(f"PDF export error: {_pdf_err}")
+
         except Exception as e:
             st.error(f"Pattern analysis error: {e}")
             logger.exception("Pattern analysis failed")
@@ -767,38 +832,6 @@ def main():
             save_notes_to_run(run_path, notes)
             st.success("Notes saved!")
 
-    # ── PDF Export ────────────────────────────────────────────────────────
-    try:
-        from creative_feedback_loop.report_generator import build_html_report, generate_pdf_sync
-        import tempfile
-
-        st.markdown("---")
-        if st.button("📥 Export PDF Report"):
-            with st.spinner("Generating PDF..."):
-                html_content = build_html_report(
-                    brand_name=brand_name,
-                    csv_start=str(csv_start),
-                    csv_end=str(csv_end),
-                    classification_counts=classification_counts,
-                    dashboard_data=dashboard_data,
-                    pattern_results=pattern_results or {},
-                    top50_dashboard_data=top50_dashboard_data,
-                )
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
-                    pdf_path = tmp_pdf.name
-                generate_pdf_sync(html_content, pdf_path)
-                with open(pdf_path, "rb") as f:
-                    pdf_bytes = f.read()
-                filename = f"{brand_name.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_report.pdf"
-                st.download_button(
-                    label="⬇️ Download PDF",
-                    data=pdf_bytes,
-                    file_name=filename,
-                    mime="application/pdf",
-                )
-    except Exception as e:
-        st.error(f"PDF export failed: {e}")
-        logger.exception("PDF export failed")
 
 
 def _slugify(text: str) -> str:
