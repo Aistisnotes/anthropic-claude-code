@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ads Library Patterns</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Ads Library Patterns</h1>
+    <p class="subtitle">DR ad intelligence — fetch, select, analyze</p>
+  </header>
+
+  <main>
+    <!-- Step 1: Fetch -->
+    <section id="step-fetch" class="step active">
+      <div class="step-header">
+        <span class="step-number">1</span>
+        <h2>Fetch Ads</h2>
+      </div>
+      <div class="step-body">
+        <div class="input-group">
+          <label for="meta-url">Meta Ads Library URL</label>
+          <input type="url" id="meta-url" placeholder="https://www.facebook.com/ads/library/?view_all_page_id=123456789">
+        </div>
+        <div class="input-group">
+          <label for="search-api-key">SearchAPI Key</label>
+          <input type="password" id="search-api-key" placeholder="Your SearchAPI.io API key">
+        </div>
+        <button id="btn-fetch" class="btn-primary">Fetch Ads</button>
+        <div id="fetch-progress" class="progress-area hidden">
+          <div class="spinner"></div>
+          <span id="fetch-status">Fetching...</span>
+        </div>
+        <div id="fetch-error" class="error-msg hidden"></div>
+      </div>
+    </section>
+
+    <!-- Step 2: Select -->
+    <section id="step-select" class="step hidden">
+      <div class="step-header">
+        <span class="step-number">2</span>
+        <h2>Select Ads</h2>
+        <div class="step-meta">
+          <span id="filter-info"></span>
+        </div>
+      </div>
+      <div class="step-body">
+        <div class="select-toolbar">
+          <div class="filter-bar">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="video">Video Only</button>
+            <button class="filter-btn" data-filter="static">Static Only</button>
+            <button class="filter-btn" data-filter="active">Active Only</button>
+          </div>
+          <div class="select-actions">
+            <button id="btn-select-all" class="btn-small">Select All</button>
+            <button id="btn-deselect-all" class="btn-small">Deselect All</button>
+            <span id="select-counter" class="counter">0 of 0 selected</span>
+          </div>
+        </div>
+        <div id="ads-grid" class="ads-grid"></div>
+        <button id="btn-to-analyze" class="btn-primary">Continue to Analyze</button>
+      </div>
+    </section>
+
+    <!-- Step 3: Analyze -->
+    <section id="step-analyze" class="step hidden">
+      <div class="step-header">
+        <span class="step-number">3</span>
+        <h2>Analyze</h2>
+      </div>
+      <div class="step-body">
+        <div class="input-group">
+          <label for="gemini-key">Gemini API Key</label>
+          <input type="password" id="gemini-key" placeholder="Your Google Gemini API key">
+        </div>
+        <div class="layer-toggles">
+          <label class="toggle"><input type="checkbox" id="toggle-l1" checked> <span>Layer 1 — Ad Dissection</span></label>
+          <label class="toggle"><input type="checkbox" id="toggle-l2" checked> <span>Layer 2 — Pattern Intelligence</span></label>
+          <label class="toggle"><input type="checkbox" id="toggle-l3" checked> <span>Layer 3 — Strategic Map</span></label>
+        </div>
+        <button id="btn-analyze" class="btn-primary">Analyze Selected Ads</button>
+        <div id="analyze-progress" class="progress-area hidden">
+          <div class="progress-bar-container">
+            <div id="analyze-bar" class="progress-bar"></div>
+          </div>
+          <span id="analyze-status">0 / 0 complete</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 4: Results -->
+    <section id="step-results" class="step hidden">
+      <div class="step-header">
+        <span class="step-number">4</span>
+        <h2>Results</h2>
+        <div class="step-meta">
+          <button id="btn-export-all" class="btn-small">Export All JSON</button>
+          <button id="btn-export-summary" class="btn-small">Export Summary JSON</button>
+        </div>
+      </div>
+      <div class="step-body">
+        <div id="pattern-summary" class="pattern-summary hidden"></div>
+        <div id="results-grid" class="results-grid"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -7,6 +7,7 @@
     "meta-ads": "./bin/meta-ads.js"
   },
   "scripts": {
+    "start": "node server.js",
     "scan": "node bin/meta-ads.js scan",
     "market": "node bin/meta-ads.js market",
     "compare": "node bin/meta-ads.js compare",
@@ -18,6 +19,7 @@
     "chalk": "^5.3.0",
     "cli-table3": "^0.6.5",
     "commander": "^12.1.0",
+    "express": "^4.22.1",
     "ora": "^8.0.1",
     "playwright": "^1.58.2"
   },
