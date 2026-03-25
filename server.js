@@ -47,7 +47,22 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: '50mb' }));
 
-// Disable caching for all static files so browser always gets fresh content
+// Request logger
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
+
+// Serve index.html explicitly with no-cache headers to defeat browser caching
+app.get('/', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  res.sendFile(join(__dirname, 'public', 'index.html'));
+});
+
+// Disable caching for all static files
 app.use(express.static(join(__dirname, 'public'), {
   etag: false,
   lastModified: false,
@@ -57,14 +72,6 @@ app.use(express.static(join(__dirname, 'public'), {
     res.setHeader('Expires', '0');
   },
 }));
-
-// Request logger
-app.use((req, res, next) => {
-  if (req.path.startsWith('/api/')) {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  }
-  next();
-});
 
 // Ensure results directory exists
 const resultsDir = join(__dirname, 'results');
@@ -133,15 +140,32 @@ function httpRequest(url, options, body) {
   });
 }
 
-// --- Extract page_id from Meta Ads Library URL ---
-function extractPageId(url) {
+// --- Parse Meta Ads Library URL into search params ---
+function parseMetaUrl(url) {
   try {
     const parsed = new URL(url);
+
+    // Mode 1: page_id URL (view_all_page_id=XXXXX)
     const viewAll = parsed.searchParams.get('view_all_page_id');
-    if (viewAll) return viewAll;
-    // Try to find page_id in various patterns
+    if (viewAll) {
+      const country = parsed.searchParams.get('country') || null;
+      return { mode: 'page', pageId: viewAll, country };
+    }
+
+    // Also check for page_id in other patterns
     const match = url.match(/page_id[=:](\d+)/);
-    if (match) return match[1];
+    if (match) {
+      const country = parsed.searchParams.get('country') || null;
+      return { mode: 'page', pageId: match[1], country };
+    }
+
+    // Mode 2: keyword search URL (q=something)
+    const query = parsed.searchParams.get('q');
+    if (query) {
+      const country = parsed.searchParams.get('country') || null;
+      return { mode: 'keyword', query, country };
+    }
+
     return null;
   } catch {
     return null;
@@ -160,9 +184,9 @@ app.post('/api/fetch-ads', async (req, res) => {
     return res.status(400).json({ error: 'URL is required.' });
   }
 
-  const pageId = extractPageId(metaUrl);
-  if (!pageId) {
-    return res.status(400).json({ error: 'Could not extract page_id from URL. Use a URL with view_all_page_id parameter (e.g. https://www.facebook.com/ads/library/?view_all_page_id=123456789).' });
+  const parsed = parseMetaUrl(metaUrl);
+  if (!parsed) {
+    return res.status(400).json({ error: 'Could not parse URL. Use either a page URL with view_all_page_id or a keyword search URL with q= parameter.' });
   }
 
   try {
@@ -181,11 +205,24 @@ app.post('/api/fetch-ads', async (req, res) => {
       res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
     };
 
-    sendEvent('progress', { message: `Starting fetch for page_id=${pageId}...`, count: 0 });
+    const searchLabel = parsed.mode === 'page'
+      ? `page_id=${parsed.pageId}`
+      : `q="${parsed.query}"`;
+    sendEvent('progress', { message: `Starting fetch for ${searchLabel}...`, count: 0 });
 
     while (allAds.length < MAX_ADS) {
       pageNum++;
-      let apiUrl = `https://www.searchapi.io/api/v1/search?engine=meta_ad_library&page_id=${pageId}&ad_type=all&active_status=all&media_type=all&api_key=${SEARCHAPI_KEY}`;
+
+      // Build SearchAPI URL based on mode
+      let apiUrl = `https://www.searchapi.io/api/v1/search?engine=meta_ad_library&ad_type=all&active_status=all&media_type=all&api_key=${SEARCHAPI_KEY}`;
+      if (parsed.mode === 'page') {
+        apiUrl += `&page_id=${encodeURIComponent(parsed.pageId)}`;
+      } else {
+        apiUrl += `&q=${encodeURIComponent(parsed.query)}`;
+      }
+      if (parsed.country) {
+        apiUrl += `&country=${encodeURIComponent(parsed.country)}`;
+      }
       if (nextPageToken) {
         apiUrl += `&next_page_token=${encodeURIComponent(nextPageToken)}`;
       }
@@ -208,7 +245,7 @@ app.post('/api/fetch-ads', async (req, res) => {
       const ads = result.ads || result.organic_results || [];
       if (ads.length === 0) {
         if (pageNum === 1) {
-          sendEvent('error', { message: 'No ads found for this page. Check that the page_id is correct.' });
+          sendEvent('error', { message: `No ads found for ${searchLabel}. Check that the URL is correct.` });
         }
         break;
       }
