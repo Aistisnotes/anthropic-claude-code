@@ -648,6 +648,39 @@ main {
 
 .report-panel.hidden { display: none; }
 
+/* Post-analysis status messages */
+.post-analysis-status {
+  margin-bottom: 16px;
+  font-size: 13px;
+  font-family: 'DM Mono', monospace;
+}
+
+.post-analysis-status.hidden { display: none; }
+
+.post-analysis-msg {
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+
+.post-analysis-msg.info {
+  background: rgba(92, 124, 250, 0.1);
+  border: 1px solid rgba(92, 124, 250, 0.3);
+  color: var(--blue);
+}
+
+.post-analysis-msg.error {
+  background: rgba(255, 71, 87, 0.1);
+  border: 1px solid rgba(255, 71, 87, 0.3);
+  color: var(--red);
+}
+
+.post-analysis-msg.success {
+  background: rgba(46, 213, 115, 0.1);
+  border: 1px solid rgba(46, 213, 115, 0.3);
+  color: var(--green);
+}
+
 .report-panel h3 {
   font-size: 14px;
   font-weight: 600;

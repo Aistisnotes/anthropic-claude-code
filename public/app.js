@@ -349,32 +349,60 @@ btnAnalyze.addEventListener('click', async () => {
 
   console.log('[ALP] All ads analyzed. Results keys:', Object.keys(state.results).length);
 
-  // Pattern summary
-  const successfulAnalyses = Object.values(state.results).filter((r) => !r.error && !r.parse_error);
-  console.log('[ALP] Successful analyses:', successfulAnalyses.length);
+  // === POST-ANALYSIS FLOW ===
+  // Everything below is wrapped so one failure cannot prevent the report button from appearing.
+  const statusArea = document.getElementById('post-analysis-status');
+  statusArea.innerHTML = '';
+  statusArea.classList.remove('hidden');
 
-  if (successfulAnalyses.length >= 2) {
+  function addStatusMsg(text, type) {
+    const div = document.createElement('div');
+    div.className = `post-analysis-msg ${type}`;
+    div.textContent = text;
+    statusArea.appendChild(div);
+    console.log(`[ALP] [${type}] ${text}`);
+  }
+
+  const successfulAnalyses = Object.values(state.results).filter((r) => !r.error && !r.parse_error);
+  const failedCount = Object.keys(state.results).length - successfulAnalyses.length;
+  console.log('[ALP] Successful analyses:', successfulAnalyses.length, 'Failed:', failedCount);
+
+  if (failedCount > 0) {
+    addStatusMsg(`${failedCount} ad(s) failed analysis — see individual cards for errors.`, 'error');
+  }
+
+  // --- Pattern summary ---
+  if (successfulAnalyses.length >= 1) {
     analyzeStatus.textContent = 'Generating pattern summary...';
+    addStatusMsg('Generating cross-ad pattern summary...', 'info');
     try {
       const resp = await fetch('/api/pattern-summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ analyses: successfulAnalyses }),
       });
+      console.log('[ALP] Pattern summary response status:', resp.status);
       const data = await resp.json();
+      console.log('[ALP] Pattern summary response data:', data.success, data.error);
       if (data.success) {
         state.patternSummary = data.result;
         renderPatternSummary(data.result);
-        console.log('[ALP] Pattern summary generated');
+        addStatusMsg('Pattern summary generated.', 'success');
+      } else {
+        addStatusMsg(`Pattern summary failed: ${data.error || 'Unknown error'}`, 'error');
       }
     } catch (err) {
-      console.error('[ALP] Pattern summary failed:', err);
+      console.error('[ALP] Pattern summary error:', err);
+      addStatusMsg(`Pattern summary failed: ${err.message}`, 'error');
     }
+  } else {
+    addStatusMsg('Pattern summary skipped — no successful ad analyses.', 'info');
   }
 
-  // Save complete results to server
-  console.log('[ALP] Saving session results to server...');
+  // --- Save session ---
   try {
+    analyzeStatus.textContent = 'Saving results...';
+    console.log('[ALP] Saving session', state.sessionId);
     const saveResp = await fetch(`/api/session/${state.sessionId}/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -386,15 +414,20 @@ btnAnalyze.addEventListener('click', async () => {
       }),
     });
     const saveData = await saveResp.json();
-    console.log('[ALP] Session save response:', saveData);
+    console.log('[ALP] Save response:', saveData);
+    if (saveData.success) {
+      addStatusMsg(`Results saved (${saveData.fileSize} bytes).`, 'success');
+    } else {
+      addStatusMsg(`Save failed: ${saveData.error || 'Unknown error'}`, 'error');
+    }
   } catch (err) {
-    console.error('[ALP] Failed to save session:', err);
+    console.error('[ALP] Save error:', err);
+    addStatusMsg(`Save failed: ${err.message}`, 'error');
   }
 
-  // Show report button
-  console.log('[ALP] Showing report panel...');
+  // --- ALWAYS show report button ---
+  console.log('[ALP] Showing report panel');
   reportPanel.classList.remove('hidden');
-  console.log('[ALP] Report panel visible:', !reportPanel.classList.contains('hidden'));
 
   analyzeStatus.textContent = `${completed} / ${total} complete — Done`;
   btnAnalyze.disabled = false;
