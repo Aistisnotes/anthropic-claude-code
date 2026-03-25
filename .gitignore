@@ -37,6 +37,7 @@ models/
 
 # Node
 node_modules/
+results/
 data/scans/
 data/downloads/
 data/reports/

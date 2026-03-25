@@ -26,10 +26,7 @@
           <label for="meta-url">Meta Ads Library URL</label>
           <input type="url" id="meta-url" placeholder="https://www.facebook.com/ads/library/?view_all_page_id=123456789">
         </div>
-        <div class="input-group">
-          <label for="search-api-key">SearchAPI Key</label>
-          <input type="password" id="search-api-key" placeholder="Your SearchAPI.io API key">
-        </div>
+        <div id="key-status" class="key-status"></div>
         <button id="btn-fetch" class="btn-primary">Fetch Ads</button>
         <div id="fetch-progress" class="progress-area hidden">
           <div class="spinner"></div>
@@ -74,10 +71,6 @@
         <h2>Analyze</h2>
       </div>
       <div class="step-body">
-        <div class="input-group">
-          <label for="gemini-key">Gemini API Key</label>
-          <input type="password" id="gemini-key" placeholder="Your Google Gemini API key">
-        </div>
         <div class="layer-toggles">
           <label class="toggle"><input type="checkbox" id="toggle-l1" checked> <span>Layer 1 — Ad Dissection</span></label>
           <label class="toggle"><input type="checkbox" id="toggle-l2" checked> <span>Layer 2 — Pattern Intelligence</span></label>

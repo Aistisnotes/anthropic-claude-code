@@ -6,6 +6,7 @@ const state = {
   results: {},
   patternSummary: null,
   currentFilter: 'all',
+  keysReady: false,
 };
 
 // --- DOM refs ---
@@ -20,7 +21,7 @@ const stepResults = $('#step-results');
 
 // Fetch
 const metaUrlInput = $('#meta-url');
-const searchApiKeyInput = $('#search-api-key');
+const keyStatus = $('#key-status');
 const btnFetch = $('#btn-fetch');
 const fetchProgress = $('#fetch-progress');
 const fetchStatus = $('#fetch-status');
@@ -35,7 +36,6 @@ const btnDeselectAll = $('#btn-deselect-all');
 const btnToAnalyze = $('#btn-to-analyze');
 
 // Analyze
-const geminiKeyInput = $('#gemini-key');
 const btnAnalyze = $('#btn-analyze');
 const analyzeProgress = $('#analyze-progress');
 const analyzeBar = $('#analyze-bar');
@@ -48,14 +48,47 @@ const btnExportAll = $('#btn-export-all');
 const btnExportSummary = $('#btn-export-summary');
 
 // ==========================================
+// INIT: Check API key config on load
+// ==========================================
+(async function checkConfig() {
+  try {
+    const resp = await fetch('/api/config');
+    const cfg = await resp.json();
+
+    const searchOk = cfg.searchApiConfigured;
+    const geminiOk = cfg.geminiConfigured;
+
+    if (searchOk && geminiOk) {
+      keyStatus.textContent = 'API keys configured (SearchAPI + Gemini)';
+      keyStatus.className = 'key-status ok';
+      state.keysReady = true;
+    } else {
+      const missing = [];
+      if (!searchOk) missing.push('SEARCHAPI_KEY');
+      if (!geminiOk) missing.push('GEMINI_API_KEY');
+      keyStatus.textContent = `Missing in .env: ${missing.join(', ')}`;
+      keyStatus.className = 'key-status missing';
+      state.keysReady = false;
+    }
+  } catch (err) {
+    keyStatus.textContent = 'Cannot reach server — is it running?';
+    keyStatus.className = 'key-status missing';
+  }
+})();
+
+// ==========================================
 // STEP 1: FETCH
 // ==========================================
 btnFetch.addEventListener('click', async () => {
   const url = metaUrlInput.value.trim();
-  const key = searchApiKeyInput.value.trim();
 
-  if (!url || !key) {
-    showError(fetchError, 'Please enter both URL and API key.');
+  if (!url) {
+    showError(fetchError, 'Please enter a Meta Ads Library URL.');
+    return;
+  }
+
+  if (!state.keysReady) {
+    showError(fetchError, 'API keys not configured. Add SEARCHAPI_KEY and GEMINI_API_KEY to your .env file and restart the server.');
     return;
   }
 
@@ -68,9 +101,25 @@ btnFetch.addEventListener('click', async () => {
     const response = await fetch('/api/fetch-ads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, searchApiKey: key }),
+      body: JSON.stringify({ url }),
     });
 
+    // Check for non-SSE error responses (400, 500, etc.)
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/event-stream')) {
+      // Server returned a plain JSON error, not an SSE stream
+      let errMsg = `Server error (${response.status})`;
+      try {
+        const errData = await response.json();
+        errMsg = errData.error || errMsg;
+      } catch {}
+      showError(fetchError, errMsg);
+      btnFetch.disabled = false;
+      fetchProgress.classList.add('hidden');
+      return;
+    }
+
+    // Read SSE stream
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -93,12 +142,19 @@ btnFetch.addEventListener('click', async () => {
             showError(fetchError, event.message);
           } else if (event.type === 'complete') {
             state.ads = event.ads;
-            filterInfo.textContent = `${event.filtered_count} qualifying ads (${event.excluded_count} excluded)`;
-            renderAdsGrid();
-            stepSelect.classList.remove('hidden');
+            filterInfo.textContent = `${event.filtered_count} qualifying ads (${event.excluded_count} excluded of ${event.total_fetched} total)`;
+            if (event.filtered_count === 0) {
+              showError(fetchError, `Fetched ${event.total_fetched} ads but none matched filters (video ads, or static with >400 words). ${event.excluded_count} were excluded.`);
+            } else {
+              renderAdsGrid();
+              stepSelect.classList.remove('hidden');
+              stepSelect.scrollIntoView({ behavior: 'smooth' });
+            }
             fetchProgress.classList.add('hidden');
           }
-        } catch {}
+        } catch (e) {
+          console.error('SSE parse error:', e, 'line:', line);
+        }
       }
     }
   } catch (err) {
@@ -215,12 +271,6 @@ btnToAnalyze.addEventListener('click', () => {
 // STEP 3: ANALYZE
 // ==========================================
 btnAnalyze.addEventListener('click', async () => {
-  const geminiKey = geminiKeyInput.value.trim();
-  if (!geminiKey) {
-    alert('Please enter your Gemini API key.');
-    return;
-  }
-
   const layers = {
     L1: $('#toggle-l1').checked,
     L2: $('#toggle-l2').checked,
@@ -229,6 +279,12 @@ btnAnalyze.addEventListener('click', async () => {
 
   const selectedAds = state.ads.filter((a) => state.selectedIds.has(a.ad_archive_id));
   const total = selectedAds.length;
+
+  if (total === 0) {
+    alert('No ads selected. Go back and select ads first.');
+    return;
+  }
+
   let completed = 0;
 
   btnAnalyze.disabled = true;
@@ -254,7 +310,7 @@ btnAnalyze.addEventListener('click', async () => {
         const resp = await fetch('/api/analyze-ad', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ad, geminiKey, layers }),
+          body: JSON.stringify({ ad, layers }),
         });
         const data = await resp.json();
         if (data.success) {
@@ -278,19 +334,21 @@ btnAnalyze.addEventListener('click', async () => {
   // Pattern summary
   const successfulAnalyses = Object.values(state.results).filter((r) => !r.error && !r.parse_error);
   if (successfulAnalyses.length >= 2) {
-    analyzeStatus.textContent = `Generating pattern summary...`;
+    analyzeStatus.textContent = 'Generating pattern summary...';
     try {
       const resp = await fetch('/api/pattern-summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ analyses: successfulAnalyses, geminiKey }),
+        body: JSON.stringify({ analyses: successfulAnalyses }),
       });
       const data = await resp.json();
       if (data.success) {
         state.patternSummary = data.result;
         renderPatternSummary(data.result);
       }
-    } catch {}
+    } catch (err) {
+      console.error('Pattern summary failed:', err);
+    }
   }
 
   analyzeStatus.textContent = `${completed} / ${total} complete — Done`;
@@ -374,7 +432,6 @@ function renderAnalysisResult(data) {
       });
       html += `</tbody></table>`;
 
-      // Render rest of L2 without loopholes
       const l2Rest = { ...data.layer_2 };
       delete l2Rest.loopholes;
       html += `<div class="json-tree" style="margin-top:12px">${renderJson(l2Rest)}</div>`;

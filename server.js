@@ -8,6 +8,26 @@ import http from 'http';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// --- Load .env file ---
+function loadEnv() {
+  const envPath = join(__dirname, '.env');
+  if (!fs.existsSync(envPath)) return;
+  const lines = fs.readFileSync(envPath, 'utf-8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = trimmed.slice(eqIdx + 1).trim();
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
+loadEnv();
+
+const SEARCHAPI_KEY = process.env.SEARCHAPI_KEY || '';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+
 const app = express();
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -23,6 +43,14 @@ app.use(express.static(join(__dirname, 'public')));
 const resultsDir = join(__dirname, 'results');
 if (!fs.existsSync(resultsDir)) fs.mkdirSync(resultsDir, { recursive: true });
 
+// --- Route: Check which API keys are configured ---
+app.get('/api/config', (req, res) => {
+  res.json({
+    searchApiConfigured: !!SEARCHAPI_KEY,
+    geminiConfigured: !!GEMINI_API_KEY,
+  });
+});
+
 // --- Utility: HTTP GET with JSON response ---
 function httpGetJson(url) {
   return new Promise((resolve, reject) => {
@@ -32,7 +60,7 @@ function httpGetJson(url) {
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
         try { resolve(JSON.parse(data)); }
-        catch (e) { reject(new Error(`Failed to parse JSON from ${url}: ${data.slice(0, 200)}`)); }
+        catch (e) { reject(new Error(`Failed to parse JSON from ${url.split('?')[0]}: ${data.slice(0, 200)}`)); }
       });
     }).on('error', reject);
   });
@@ -84,13 +112,9 @@ function extractPageId(url) {
     const parsed = new URL(url);
     const viewAll = parsed.searchParams.get('view_all_page_id');
     if (viewAll) return viewAll;
-    const activeAd = parsed.searchParams.get('active_status');
     // Try to find page_id in various patterns
     const match = url.match(/page_id[=:](\d+)/);
     if (match) return match[1];
-    // Check if it's a search URL
-    const searchTerm = parsed.searchParams.get('q');
-    if (searchTerm) return null; // Search URL, no specific page
     return null;
   } catch {
     return null;
@@ -99,15 +123,19 @@ function extractPageId(url) {
 
 // --- Route: Fetch ads from SearchAPI ---
 app.post('/api/fetch-ads', async (req, res) => {
-  const { url: metaUrl, searchApiKey } = req.body;
+  const { url: metaUrl } = req.body;
 
-  if (!metaUrl || !searchApiKey) {
-    return res.status(400).json({ error: 'URL and SearchAPI key are required' });
+  if (!SEARCHAPI_KEY) {
+    return res.status(500).json({ error: 'SEARCHAPI_KEY not configured. Add it to your .env file.' });
+  }
+
+  if (!metaUrl) {
+    return res.status(400).json({ error: 'URL is required.' });
   }
 
   const pageId = extractPageId(metaUrl);
   if (!pageId) {
-    return res.status(400).json({ error: 'Could not extract page_id from URL. Use a URL with view_all_page_id parameter.' });
+    return res.status(400).json({ error: 'Could not extract page_id from URL. Use a URL with view_all_page_id parameter (e.g. https://www.facebook.com/ads/library/?view_all_page_id=123456789).' });
   }
 
   try {
@@ -120,14 +148,17 @@ app.post('/api/fetch-ads', async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
 
     const sendEvent = (type, data) => {
       res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
     };
 
+    sendEvent('progress', { message: `Starting fetch for page_id=${pageId}...`, count: 0 });
+
     while (allAds.length < MAX_ADS) {
       pageNum++;
-      let apiUrl = `https://www.searchapi.io/api/v1/search?engine=meta_ad_library&page_id=${pageId}&ad_type=all&active_status=all&media_type=all&api_key=${searchApiKey}`;
+      let apiUrl = `https://www.searchapi.io/api/v1/search?engine=meta_ad_library&page_id=${pageId}&ad_type=all&active_status=all&media_type=all&api_key=${SEARCHAPI_KEY}`;
       if (nextPageToken) {
         apiUrl += `&next_page_token=${encodeURIComponent(nextPageToken)}`;
       }
@@ -148,7 +179,12 @@ app.post('/api/fetch-ads', async (req, res) => {
       }
 
       const ads = result.ads || result.organic_results || [];
-      if (ads.length === 0) break;
+      if (ads.length === 0) {
+        if (pageNum === 1) {
+          sendEvent('error', { message: 'No ads found for this page. Check that the page_id is correct.' });
+        }
+        break;
+      }
 
       allAds.push(...ads);
       sendEvent('progress', { message: `Fetched ${allAds.length} ads so far...`, count: allAds.length });
@@ -215,7 +251,6 @@ app.post('/api/fetch-ads', async (req, res) => {
     });
     res.end();
   } catch (err) {
-    // If headers not sent yet
     if (!res.headersSent) {
       return res.status(500).json({ error: err.message });
     }
@@ -226,19 +261,23 @@ app.post('/api/fetch-ads', async (req, res) => {
 
 // --- Route: Analyze a single ad with Gemini ---
 app.post('/api/analyze-ad', async (req, res) => {
-  const { ad, geminiKey, layers } = req.body;
+  const { ad, layers } = req.body;
 
-  if (!ad || !geminiKey) {
-    return res.status(400).json({ error: 'Ad data and Gemini API key are required' });
+  if (!GEMINI_API_KEY) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY not configured. Add it to your .env file.' });
+  }
+
+  if (!ad) {
+    return res.status(400).json({ error: 'Ad data is required.' });
   }
 
   try {
     let analysisResult;
 
     if (ad.is_video && ad.video_url) {
-      analysisResult = await analyzeVideoAd(ad, geminiKey, layers);
+      analysisResult = await analyzeVideoAd(ad, layers);
     } else {
-      analysisResult = await analyzeStaticAd(ad, geminiKey, layers);
+      analysisResult = await analyzeStaticAd(ad, layers);
     }
 
     // Save result
@@ -247,21 +286,26 @@ app.post('/api/analyze-ad', async (req, res) => {
 
     res.json({ success: true, result: analysisResult, filename });
   } catch (err) {
+    console.error(`Analysis failed for ad ${ad.ad_archive_id}: ${err.message}`);
     res.status(500).json({ error: err.message, ad_id: ad.ad_archive_id });
   }
 });
 
 // --- Route: Cross-ad pattern summary ---
 app.post('/api/pattern-summary', async (req, res) => {
-  const { analyses, geminiKey } = req.body;
+  const { analyses } = req.body;
 
-  if (!analyses || !geminiKey) {
-    return res.status(400).json({ error: 'Analyses and Gemini key required' });
+  if (!GEMINI_API_KEY) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY not configured. Add it to your .env file.' });
+  }
+
+  if (!analyses) {
+    return res.status(400).json({ error: 'Analyses data required.' });
   }
 
   try {
     const prompt = buildPatternSummaryPrompt(analyses);
-    const result = await callGemini(geminiKey, prompt, null);
+    const result = await callGemini(prompt, null);
 
     const filename = `pattern_summary_${Date.now()}.json`;
     fs.writeFileSync(join(resultsDir, filename), JSON.stringify(result, null, 2));
@@ -273,7 +317,7 @@ app.post('/api/pattern-summary', async (req, res) => {
 });
 
 // --- Analyze video ad ---
-async function analyzeVideoAd(ad, geminiKey, layers) {
+async function analyzeVideoAd(ad, layers) {
   let fileUri = null;
 
   try {
@@ -281,7 +325,7 @@ async function analyzeVideoAd(ad, geminiKey, layers) {
     const videoBuffer = await httpGetBuffer(ad.video_url);
 
     // Upload to Gemini Files API
-    const uploadUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${geminiKey}`;
+    const uploadUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${GEMINI_API_KEY}`;
 
     const metadata = JSON.stringify({
       file: { display_name: `ad_${ad.ad_archive_id}` }
@@ -317,7 +361,7 @@ async function analyzeVideoAd(ad, geminiKey, layers) {
       let attempts = 0;
       while (fileState === 'PROCESSING' && attempts < 30) {
         await new Promise(r => setTimeout(r, 2000));
-        const statusUrl = `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${geminiKey}`;
+        const statusUrl = `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${GEMINI_API_KEY}`;
         const statusResult = await httpGetJson(statusUrl);
         fileState = statusResult.state;
         attempts++;
@@ -329,37 +373,35 @@ async function analyzeVideoAd(ad, geminiKey, layers) {
     }
   } catch (err) {
     console.error(`Video upload failed for ad ${ad.ad_archive_id}: ${err.message}`);
-    // Fallback to text-only analysis
     fileUri = null;
   }
 
   const prompt = buildAnalysisPrompt(ad, layers, true);
 
   if (fileUri) {
-    return await callGemini(geminiKey, prompt, fileUri);
+    return await callGemini(prompt, fileUri);
   } else {
-    // Text-only fallback
     const fallbackPrompt = `[VIDEO COULD NOT BE PROCESSED — analyze based on copy text only]\n\n${prompt}`;
-    return await callGemini(geminiKey, fallbackPrompt, null);
+    return await callGemini(fallbackPrompt, null);
   }
 }
 
 // --- Analyze static ad ---
-async function analyzeStaticAd(ad, geminiKey, layers) {
+async function analyzeStaticAd(ad, layers) {
   const prompt = buildAnalysisPrompt(ad, layers, false);
   const imageUrl = ad.image_url;
 
   if (imageUrl) {
-    return await callGemini(geminiKey, prompt, null, imageUrl);
+    return await callGemini(prompt, null, imageUrl);
   } else {
-    return await callGemini(geminiKey, prompt, null);
+    return await callGemini(prompt, null);
   }
 }
 
 // --- Call Gemini API ---
-async function callGemini(geminiKey, prompt, fileUri, imageUrl) {
+async function callGemini(prompt, fileUri, imageUrl) {
   const model = 'gemini-2.5-flash-preview-05-20';
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
   const parts = [];
 
@@ -369,7 +411,6 @@ async function callGemini(geminiKey, prompt, fileUri, imageUrl) {
 
   if (imageUrl) {
     parts.push({ text: `Image URL for this ad: ${imageUrl}` });
-    // Try to inline the image
     try {
       const imgBuffer = await httpGetBuffer(imageUrl);
       const base64 = imgBuffer.toString('base64');
@@ -634,4 +675,6 @@ CRITICAL: Return ONLY valid JSON. No markdown, no explanation.`;
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Ads Library Patterns server running on http://localhost:${PORT}`);
+  console.log(`  SearchAPI key: ${SEARCHAPI_KEY ? 'configured' : 'MISSING — add SEARCHAPI_KEY to .env'}`);
+  console.log(`  Gemini key:    ${GEMINI_API_KEY ? 'configured' : 'MISSING — add GEMINI_API_KEY to .env'}`);
 });

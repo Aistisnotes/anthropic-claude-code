@@ -201,6 +201,26 @@ main {
   width: 0%;
 }
 
+.key-status {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-family: 'DM Mono', monospace;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.key-status.ok {
+  border-color: rgba(46, 213, 115, 0.3);
+  color: var(--green);
+}
+
+.key-status.missing {
+  border-color: rgba(255, 71, 87, 0.3);
+  color: var(--red);
+}
+
 .error-msg {
   margin-top: 12px;
   padding: 10px 14px;
