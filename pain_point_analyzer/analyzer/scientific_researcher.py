@@ -54,6 +54,8 @@ class ScientificReport:
     overall_evidence_strength: str
     ingredient_evidence: list[IngredientEvidence]
     synergies: list[SynergyInfo] = field(default_factory=list)
+    pathway: list[str] = field(default_factory=list)
+    eli10: str = ""
 
 
 @dataclass
@@ -149,12 +151,25 @@ class ScientificResearcher:
                                 "5. optimal_dosage: Recommended dosage based on research\n\n"
                                 "Also provide:\n"
                                 "- summary: 2-3 sentence overall assessment\n"
-                                "- overall_evidence_strength: Combined strength rating\n\n"
+                                "- overall_evidence_strength: Combined strength rating\n"
+                                "- pathway: THE PATHWAY — a 4-step chain showing how the "
+                                "ingredient action leads to symptom resolution. Format as "
+                                "4 short step descriptions: Step 1 (ingredient action) → "
+                                "Step 2 (first biological effect) → Step 3 (downstream "
+                                "effect) → Step 4 (symptom resolution). Return as a list "
+                                "of 4 strings.\n"
+                                "- eli10: An ELI10 (Explain Like I'm 10) analogy. Format: "
+                                "\"Imagine your [body part] is like a [analogy]. When you "
+                                "take [ingredient], it [simple action] which makes "
+                                "[simple outcome].\" Make it vivid and memorable.\n\n"
                                 "Return ONLY valid JSON:\n"
                                 "```json\n"
                                 "{\n"
                                 '  "summary": "...",\n'
                                 '  "overall_evidence_strength": "strong|moderate|weak",\n'
+                                '  "pathway": ["Step 1: ...", "Step 2: ...", '
+                                '"Step 3: ...", "Step 4: ..."],\n'
+                                '  "eli10": "Imagine your ...",\n'
                                 '  "ingredient_evidence": [\n'
                                 "    {\n"
                                 '      "ingredient_name": "...",\n'
@@ -210,6 +225,8 @@ class ScientificResearcher:
                         "overall_evidence_strength", "moderate"
                     ),
                     ingredient_evidence=evidence_list,
+                    pathway=data.get("pathway", []),
+                    eli10=data.get("eli10", ""),
                 )
 
             except Exception as e:
