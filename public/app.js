@@ -51,9 +51,11 @@ const btnExportSummary = $('#btn-export-summary');
 // INIT: Check API key config on load
 // ==========================================
 (async function checkConfig() {
+  console.log('[ALP] Checking API key config...');
   try {
     const resp = await fetch('/api/config');
     const cfg = await resp.json();
+    console.log('[ALP] Config response:', cfg);
 
     const searchOk = cfg.searchApiConfigured;
     const geminiOk = cfg.geminiConfigured;
@@ -80,6 +82,7 @@ const btnExportSummary = $('#btn-export-summary');
 // STEP 1: FETCH
 // ==========================================
 btnFetch.addEventListener('click', async () => {
+  console.log('[ALP] Fetch button clicked');
   const url = metaUrlInput.value.trim();
 
   if (!url) {
@@ -104,6 +107,8 @@ btnFetch.addEventListener('click', async () => {
       body: JSON.stringify({ url }),
     });
 
+    console.log('[ALP] Fetch response status:', response.status, 'content-type:', response.headers.get('content-type'));
+
     // Check for non-SSE error responses (400, 500, etc.)
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('text/event-stream')) {
@@ -113,6 +118,7 @@ btnFetch.addEventListener('click', async () => {
         const errData = await response.json();
         errMsg = errData.error || errMsg;
       } catch {}
+      console.error('[ALP] Non-SSE error:', errMsg);
       showError(fetchError, errMsg);
       btnFetch.disabled = false;
       fetchProgress.classList.add('hidden');

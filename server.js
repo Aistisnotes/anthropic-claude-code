@@ -11,7 +11,12 @@ const __dirname = dirname(__filename);
 // --- Load .env file ---
 function loadEnv() {
   const envPath = join(__dirname, '.env');
-  if (!fs.existsSync(envPath)) return;
+  if (!fs.existsSync(envPath)) {
+    console.warn('.env file not found at', envPath);
+    console.warn('Create one from .env.example: cp .env.example .env');
+    return;
+  }
+  console.log('.env file found, loading...');
   const lines = fs.readFileSync(envPath, 'utf-8').split('\n');
   for (const line of lines) {
     const trimmed = line.trim();
@@ -19,7 +24,11 @@ function loadEnv() {
     const eqIdx = trimmed.indexOf('=');
     if (eqIdx === -1) continue;
     const key = trimmed.slice(0, eqIdx).trim();
-    const val = trimmed.slice(eqIdx + 1).trim();
+    let val = trimmed.slice(eqIdx + 1).trim();
+    // Strip surrounding quotes if present
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
     if (!process.env[key]) process.env[key] = val;
   }
 }
@@ -37,7 +46,25 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '50mb' }));
-app.use(express.static(join(__dirname, 'public')));
+
+// Disable caching for all static files so browser always gets fresh content
+app.use(express.static(join(__dirname, 'public'), {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  },
+}));
+
+// Request logger
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  }
+  next();
+});
 
 // Ensure results directory exists
 const resultsDir = join(__dirname, 'results');
