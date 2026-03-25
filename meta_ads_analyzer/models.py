@@ -427,7 +427,7 @@ class BrandReport(BaseModel):
 
     advertiser: AdvertiserEntry
     keyword: str
-    selection_stats: SelectionStats
+    selection_stats: Optional[SelectionStats] = None
     pattern_report: PatternReport
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     cross_category: bool = False
@@ -438,14 +438,15 @@ class MarketResult(BaseModel):
     """Complete market research result."""
 
     keyword: str
-    country: str
-    scan_date: datetime
-    total_advertisers: int
-    brands_analyzed: int
+    country: str = "US"
+    scan_date: datetime = Field(default_factory=datetime.utcnow)
+    total_advertisers: int = 0
+    brands_analyzed: int = 0
     brand_reports: list[BrandReport] = Field(default_factory=list)
     competition_level: str = "normal"  # normal / thin / blue_ocean
     blue_ocean_result: Optional[Any] = None  # BlueOceanResult (dict-serialized)
     blue_ocean_confidence: str = ""  # "high|medium|low" — set when competition_level=="blue_ocean"
+    output_dir: Optional[Path] = None  # path where reports were saved
 
 
 # ============================================================================

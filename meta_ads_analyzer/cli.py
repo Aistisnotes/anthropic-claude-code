@@ -586,6 +586,55 @@ def pdf(
 
 
 @app.command()
+def direct(
+    domains: list[str] = typer.Argument(..., help="Brand domain URLs (e.g. tryelar.com sculptiquehealth.com)"),
+    ads_per_brand: int = typer.Option(30, "--ads-per-brand", "-n", help="Ads per brand to analyze"),
+    brand: Optional[str] = typer.Option(None, "--brand", "-b", help="Focus brand name for compare gap analysis"),
+    no_compare: bool = typer.Option(False, "--no-compare", help="Skip compare + loophole generation"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory"),
+    log_level: str = typer.Option("INFO", "--log-level", "-l"),
+):
+    """Analyze brands directly by domain URL — no keyword search needed.
+
+    Searches Meta Ads Library for each domain, captures ads from all pages
+    (1st and 3rd party), sorted by impressions. Runs full analysis + compare + PDF.
+
+    Example:
+        meta-ads direct tryelar.com sculptiquehealth.com --brand "My Brand" --ads-per-brand 30
+    """
+    setup_logging(log_level)
+    config = load_config(config_path)
+
+    if output:
+        config.setdefault("reporting", {})["output_dir"] = str(output)
+
+    console.print(f"\n[bold]Direct Brand Analysis[/]")
+    console.print(f"Domains: [cyan]{', '.join(domains)}[/]")
+    if brand:
+        console.print(f"Focus brand: [cyan]{brand}[/]")
+    console.print(f"Ads per brand: [cyan]{ads_per_brand}[/]")
+    console.print()
+
+    from meta_ads_analyzer.direct_pipeline import DirectPipeline
+
+    dp = DirectPipeline(config)
+    result = asyncio.run(
+        dp.run(
+            domains=domains,
+            ads_per_brand=ads_per_brand,
+            focus_brand=brand,
+            run_compare=not no_compare,
+        )
+    )
+
+    console.print(f"\n[bold green]✓[/] Direct analysis complete")
+    console.print(f"Brands analyzed: [cyan]{result.brands_analyzed}[/]")
+    if result.output_dir:
+        console.print(f"Output: [dim]{result.output_dir}[/]")
+
+
+@app.command()
 def install_browser():
     """Install Playwright browsers (required first-time setup)."""
     import subprocess
