@@ -16,13 +16,11 @@ const state = {
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-// Steps
 const stepFetch = $('#step-fetch');
 const stepSelect = $('#step-select');
 const stepAnalyze = $('#step-analyze');
 const stepResults = $('#step-results');
 
-// Fetch
 const metaUrlInput = $('#meta-url');
 const keyStatus = $('#key-status');
 const btnFetch = $('#btn-fetch');
@@ -30,7 +28,6 @@ const fetchProgress = $('#fetch-progress');
 const fetchStatus = $('#fetch-status');
 const fetchError = $('#fetch-error');
 
-// Select
 const filterInfo = $('#filter-info');
 const adsGrid = $('#ads-grid');
 const selectCounter = $('#select-counter');
@@ -38,17 +35,15 @@ const btnSelectAll = $('#btn-select-all');
 const btnDeselectAll = $('#btn-deselect-all');
 const btnToAnalyze = $('#btn-to-analyze');
 
-// Analyze
 const btnAnalyze = $('#btn-analyze');
 const analyzeProgress = $('#analyze-progress');
 const analyzeBar = $('#analyze-bar');
 const analyzeStatus = $('#analyze-status');
 
-// Results
 const patternSummaryEl = $('#pattern-summary');
 const resultsGrid = $('#results-grid');
-const btnExportAll = $('#btn-export-all');
-const btnExportSummary = $('#btn-export-summary');
+const reportPanel = $('#report-panel');
+const btnPdfReport = $('#btn-pdf-report');
 
 // ==========================================
 // INIT: Check API key config on load
@@ -112,10 +107,8 @@ btnFetch.addEventListener('click', async () => {
 
     console.log('[ALP] Fetch response status:', response.status, 'content-type:', response.headers.get('content-type'));
 
-    // Check for non-SSE error responses (400, 500, etc.)
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('text/event-stream')) {
-      // Server returned a plain JSON error, not an SSE stream
       let errMsg = `Server error (${response.status})`;
       try {
         const errData = await response.json();
@@ -128,7 +121,6 @@ btnFetch.addEventListener('click', async () => {
       return;
     }
 
-    // Read SSE stream
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -183,7 +175,7 @@ function renderAdsGrid() {
   state.ads.forEach((ad) => {
     const card = document.createElement('div');
     card.className = 'ad-card';
-    card.dataset.id = ad.ad_archive_id;
+    card.dataset.id = String(ad.ad_archive_id);
     card.dataset.format = ad.display_format;
     card.dataset.active = ad.is_active ? 'true' : 'false';
 
@@ -209,7 +201,7 @@ function renderAdsGrid() {
       </div>
     `;
 
-    card.addEventListener('click', () => toggleSelect(ad.ad_archive_id, card));
+    card.addEventListener('click', () => toggleSelect(String(ad.ad_archive_id), card));
     adsGrid.appendChild(card);
   });
 
@@ -234,8 +226,7 @@ function updateCounter() {
 
 btnSelectAll.addEventListener('click', () => {
   adsGrid.querySelectorAll('.ad-card:not(.hidden-by-filter)').forEach((card) => {
-    const id = card.dataset.id;
-    state.selectedIds.add(id);
+    state.selectedIds.add(card.dataset.id);
     card.classList.add('selected');
   });
   updateCounter();
@@ -247,7 +238,6 @@ btnDeselectAll.addEventListener('click', () => {
   updateCounter();
 });
 
-// Filters
 $$('.filter-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     $$('.filter-btn').forEach((b) => b.classList.remove('active'));
@@ -287,8 +277,9 @@ btnAnalyze.addEventListener('click', async () => {
     L3: $('#toggle-l3').checked,
   };
 
-  const selectedAds = state.ads.filter((a) => state.selectedIds.has(a.ad_archive_id));
+  const selectedAds = state.ads.filter((a) => state.selectedIds.has(String(a.ad_archive_id)));
   const total = selectedAds.length;
+  console.log('[ALP] Analyze clicked, selected:', total, 'ads');
 
   if (total === 0) {
     alert('No ads selected. Go back and select ads first.');
@@ -296,15 +287,17 @@ btnAnalyze.addEventListener('click', async () => {
   }
 
   // Create session
+  console.log('[ALP] Creating session...');
   try {
     const sessResp = await fetch('/api/session', { method: 'POST' });
     const sessData = await sessResp.json();
     state.sessionId = sessData.sessionId;
-  } catch {
+    console.log('[ALP] Session created:', state.sessionId);
+  } catch (err) {
     state.sessionId = `${Date.now()}_local`;
+    console.error('[ALP] Session creation failed, using local ID:', state.sessionId, err);
   }
 
-  // Derive brand name from first ad
   state.brandName = selectedAds[0]?.page_name || null;
   state.searchQuery = metaUrlInput.value.trim();
 
@@ -313,13 +306,13 @@ btnAnalyze.addEventListener('click', async () => {
   btnAnalyze.disabled = true;
   analyzeProgress.classList.remove('hidden');
   stepResults.classList.remove('hidden');
+  reportPanel.classList.add('hidden'); // hide until done
   resultsGrid.innerHTML = '';
   state.results = {};
+  state.patternSummary = null;
 
-  // Create result cards
   selectedAds.forEach((ad) => {
-    const card = createResultCard(ad);
-    resultsGrid.appendChild(card);
+    resultsGrid.appendChild(createResultCard(ad));
   });
 
   stepResults.scrollIntoView({ behavior: 'smooth' });
@@ -354,8 +347,12 @@ btnAnalyze.addEventListener('click', async () => {
     await Promise.all(promises);
   }
 
+  console.log('[ALP] All ads analyzed. Results keys:', Object.keys(state.results).length);
+
   // Pattern summary
   const successfulAnalyses = Object.values(state.results).filter((r) => !r.error && !r.parse_error);
+  console.log('[ALP] Successful analyses:', successfulAnalyses.length);
+
   if (successfulAnalyses.length >= 2) {
     analyzeStatus.textContent = 'Generating pattern summary...';
     try {
@@ -368,15 +365,17 @@ btnAnalyze.addEventListener('click', async () => {
       if (data.success) {
         state.patternSummary = data.result;
         renderPatternSummary(data.result);
+        console.log('[ALP] Pattern summary generated');
       }
     } catch (err) {
-      console.error('Pattern summary failed:', err);
+      console.error('[ALP] Pattern summary failed:', err);
     }
   }
 
   // Save complete results to server
+  console.log('[ALP] Saving session results to server...');
   try {
-    await fetch(`/api/session/${state.sessionId}/save`, {
+    const saveResp = await fetch(`/api/session/${state.sessionId}/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -386,17 +385,60 @@ btnAnalyze.addEventListener('click', async () => {
         searchQuery: state.searchQuery,
       }),
     });
+    const saveData = await saveResp.json();
+    console.log('[ALP] Session save response:', saveData);
   } catch (err) {
-    console.error('Failed to save session:', err);
+    console.error('[ALP] Failed to save session:', err);
   }
 
-  // Show report buttons
-  showReportButtons();
+  // Show report button
+  console.log('[ALP] Showing report panel...');
+  reportPanel.classList.remove('hidden');
+  console.log('[ALP] Report panel visible:', !reportPanel.classList.contains('hidden'));
 
   analyzeStatus.textContent = `${completed} / ${total} complete — Done`;
   btnAnalyze.disabled = false;
 });
 
+// ==========================================
+// REPORT DOWNLOAD
+// ==========================================
+btnPdfReport.addEventListener('click', async () => {
+  console.log('[ALP] PDF download clicked, sessionId:', state.sessionId);
+  btnPdfReport.disabled = true;
+  btnPdfReport.textContent = 'Generating...';
+  try {
+    const resp = await fetch(`/api/report/${state.sessionId}`);
+    console.log('[ALP] PDF response:', resp.status, resp.headers.get('content-type'));
+    if (!resp.ok) {
+      let errMsg = 'Failed to generate PDF';
+      try {
+        const err = await resp.json();
+        errMsg = err.error || errMsg;
+      } catch {}
+      alert(errMsg);
+      return;
+    }
+    const blob = await resp.blob();
+    console.log('[ALP] PDF blob size:', blob.size);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = resp.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || 'report.pdf';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('[ALP] PDF download error:', err);
+    alert('PDF generation failed: ' + err.message);
+  } finally {
+    btnPdfReport.disabled = false;
+    btnPdfReport.textContent = 'Download Report';
+  }
+});
+
+// ==========================================
+// RESULT CARDS
+// ==========================================
 function createResultCard(ad) {
   const card = document.createElement('div');
   card.className = 'result-card';
@@ -433,13 +475,11 @@ function updateResultCard(id, status, data) {
   if (status === 'done') {
     statusEl.classList.add('done');
     statusEl.innerHTML = '&#10003;';
-    const body = card.querySelector('.result-card-body');
-    body.innerHTML = renderAnalysisResult(data);
+    card.querySelector('.result-card-body').innerHTML = renderAnalysisResult(data);
   } else {
     statusEl.classList.add('error');
     statusEl.innerHTML = '&#10007;';
-    const body = card.querySelector('.result-card-body');
-    body.innerHTML = `<div class="error-msg">${escHtml(String(data))}</div>`;
+    card.querySelector('.result-card-body').innerHTML = `<div class="error-msg">${escHtml(String(data))}</div>`;
   }
 }
 
@@ -457,7 +497,6 @@ function renderAnalysisResult(data) {
     html += `<div class="layer-section">
       <div class="layer-title">LAYER 2 — PATTERN INTELLIGENCE</div>`;
 
-    // Render loopholes as table if present
     if (data.layer_2.loopholes && Array.isArray(data.layer_2.loopholes)) {
       const sorted = [...data.layer_2.loopholes].sort((a, b) => (b.score || 0) - (a.score || 0));
       html += `<table class="loopholes-table">
@@ -491,7 +530,6 @@ function renderAnalysisResult(data) {
     </div>`;
   }
 
-  // If no layers found, show raw
   if (!data.layer_1 && !data.layer_2 && !data.layer_3) {
     html += `<div class="json-tree">${renderJson(data)}</div>`;
   }
@@ -543,91 +581,6 @@ function formatPatternValue(val) {
     return '<ul>' + Object.entries(val).map(([k, v]) => `<li>${escHtml(k)}: ${escHtml(String(v))}</li>`).join('') + '</ul>';
   }
   return escHtml(String(val));
-}
-
-// ==========================================
-// REPORTS
-// ==========================================
-function showReportButtons() {
-  const existing = document.getElementById('report-panel');
-  if (existing) existing.remove();
-
-  const panel = document.createElement('div');
-  panel.id = 'report-panel';
-  panel.className = 'report-panel';
-  panel.innerHTML = `
-    <h3>Reports</h3>
-    <div class="report-buttons">
-      <button id="btn-pdf-report" class="btn-report btn-pdf">Download PDF Report</button>
-      <button id="btn-json-download" class="btn-report btn-json">Download JSON</button>
-    </div>
-  `;
-
-  // Insert before results grid
-  const resultsBody = stepResults.querySelector('.step-body');
-  resultsBody.insertBefore(panel, patternSummaryEl);
-
-  document.getElementById('btn-pdf-report').addEventListener('click', async (e) => {
-    const btn = e.target;
-    btn.disabled = true;
-    btn.textContent = 'Generating PDF...';
-    try {
-      const resp = await fetch(`/api/report/${state.sessionId}`);
-      if (!resp.ok) {
-        const err = await resp.json();
-        alert(err.error || 'Failed to generate PDF');
-        return;
-      }
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = resp.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || 'report.pdf';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert('PDF generation failed: ' + err.message);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Download PDF Report';
-    }
-  });
-
-  document.getElementById('btn-json-download').addEventListener('click', async () => {
-    try {
-      const resp = await fetch(`/api/report/${state.sessionId}/json`);
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = resp.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || 'analysis.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert('JSON download failed: ' + err.message);
-    }
-  });
-}
-
-// ==========================================
-// EXPORT (legacy buttons in header)
-// ==========================================
-btnExportAll.addEventListener('click', () => {
-  download('ads_analysis_all.json', { results: state.results, pattern_summary: state.patternSummary });
-});
-
-btnExportSummary.addEventListener('click', () => {
-  download('pattern_summary.json', state.patternSummary || {});
-});
-
-function download(filename, data) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 // ==========================================

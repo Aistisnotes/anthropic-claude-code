@@ -646,6 +646,8 @@ main {
   margin-bottom: 20px;
 }
 
+.report-panel.hidden { display: none; }
+
 .report-panel h3 {
   font-size: 14px;
   font-weight: 600;

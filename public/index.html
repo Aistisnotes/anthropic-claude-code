@@ -6,7 +6,7 @@
   <title>Ads Library Patterns</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
   <header>
@@ -91,18 +91,20 @@
       <div class="step-header">
         <span class="step-number">4</span>
         <h2>Results</h2>
-        <div class="step-meta">
-          <button id="btn-export-all" class="btn-small">Export All JSON</button>
-          <button id="btn-export-summary" class="btn-small">Export Summary JSON</button>
-        </div>
       </div>
       <div class="step-body">
+        <div id="report-panel" class="report-panel hidden">
+          <h3>Report</h3>
+          <div class="report-buttons">
+            <button id="btn-pdf-report" class="btn-report btn-pdf">Download Report</button>
+          </div>
+        </div>
         <div id="pattern-summary" class="pattern-summary hidden"></div>
         <div id="results-grid" class="results-grid"></div>
       </div>
     </section>
   </main>
 
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

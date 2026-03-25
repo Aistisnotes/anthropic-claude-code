@@ -402,9 +402,16 @@ app.post('/api/session', (req, res) => {
 app.post('/api/session/:sessionId/save', (req, res) => {
   const { sessionId } = req.params;
   const { results, patternSummary, brandName, searchQuery } = req.body;
+  const resultCount = results ? Object.keys(results).length : 0;
+  console.log(`[SAVE] Session ${sessionId}: ${resultCount} results, brand=${brandName}, hasSummary=${!!patternSummary}`);
+
   const filePath = join(resultsDir, `${sessionId}_complete.json`);
-  fs.writeFileSync(filePath, JSON.stringify({ results, patternSummary, brandName, searchQuery, sessionId, savedAt: new Date().toISOString() }, null, 2));
-  res.json({ success: true, filePath });
+  const payload = { results, patternSummary, brandName, searchQuery, sessionId, savedAt: new Date().toISOString() };
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+
+  const fileSize = fs.statSync(filePath).size;
+  console.log(`[SAVE] Written ${fileSize} bytes to ${filePath}`);
+  res.json({ success: true, filePath, fileSize });
 });
 
 // --- Route: PDF report ---
