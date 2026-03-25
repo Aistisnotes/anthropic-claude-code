@@ -1,0 +1,33 @@
+[scraper]
+# Browser headless mode
+headless = true
+# Page load timeout (seconds)
+page_timeout = 60
+# Screenshot quality (0-100)
+screenshot_quality = 90
+# Delay between Meta Ad Library requests (seconds) — randomized ±3s
+delay_between_requests = 8
+# Cooldown between scraping different pain points (seconds)
+cooldown_between_brands = 30
+# Max Ad Library requests per session (prevents IP bans)
+max_requests_per_session = 20
+
+[analyzer]
+# Claude model for analysis and vision
+model = "claude-sonnet-4-20250514"
+# Temperature for analysis
+temperature = 0.3
+# Max retries on API failure
+max_retries = 3
+
+[trends]
+# Max pain points to validate (caps browser sessions)
+max_pain_points = 15
+
+[reporting]
+# Output directory
+output_dir = "output"
+
+[pipeline]
+# Top N pain points to deep-dive
+top_pain_points = 3
