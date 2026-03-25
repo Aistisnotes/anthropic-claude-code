@@ -4,6 +4,8 @@ import { dirname, join } from 'path';
 import fs from 'fs';
 import https from 'https';
 import http from 'http';
+import crypto from 'crypto';
+import { generateReport } from './lib/report.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -278,6 +280,14 @@ app.post('/api/fetch-ads', async (req, res) => {
       const isVideo = !!videoUrl;
       const hasMedia = isVideo || !!imageUrl;
 
+      // Video thumbnail: prefer preview image, fall back to snapshot images, then regular image
+      const videoThumbnail = snapshot.video_preview_image_url
+        || (snapshot.videos && snapshot.videos[0]?.video_preview_image_url)
+        || (snapshot.videos && snapshot.videos[0]?.thumbnail)
+        || ad.video_preview_image_url
+        || null;
+      const thumbnail = videoThumbnail || imageUrl || null;
+
       return {
         ad_archive_id: ad.ad_archive_id || ad.id,
         page_name: ad.page_name || ad.advertiser_name || 'Unknown',
@@ -291,7 +301,7 @@ app.post('/api/fetch-ads', async (req, res) => {
         video_url: videoUrl,
         image_url: imageUrl,
         cta_text: snapshot.cta_text || ad.ad_creative_link_titles?.[0] || '',
-        thumbnail: imageUrl || null,
+        thumbnail,
         has_media: hasMedia,
         is_video: isVideo,
       };
@@ -380,6 +390,60 @@ app.post('/api/pattern-summary', async (req, res) => {
   }
 });
 
+// --- Route: Generate session ID ---
+app.post('/api/session', (req, res) => {
+  const ts = Date.now();
+  const rand = crypto.randomBytes(2).toString('hex');
+  const sessionId = `${ts}_${rand}`;
+  res.json({ sessionId });
+});
+
+// --- Route: Save session results progressively ---
+app.post('/api/session/:sessionId/save', (req, res) => {
+  const { sessionId } = req.params;
+  const { results, patternSummary, brandName, searchQuery } = req.body;
+  const filePath = join(resultsDir, `${sessionId}_complete.json`);
+  fs.writeFileSync(filePath, JSON.stringify({ results, patternSummary, brandName, searchQuery, sessionId, savedAt: new Date().toISOString() }, null, 2));
+  res.json({ success: true, filePath });
+});
+
+// --- Route: PDF report ---
+app.get('/api/report/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const filePath = join(resultsDir, `${sessionId}_complete.json`);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Session data not found. Run analysis first.' });
+  }
+
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  const brandSlug = (data.brandName || data.searchQuery || 'analysis').replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 30);
+  const dateSlug = new Date().toISOString().slice(0, 10);
+  const filename = `${brandSlug}_${dateSlug}_ads_library_patterns.pdf`;
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  generateReport(data, res);
+});
+
+// --- Route: JSON export ---
+app.get('/api/report/:sessionId/json', (req, res) => {
+  const { sessionId } = req.params;
+  const filePath = join(resultsDir, `${sessionId}_complete.json`);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Session data not found.' });
+  }
+
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  const brandSlug = (data.brandName || data.searchQuery || 'analysis').replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 30);
+  const dateSlug = new Date().toISOString().slice(0, 10);
+
+  res.setHeader('Content-Disposition', `attachment; filename="${brandSlug}_${dateSlug}_analysis.json"`);
+  res.json(data);
+});
+
 // --- Analyze video ad ---
 async function analyzeVideoAd(ad, layers) {
   let fileUri = null;
@@ -464,7 +528,7 @@ async function analyzeStaticAd(ad, layers) {
 
 // --- Call Gemini API ---
 async function callGemini(prompt, fileUri, imageUrl) {
-  const model = 'gemini-2.5-flash-preview-05-20';
+  const model = 'gemini-2.5-flash';
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
   const parts = [];

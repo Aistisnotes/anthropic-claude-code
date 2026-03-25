@@ -7,6 +7,9 @@ const state = {
   patternSummary: null,
   currentFilter: 'all',
   keysReady: false,
+  sessionId: null,
+  brandName: null,
+  searchQuery: null,
 };
 
 // --- DOM refs ---
@@ -184,9 +187,10 @@ function renderAdsGrid() {
     card.dataset.format = ad.display_format;
     card.dataset.active = ad.is_active ? 'true' : 'false';
 
+    const placeholderLabel = ad.is_video ? '<span class="play-icon">\u25B6</span> VIDEO' : 'IMAGE';
     const thumbHtml = ad.thumbnail
-      ? `<img class="ad-thumb" src="${escHtml(ad.thumbnail)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'ad-thumb-placeholder\\'>${ad.is_video ? 'VIDEO' : 'IMAGE'}</div>'">`
-      : `<div class="ad-thumb-placeholder">${ad.is_video ? 'VIDEO' : 'IMAGE'}</div>`;
+      ? `<img class="ad-thumb" src="${escHtml(ad.thumbnail)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'ad-thumb-placeholder\\'>${placeholderLabel}</div>'">`
+      : `<div class="ad-thumb-placeholder">${placeholderLabel}</div>`;
 
     const copyPreview = ad.body_text ? ad.body_text.slice(0, 150) : 'No copy';
 
@@ -291,6 +295,19 @@ btnAnalyze.addEventListener('click', async () => {
     return;
   }
 
+  // Create session
+  try {
+    const sessResp = await fetch('/api/session', { method: 'POST' });
+    const sessData = await sessResp.json();
+    state.sessionId = sessData.sessionId;
+  } catch {
+    state.sessionId = `${Date.now()}_local`;
+  }
+
+  // Derive brand name from first ad
+  state.brandName = selectedAds[0]?.page_name || null;
+  state.searchQuery = metaUrlInput.value.trim();
+
   let completed = 0;
 
   btnAnalyze.disabled = true;
@@ -356,6 +373,25 @@ btnAnalyze.addEventListener('click', async () => {
       console.error('Pattern summary failed:', err);
     }
   }
+
+  // Save complete results to server
+  try {
+    await fetch(`/api/session/${state.sessionId}/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        results: state.results,
+        patternSummary: state.patternSummary,
+        brandName: state.brandName,
+        searchQuery: state.searchQuery,
+      }),
+    });
+  } catch (err) {
+    console.error('Failed to save session:', err);
+  }
+
+  // Show report buttons
+  showReportButtons();
 
   analyzeStatus.textContent = `${completed} / ${total} complete — Done`;
   btnAnalyze.disabled = false;
@@ -510,7 +546,71 @@ function formatPatternValue(val) {
 }
 
 // ==========================================
-// EXPORT
+// REPORTS
+// ==========================================
+function showReportButtons() {
+  const existing = document.getElementById('report-panel');
+  if (existing) existing.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'report-panel';
+  panel.className = 'report-panel';
+  panel.innerHTML = `
+    <h3>Reports</h3>
+    <div class="report-buttons">
+      <button id="btn-pdf-report" class="btn-report btn-pdf">Download PDF Report</button>
+      <button id="btn-json-download" class="btn-report btn-json">Download JSON</button>
+    </div>
+  `;
+
+  // Insert before results grid
+  const resultsBody = stepResults.querySelector('.step-body');
+  resultsBody.insertBefore(panel, patternSummaryEl);
+
+  document.getElementById('btn-pdf-report').addEventListener('click', async (e) => {
+    const btn = e.target;
+    btn.disabled = true;
+    btn.textContent = 'Generating PDF...';
+    try {
+      const resp = await fetch(`/api/report/${state.sessionId}`);
+      if (!resp.ok) {
+        const err = await resp.json();
+        alert(err.error || 'Failed to generate PDF');
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = resp.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || 'report.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('PDF generation failed: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Download PDF Report';
+    }
+  });
+
+  document.getElementById('btn-json-download').addEventListener('click', async () => {
+    try {
+      const resp = await fetch(`/api/report/${state.sessionId}/json`);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = resp.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || 'analysis.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('JSON download failed: ' + err.message);
+    }
+  });
+}
+
+// ==========================================
+// EXPORT (legacy buttons in header)
 // ==========================================
 btnExportAll.addEventListener('click', () => {
   download('ads_analysis_all.json', { results: state.results, pattern_summary: state.patternSummary });
