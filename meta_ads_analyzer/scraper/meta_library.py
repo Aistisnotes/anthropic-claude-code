@@ -95,6 +95,7 @@ class MetaAdsScraper:
         query: str,
         page_id: str | None = None,
         expected_page_name: str | None = None,
+        sort_by_impressions: bool = False,
     ) -> list[ScrapedAd]:
         """Scrape ads matching the query from Meta Ads Library.
 
@@ -104,6 +105,7 @@ class MetaAdsScraper:
                      URL which returns ALL ads from that specific page.
             expected_page_name: When set, abort early if no ads match this page_name
                 after 3 scrolls (avoids scraping irrelevant pages in Stage B).
+            sort_by_impressions: If True, sort results by total impressions descending.
         """
         if page_id:
             logger.info(f"Starting scrape for page_id: {page_id} (max {self.max_ads} ads)")
@@ -127,7 +129,8 @@ class MetaAdsScraper:
 
             try:
                 ads = await self._scrape_ads(
-                    page, query, page_id=page_id, expected_page_name=expected_page_name
+                    page, query, page_id=page_id, expected_page_name=expected_page_name,
+                    sort_by_impressions=sort_by_impressions,
                 )
                 label = f"page_id:{page_id}" if page_id else f"query:{query}"
                 logger.info(f"Scraped {len(ads)} ads for {label}")
@@ -142,6 +145,7 @@ class MetaAdsScraper:
         query: str,
         page_id: str | None = None,
         expected_page_name: str | None = None,
+        sort_by_impressions: bool = False,
     ) -> list[ScrapedAd]:
         """Navigate to ads library, apply filters, and extract ad cards.
 
@@ -152,8 +156,9 @@ class MetaAdsScraper:
             expected_page_name: When set (typically for page_id searches), abort
                 after 3 scrolls if no ads match this page_name. Prevents wasting
                 time scraping pages that belong to other brands.
+            sort_by_impressions: If True, sort results by total impressions desc.
         """
-        url = self._build_search_url(query, page_id=page_id)
+        url = self._build_search_url(query, page_id=page_id, sort_by_impressions=sort_by_impressions)
         logger.info(f"Navigating to: {url}")
 
         await page.goto(url, wait_until="networkidle", timeout=30000)
@@ -284,12 +289,20 @@ class MetaAdsScraper:
         )
         return result
 
-    def _build_search_url(self, query: str, page_id: str | None = None) -> str:
+    def _build_search_url(
+        self,
+        query: str,
+        page_id: str | None = None,
+        sort_by_impressions: bool = False,
+    ) -> str:
         """Build Meta Ads Library search URL with filters.
 
         When page_id is provided, uses view_all_page_id which returns ALL ads
         from a specific Facebook page — the most reliable way to enumerate a
         brand's complete ad library without search result filtering.
+
+        When sort_by_impressions is True, adds sort_data params to return
+        highest-impression ads first (used by direct domain mode).
         """
         country = self.filters.get("country", "US")
         ad_type = self.filters.get("ad_type", "all")
@@ -307,6 +320,9 @@ class MetaAdsScraper:
         else:
             encoded_query = quote_plus(query)
             base += f"&q={encoded_query}"
+
+        if sort_by_impressions:
+            base += "&sort_data[direction]=desc&sort_data[mode]=total_impressions"
 
         if media_type != "all":
             base += f"&media_type={media_type}"

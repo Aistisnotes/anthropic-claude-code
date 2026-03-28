@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ report.product.name }} — Pain Point Analysis</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1a1a1a;
+    background: #ffffff;
+    line-height: 1.6;
+  }
+
+  :root {
+    --primary: #2563eb;
+    --primary-light: #dbeafe;
+    --primary-mid: #93c5fd;
+    --green: #e8f5e9;
+    --green-border: #4caf50;
+    --yellow: #fff8e1;
+    --yellow-border: #ffc107;
+    --orange: #fff3e0;
+    --orange-border: #ff9800;
+    --red: #ffebee;
+    --red-border: #ef5350;
+    --gray-bg: #f8f8f8;
+    --gray-line: #e0e0e0;
+    --text-muted: #666;
+    --text-light: #888;
+  }
+
+  @page { size: A4; margin: 14mm 15mm; }
+  @page :first { margin: 0; }
+
+  /* Cover */
+  .cover {
+    page-break-after: always;
+    height: 297mm;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    padding: 36px 44px;
+    position: relative;
+  }
+  .cover-top-bar {
+    width: 100%; height: 6px;
+    background: linear-gradient(90deg, var(--primary) 0%, #60a5fa 100%);
+    border-radius: 3px; margin-bottom: 32px;
+  }
+  .cover-title {
+    font-size: 32px; font-weight: 800; color: #111;
+    line-height: 1.15; margin-bottom: 10px;
+  }
+  .cover-title span { color: var(--primary); }
+  .cover-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 3px; }
+  .cover-meta { margin-top: 24px; display: flex; flex-direction: column; gap: 7px; }
+  .cover-meta-row { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .cover-meta-label { font-weight: 700; color: #444; min-width: 140px; }
+  .cover-meta-value { color: #222; }
+  .cover-badge {
+    display: inline-block; margin-top: 24px; padding: 9px 18px;
+    background: var(--primary); color: white; border-radius: 24px;
+    font-size: 13px; font-weight: 700;
+  }
+  .cover-bottom {
+    margin-top: auto; border-top: 1px solid var(--gray-line);
+    padding-top: 14px; display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--text-light);
+  }
+
+  /* Sections */
+  .section { margin-bottom: 20px; }
+  .section-header {
+    font-size: 19px; font-weight: 800; color: var(--primary);
+    border-bottom: 2px solid var(--primary); padding-bottom: 6px;
+    margin-bottom: 12px; page-break-after: avoid;
+  }
+  .section-num { color: var(--primary); margin-right: 4px; }
+  .subsection-header {
+    font-size: 11px; font-weight: 800; color: var(--text-muted);
+    margin-bottom: 8px; margin-top: 14px; text-transform: uppercase;
+    letter-spacing: 0.5px; page-break-after: avoid;
+  }
+
+  /* Callouts */
+  .callout {
+    border-radius: 6px; padding: 11px 15px; margin-bottom: 10px;
+    page-break-inside: avoid;
+  }
+  .callout-title {
+    font-size: 11px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.4px; margin-bottom: 5px;
+  }
+  .callout p, .callout li { font-size: 13px; line-height: 1.6; color: #1a1a1a; }
+  .callout ul { padding-left: 18px; }
+  .callout-blue { background: var(--primary-light); border-left: 4px solid var(--primary); }
+  .callout-blue .callout-title { color: var(--primary); }
+  .callout-green { background: var(--green); border-left: 4px solid var(--green-border); }
+  .callout-green .callout-title { color: #2e7d32; }
+  .callout-yellow { background: var(--yellow); border-left: 4px solid var(--yellow-border); }
+  .callout-yellow .callout-title { color: #7a5900; }
+  .callout-orange { background: var(--orange); border-left: 4px solid var(--orange-border); }
+  .callout-orange .callout-title { color: #e65100; }
+  .callout-red { background: var(--red); border-left: 4px solid var(--red-border); }
+  .callout-red .callout-title { color: #c62828; }
+
+  /* Tables */
+  table {
+    width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px;
+  }
+  thead th {
+    background: var(--gray-bg); border: 1px solid var(--gray-line);
+    padding: 8px 10px; text-align: left; font-weight: 700;
+    font-size: 11px; text-transform: uppercase; color: #444;
+  }
+  tbody td {
+    border: 1px solid var(--gray-line); padding: 8px 10px;
+    vertical-align: top; line-height: 1.45; color: #1a1a1a;
+  }
+  tbody tr:nth-child(even) td { background: #fafafa; }
+  .row-highlight td { background: var(--primary-light) !important; font-weight: 600; }
+
+  /* Cards */
+  .card {
+    border: 1px solid var(--gray-line); border-left: 5px solid var(--primary);
+    border-radius: 7px; padding: 16px 20px; margin-bottom: 14px;
+    background: #fff; page-break-inside: avoid;
+  }
+  .card-title { font-size: 15px; font-weight: 800; color: #111; margin-bottom: 6px; }
+  .card-subtitle { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; }
+
+  /* Strategy grid */
+  .strategy-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;
+  }
+  .strategy-cell {
+    background: var(--gray-bg); border-radius: 5px; padding: 8px 10px;
+  }
+  .strategy-cell-label {
+    font-size: 10px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.4px; color: var(--text-muted); margin-bottom: 3px;
+  }
+  .strategy-cell-value { font-size: 12px; color: #222; line-height: 1.45; }
+
+  /* Hooks */
+  .hooks-list { padding-left: 0; list-style: none; margin: 0; }
+  .hooks-list li {
+    font-size: 12px; padding: 5px 9px; color: #1a1a1a;
+    border-left: 3px solid var(--primary-mid); margin-bottom: 4px;
+    background: #fafafa; border-radius: 0 4px 4px 0; line-height: 1.45;
+  }
+
+  /* Tags */
+  .tag {
+    display: inline-block; border-radius: 10px; padding: 2px 9px;
+    font-size: 10.5px; font-weight: 700; border: 1px solid; margin-right: 4px;
+  }
+  .tag-strong { background: var(--green); color: #2e7d32; border-color: var(--green-border); }
+  .tag-moderate { background: var(--yellow); color: #7a5900; border-color: var(--yellow-border); }
+  .tag-weak { background: var(--red); color: #c62828; border-color: var(--red-border); }
+  .tag-blue { background: var(--primary-light); color: var(--primary); border-color: var(--primary-mid); }
+
+  /* Tier badges — PDF version */
+  .tier-badge-pdf {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 700;
+  }
+  /* Tier 1 OPEN: green bg, white text */
+  .tier-pdf-open { background: #4caf50; color: #ffffff; }
+  /* Tier 2 SOLID: yellow bg, black text */
+  .tier-pdf-solid { background: #f9a825; color: #000000; }
+  /* Tier 3 SATURATED: orange bg, white text */
+  .tier-pdf-saturated { background: #ff9800; color: #ffffff; }
+  /* Tier 4 SUPER SATURATED: red bg, white text */
+  .tier-pdf-super-saturated { background: #ef5350; color: #ffffff; }
+  /* Unknown: gray bg, white text */
+  .tier-pdf-unknown { background: #9e9e9e; color: #ffffff; }
+
+  .page-break { page-break-before: always; }
+  .text-muted { color: var(--text-muted); }
+  hr { border: none; border-top: 1px solid var(--gray-line); margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <div class="cover-top-bar"></div>
+  <div class="cover-title">
+    {{ report.product.name }}<br>
+    <span>Pain Point Analysis</span>
+  </div>
+  <div class="cover-subtitle"><strong>Brand:</strong> {{ report.product.brand }}</div>
+  <div class="cover-subtitle"><strong>Generated:</strong> {{ generated_date }}</div>
+
+  <div class="cover-meta">
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Ingredients Found</span>
+      <span class="cover-meta-value">{{ report.product.ingredients | length }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Pain Points Discovered</span>
+      <span class="cover-meta-value">{{ report.all_pain_points | length }}</span>
+    </div>
+    <div class="cover-meta-row">
+      <span class="cover-meta-label">Top Pain Points Analyzed</span>
+      <span class="cover-meta-value">{{ report.top_deep_dives | length }}</span>
+    </div>
+  </div>
+
+  {% if report.top_deep_dives %}
+  <div class="cover-badge">
+    #1 Opportunity: {{ report.top_deep_dives[0].pain_point }}
+    ({{ report.top_deep_dives[0].tier_label | default('') }} — {{ '{:,}'.format(report.top_deep_dives[0].trend_score) }} ads)
+  </div>
+  {% endif %}
+
+  <div class="cover-bottom">
+    <span>Pain Point Analyzer Report &middot; {{ generated_date }}</span>
+    <span>{{ report.product.brand }}</span>
+  </div>
+</div>
+
+<!-- 1. PRODUCT SUMMARY -->
+<div class="section">
+  <div class="section-header"><span class="section-num">1.</span> Product Summary</div>
+
+  {% if report.product.description %}
+  <p style="font-size:13px;margin-bottom:12px;color:#1a1a1a;">{{ report.product.description }}</p>
+  {% endif %}
+
+  <table>
+    <thead>
+      <tr>
+        <th>Ingredient</th>
+        <th>Amount</th>
+        <th>Sources</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ing in report.product.ingredients %}
+      <tr>
+        <td><strong>{{ ing.name }}</strong></td>
+        <td>{{ ing.amount or '—' }} {{ ing.unit or '' }}</td>
+        <td style="font-size:11px;">{{ ing.sources | join(', ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 2. ALL PAIN POINTS -->
+<div class="section">
+  <div class="section-header"><span class="section-num">2.</span> Pain Points Discovered ({{ report.all_pain_points | length }})</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Pain Point</th>
+        <th>Category</th>
+        <th># Ingredients</th>
+        <th>Supporting Ingredients</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for pp in report.all_pain_points %}
+      <tr {% if pp.name in report.top_deep_dives | map(attribute='pain_point') | list %}class="row-highlight"{% endif %}>
+        <td><strong>{{ pp.name }}</strong></td>
+        <td>{{ pp.category }}</td>
+        <td>{{ pp.ingredient_count }}</td>
+        <td style="font-size:11px;">{{ pp.supporting_ingredients | join(', ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 3. META AD LIBRARY DEMAND -->
+<div class="section">
+  <div class="section-header"><span class="section-num">3.</span> Meta Ad Library — Market Demand</div>
+
+  {% if not report.get('_meta_reachable', true) %}
+  <div class="callout callout-orange" style="margin-bottom:12px;">
+    <div class="callout-title">Meta Ad Library Unreachable</div>
+    <p>Tiers unavailable — Meta Ad Library was unreachable during this analysis. Pain points are shown but tier classification was skipped.</p>
+  </div>
+  {% endif %}
+
+  <table>
+    <thead>
+      <tr>
+        <th>Rank</th>
+        <th>Pain Point</th>
+        <th>Tier</th>
+        <th>Active Ads</th>
+        <th>Best Keyword</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in report.trends %}
+      {% set tier_class_map = {'green': 'tier-pdf-open', 'yellow': 'tier-pdf-solid', 'orange': 'tier-pdf-saturated', 'red': 'tier-pdf-super-saturated', 'gray': 'tier-pdf-unknown'} %}
+      <tr {% if t.is_top %}class="row-highlight"{% endif %}>
+        <td>{{ loop.index }}</td>
+        <td><strong>{{ t.pain_point }}</strong></td>
+        <td>
+          <span class="tier-badge-pdf {{ tier_class_map.get(t.tier_color, 'tier-pdf-unknown') }}">
+            {{ t.tier_label }}
+          </span>
+        </td>
+        <td>
+          {% if t.best_score > 0 %}
+            {{ '{:,}'.format(t.best_score) }}
+            {% if t.get('from_cache', false) %}<br><span style="font-size:10px;color:#888;">(cached{% if t.get('cache_date') %}, {{ t.cache_date }}{% endif %})</span>{% endif %}
+          {% elif t.best_score == -2 %}
+            <span style="color:#c62828;">Could not retrieve</span>
+          {% else %}
+            N/A
+          {% endif %}
+        </td>
+        <td>{{ t.best_keyword }}</td>
+        <td>
+          {% if t.is_top %}<span class="tag tag-blue">TOP {{ report.top_deep_dives | length }}</span>{% endif %}
+          {% if t.get('skipped', false) %}<br><span style="font-size:10px;color:#888;">{{ t.skip_reason }}</span>{% endif %}
+          {% if t.tier == 3 %}<br><span style="font-size:10px;color:#e65100;">&#9888;&#65039; Saturated — strong rootcause/mechanism required</span>{% endif %}
+          {% if t.tier == 4 %}<br><span style="font-size:10px;color:#c62828;">&#128721; Super saturated — extremely difficult to stand out</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% for t in report.trends %}
+  {% if t.keywords and t.keywords | length > 1 %}
+  {% if loop.first %}
+  <div class="subsection-header" style="margin-top:12px;">Keyword Breakdown</div>
+  {% endif %}
+  <div style="font-size:11px;margin-bottom:4px;color:#1a1a1a;">
+    <strong>{{ t.pain_point }}:</strong>
+    {% for kw in t.keywords %}
+    {{ kw.keyword }} ({{ '{:,}'.format(kw.score) }}){% if not loop.last %}, {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<!-- 4. TOP PAIN POINTS DEEP DIVE -->
+{% for dive in report.top_deep_dives %}
+<div class="section page-break">
+  <div class="section-header">
+    <span class="section-num">4.{{ loop.index }}.</span>
+    {{ dive.pain_point }} — Deep Dive
+  </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+    {% set tier_class_map = {'green': 'tier-pdf-open', 'yellow': 'tier-pdf-solid', 'orange': 'tier-pdf-saturated', 'red': 'tier-pdf-super-saturated', 'gray': 'tier-pdf-unknown'} %}
+    <span class="tier-badge-pdf {{ tier_class_map.get(dive.tier_color, 'tier-pdf-unknown') }}">{{ dive.tier_label | default('') }}</span>
+    <span class="tag tag-blue">{{ '{:,}'.format(dive.trend_score) }} active ads</span>
+    {% if dive.science %}
+    <span class="tag tag-{{ dive.science.overall_evidence }}">{{ dive.science.overall_evidence | upper }} EVIDENCE</span>
+    {% endif %}
+    <span class="tag tag-blue">{{ dive.supporting_ingredients | length }} ingredients</span>
+  </div>
+  {% if dive.tier == 3 %}
+  <div class="callout callout-orange" style="margin-bottom:10px;">
+    <div class="callout-title">&#9888;&#65039; Saturated Market</div>
+    <p>{{ '{:,}'.format(dive.trend_score) }} competing ads. Strong rootcause/mechanism positioning required to stand out.</p>
+  </div>
+  {% elif dive.tier == 4 %}
+  <div class="callout callout-red" style="margin-bottom:10px;">
+    <div class="callout-title">&#128721; Super Saturated Market</div>
+    <p>{{ '{:,}'.format(dive.trend_score) }}+ active ads. Extremely difficult to stand out. Consider focusing on other pain points unless you have a breakthrough angle.</p>
+  </div>
+  {% endif %}
+
+  <!-- Science -->
+  {% if dive.science %}
+  <div class="subsection-header">Scientific Evidence</div>
+  <div class="callout callout-blue">
+    <div class="callout-title">Summary</div>
+    <p>{{ dive.science.summary }}</p>
+  </div>
+
+  {% for ev in dive.science.ingredient_evidence %}
+  <div class="card">
+    <div class="card-title">{{ ev.ingredient }}</div>
+    <div class="card-subtitle">
+      Evidence: <span class="tag tag-{{ ev.strength }}">{{ ev.strength | upper }}</span>
+      {% if ev.optimal_dosage %}| Optimal Dosage: {{ ev.optimal_dosage }}{% endif %}
+    </div>
+    <p style="font-size:12.5px;margin-bottom:8px;color:#1a1a1a;">{{ ev.mechanism }}</p>
+
+    {% if ev.studies %}
+    <div class="subsection-header">Key Studies</div>
+    {% for s in ev.studies %}
+    <div style="background:var(--gray-bg);border-radius:4px;padding:6px 10px;margin-bottom:4px;font-size:12px;">
+      <strong style="color:#111;">{{ s.description }}</strong><br>
+      <span class="text-muted">Dosage: {{ s.dosage }} | Duration: {{ s.duration }} | Effect: {{ s.effect_size }}</span>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if ev.contraindications %}
+    <div class="callout callout-yellow" style="margin-top:8px;">
+      <div class="callout-title">Contraindications</div>
+      <ul>
+        {% for c in ev.contraindications %}
+        <li>{{ c }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if dive.science.synergies %}
+  <div class="subsection-header">Ingredient Synergies</div>
+  {% for syn in dive.science.synergies %}
+  <div class="callout callout-green">
+    <div class="callout-title">{{ syn.ingredients | join(' + ') }}</div>
+    <p>{{ syn.description }}</p>
+    <p class="text-muted" style="font-size:11px;margin-top:4px;">Mechanism: {{ syn.mechanism }}</p>
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% endif %}
+
+  <!-- Positioning -->
+  {% if dive.positioning %}
+  <div class="subsection-header" style="margin-top:20px;">Root Cause + Mechanism Positioning</div>
+
+  <div class="strategy-grid">
+    <div class="strategy-cell">
+      <div class="strategy-cell-label">Root Cause (Surface)</div>
+      <div class="strategy-cell-value">{{ dive.positioning.root_cause.surface }}</div>
+    </div>
+    <div class="strategy-cell">
+      <div class="strategy-cell-label">Root Cause (Cellular)</div>
+      <div class="strategy-cell-value">{{ dive.positioning.root_cause.cellular }}</div>
+    </div>
+    <div class="strategy-cell" style="grid-column:1/-1;">
+      <div class="strategy-cell-label">Root Cause (Molecular)</div>
+      <div class="strategy-cell-value">{{ dive.positioning.root_cause.molecular }}</div>
+    </div>
+    <div class="strategy-cell" style="grid-column:1/-1;">
+      <div class="strategy-cell-label">Mechanism</div>
+      <div class="strategy-cell-value">{{ dive.positioning.mechanism }}</div>
+    </div>
+  </div>
+
+  <div class="subsection-header">Avatar Profiles</div>
+  {% if dive.positioning.avatar_profiles %}
+  {% for profile in dive.positioning.avatar_profiles %}
+  <div class="card" style="border-left-color:#3b82f6;margin-bottom:8px;">
+    <div class="card-title" style="font-size:13px;">Avatar #{{ loop.index }}</div>
+    <p style="font-size:12.5px;color:#1a1a1a;">
+      {{ profile.habit }} {{ profile.root_cause_connection }} {{ profile.why_solutions_failed }}
+    </p>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if dive.positioning.daily_symptoms %}
+  <div class="subsection-header">Daily Symptoms</div>
+  <ul style="padding-left:18px;">
+    {% for s in dive.positioning.daily_symptoms %}
+    <li style="font-size:12.5px;margin-bottom:3px;color:#1a1a1a;">{{ s }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if dive.positioning.mass_desire %}
+  <div class="callout callout-blue" style="margin-top:12px;">
+    <div class="callout-title">Mass Desire</div>
+    <p style="font-weight:700;">{{ dive.positioning.mass_desire }}</p>
+  </div>
+  {% endif %}
+
+  {% if dive.positioning.hooks %}
+  <div class="subsection-header">Hook Examples</div>
+  <ul class="hooks-list">
+    {% for h in dive.positioning.hooks %}
+    <li>"{{ h }}"</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+</div>
+{% endfor %}
+
+<!-- 5. SYNERGY MAP -->
+{% if report.synergy_map %}
+<div class="section">
+  <div class="section-header"><span class="section-num">5.</span> Ingredient Synergy Map</div>
+  {% for syn in report.synergy_map %}
+  <div class="card">
+    <div class="card-title">{{ syn.ingredients | join(' + ') }}</div>
+    <div class="card-subtitle">Pain Point: {{ syn.pain_point }}</div>
+    <p style="font-size:12.5px;color:#1a1a1a;">{{ syn.description }}</p>
+    <p class="text-muted" style="font-size:11px;margin-top:4px;">{{ syn.mechanism }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 6. SATURATED MARKET LOOPHOLES -->
+{% if report.saturated_loopholes %}
+<div class="section page-break">
+  <div class="section-header"><span class="section-num">6.</span> Saturated Market Loopholes</div>
+  <p style="font-size:12px;color:#666;margin-bottom:12px;">High competition but your formula has an edge.</p>
+
+  {% for lh in report.saturated_loopholes %}
+  <div class="card" style="border-left-color:#ff9800;">
+    <div class="card-title">
+      {{ lh.pain_point_name }}
+      {% set tier_class_map = {3: 'tier-pdf-saturated', 4: 'tier-pdf-super-saturated'} %}
+      <span class="tier-badge-pdf {{ tier_class_map.get(lh.tier, 'tier-pdf-unknown') }}">{{ lh.tier_label }}</span>
+      <span style="font-size:11px;color:#888;margin-left:6px;">{{ '{:,}'.format(lh.ad_count) }} ads</span>
+    </div>
+    <div class="card-subtitle">Ingredient Coverage: {{ '{:.0%}'.format(lh.ingredient_coverage) }}</div>
+
+    <div class="strategy-grid">
+      <div class="strategy-cell">
+        <div class="strategy-cell-label">Standard Angle (Competitors)</div>
+        <div class="strategy-cell-value">{{ lh.standard_angle }}</div>
+      </div>
+      <div class="strategy-cell">
+        <div class="strategy-cell-label">Your Angle</div>
+        <div class="strategy-cell-value" style="font-weight:700;">{{ lh.your_angle }}</div>
+      </div>
+    </div>
+
+    {% if lh.connection_boost %}
+    <div class="callout callout-green" style="margin-top:8px;">
+      <div class="callout-title">&#128279; Connection Boost</div>
+      <p>{{ lh.connection_boost }}</p>
+    </div>
+    {% endif %}
+
+    <p style="font-size:12px;color:#1a1a1a;margin-top:8px;">{{ lh.why_it_works }}</p>
+
+    {% if lh.hook_examples %}
+    <ul class="hooks-list" style="margin-top:8px;">
+      {% for h in lh.hook_examples %}
+      <li>"{{ h }}"</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <div class="callout callout-orange" style="margin-top:8px;">
+      <p style="font-size:11px;">&#9888;&#65039; High competition but strong formula differentiation. Test with $500 budget first.</p>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 7. MULTI-PAIN-POINT CONNECTIONS -->
+{% if report.connections %}
+<div class="section page-break">
+  <div class="section-header"><span class="section-num">7.</span> Multi-Pain-Point Connections</div>
+  <p style="font-size:12px;color:#666;margin-bottom:12px;">One mechanism chain explains multiple pain points simultaneously.</p>
+
+  {% for conn in report.connections %}
+  <div class="card" style="border-left-color:#3b82f6;margin-bottom:16px;">
+    <div class="card-title">{{ conn.name }}</div>
+
+    <div class="subsection-header">Connected Pain Points</div>
+    {% for cpp in conn.connected_pain_points %}
+    <div style="display:inline-block;margin-right:8px;margin-bottom:4px;">
+      <strong>{{ cpp.name }}</strong>
+      {% set tier_class_map = {1: 'tier-pdf-open', 2: 'tier-pdf-solid', 3: 'tier-pdf-saturated', 4: 'tier-pdf-super-saturated'} %}
+      <span class="tier-badge-pdf {{ tier_class_map.get(cpp.tier, 'tier-pdf-unknown') }}">{{ cpp.tier_label }}</span>
+      <span style="font-size:10px;color:#888;">{{ '{:,}'.format(cpp.ad_count) }} ads</span>
+    </div>
+    {% endfor %}
+
+    {% if conn.chain %}
+    <div class="callout callout-blue" style="margin-top:10px;">
+      <div class="callout-title">Mechanism Chain</div>
+      <p style="font-weight:700;">{{ conn.chain }}</p>
+    </div>
+    {% endif %}
+
+    {% if conn.scientific_explanation %}
+    <div class="callout callout-blue" style="margin-top:8px;">
+      <div class="callout-title">Scientific Explanation</div>
+      <p>{{ conn.scientific_explanation }}</p>
+    </div>
+    {% endif %}
+
+    {% if conn.root_cause_surface or conn.root_cause_cellular or conn.root_cause_molecular %}
+    <div class="subsection-header">Root Cause Depth</div>
+    <div class="strategy-grid">
+      {% if conn.root_cause_surface %}
+      <div class="strategy-cell">
+        <div class="strategy-cell-label">Surface</div>
+        <div class="strategy-cell-value">{{ conn.root_cause_surface }}</div>
+      </div>
+      {% endif %}
+      {% if conn.root_cause_cellular %}
+      <div class="strategy-cell">
+        <div class="strategy-cell-label">Cellular</div>
+        <div class="strategy-cell-value">{{ conn.root_cause_cellular }}</div>
+      </div>
+      {% endif %}
+      {% if conn.root_cause_molecular %}
+      <div class="strategy-cell" style="grid-column:1/-1;">
+        <div class="strategy-cell-label">Molecular</div>
+        <div class="strategy-cell-value">{{ conn.root_cause_molecular }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if conn.mechanism %}
+    <div class="strategy-grid" style="margin-top:8px;">
+      <div class="strategy-cell" style="grid-column:1/-1;">
+        <div class="strategy-cell-label">Mechanism</div>
+        <div class="strategy-cell-value">{{ conn.mechanism }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if conn.shared_root_cause %}
+    <p style="font-size:12px;margin-top:8px;"><strong>Why nobody else sees this:</strong> {{ conn.shared_root_cause }}</p>
+    {% endif %}
+
+    {% if conn.why_treating_individually_fails %}
+    <p style="font-size:12px;"><strong>Why treating separately fails:</strong> {{ conn.why_treating_individually_fails }}</p>
+    {% endif %}
+
+    {% if conn.avatar_profiles %}
+    <div class="subsection-header">Avatar Profiles</div>
+    {% for profile in conn.avatar_profiles %}
+    <div class="card" style="border-left-color:#3b82f6;margin-bottom:6px;padding:10px 14px;">
+      <div class="card-title" style="font-size:12px;">Avatar #{{ loop.index }}</div>
+      <p style="font-size:12px;color:#1a1a1a;">
+        {{ profile.habit }} {{ profile.root_cause_connection }}
+        {% if profile.connected_symptoms %}<br><em>Symptoms: {{ profile.connected_symptoms }}</em>{% endif %}
+        {% if profile.why_solutions_failed %}<br>{{ profile.why_solutions_failed }}{% endif %}
+      </p>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if conn.daily_symptoms %}
+    <div class="subsection-header">Daily Symptoms</div>
+    <ul style="padding-left:18px;">
+      {% for s in conn.daily_symptoms %}
+      <li style="font-size:12px;margin-bottom:2px;color:#1a1a1a;">{{ s }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if conn.mass_desire %}
+    <div class="callout callout-blue" style="margin-top:8px;">
+      <div class="callout-title">Mass Desire</div>
+      <p style="font-weight:700;">{{ conn.mass_desire }}</p>
+    </div>
+    {% endif %}
+
+    {% if conn.hook_sentence %}
+    <div class="callout callout-yellow" style="margin-top:8px;">
+      <div class="callout-title">The Hook</div>
+      <p style="font-weight:700;font-style:italic;">"{{ conn.hook_sentence }}"</p>
+    </div>
+    {% endif %}
+
+    {% if conn.ad_hooks %}
+    <div class="subsection-header">Ad Hook Examples</div>
+    <ul class="hooks-list">
+      {% for h in conn.ad_hooks %}
+      <li>"{{ h }}"</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if conn.ingredient_roles %}
+    <div class="subsection-header">Ingredient Roles</div>
+    {% for role in conn.ingredient_roles %}
+    <div style="font-size:12px;margin-bottom:3px;color:#1a1a1a;">
+      <strong>{{ role.ingredient }}:</strong> {{ role.role }}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if conn.supporting_ingredients %}
+    <p style="font-size:11px;color:#666;margin-top:8px;">
+      <strong>Supporting ingredients:</strong> {{ conn.supporting_ingredients | join(', ') }}
+    </p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Footer -->
+<div style="margin-top:24px;border-top:1px solid var(--gray-line);padding-top:10px;display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-light);">
+  <span>{{ report.product.name }} &middot; Pain Point Analysis &middot; {{ generated_date }}</span>
+  <span>{{ report.product.ingredients | length }} Ingredients &middot; {{ report.all_pain_points | length }} Pain Points &middot; {{ report.top_deep_dives | length }} Deep Dives</span>
+</div>
+
+</body>
+</html>
